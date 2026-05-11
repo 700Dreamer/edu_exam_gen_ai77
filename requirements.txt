@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+openai
+chromadb
+python-docx
+python-dotenv
+streamlit
+flashrank

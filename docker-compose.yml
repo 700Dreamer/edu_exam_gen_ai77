@@ -1,0 +1,74 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# EduQuest AI — Docker Compose
+#
+# Services
+#   backend   FastAPI / Uvicorn  → http://localhost:8000
+#   frontend  Next.js            → http://localhost:3000
+#
+# Volumes
+#   chroma_data   persists the ChromaDB vector store between rebuilds
+#   db_data       persists SQLite databases (eduquest_history.db, etc.)
+#
+# Usage
+#   docker compose up --build          # first run (or after code changes)
+#   docker compose up                  # subsequent runs
+#   docker compose down                # stop and remove containers
+#   docker compose down -v             # ⚠ also wipe named volumes (data loss!)
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: eduquest_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Override with a real .env file or Docker secrets in production
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # Persist vector store and SQLite databases outside the container
+      - chroma_data:/app/chroma_db
+      - db_data:/app/db
+    networks:
+      - eduquest_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/syllabus/config')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ── Next.js Frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Inside Docker, the frontend calls the backend via its service name.
+        # The browser also hits port 8000 directly (mapped to host), so
+        # localhost:8000 works fine for client-side fetch calls.
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: eduquest_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - eduquest_net
+
+# ── Named volumes ────────────────────────────────────────────────────────────
+volumes:
+  chroma_data:
+  db_data:
+
+# ── Shared network ───────────────────────────────────────────────────────────
+networks:
+  eduquest_net:
+    driver: bridge
