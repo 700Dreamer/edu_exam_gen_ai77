@@ -14,7 +14,7 @@ function cn(...inputs: ClassValue[]) {
 const API_BASE = typeof window !== "undefined" ? "" : "http://127.0.0.1:8000";
 
 // ── TYPES ──
-type Page = "studio" | "ingestion" | "analytics";
+type Page = "studio" | "ingestion" | "analytics" | "flow";
 type Mode = "Exams" | "Lesson Notes" | "Schemes of Work";
 
 interface Project {
