@@ -3,4 +3,3 @@ __pycache__/
 chroma_db/
 *.pyc
 .DS_Store
-eduquest_history.db
