@@ -21,10 +21,13 @@ if [ ! -d "$DATA_DIR/chroma_db" ] || [ ! -f "$DATA_DIR/ingestion_staging.db" ]; 
     echo "🗜️ Extracting databases..."
     unzip -q $DATA_DIR/data.zip -d $DATA_DIR/
     
-    # If the zip contained a nested 'data' folder, move the items up one level
-    if [ -d "$DATA_DIR/data/chroma_db" ]; then
-        mv $DATA_DIR/data/* $DATA_DIR/ 2>/dev/null || true
-        rm -rf $DATA_DIR/data
+    # Auto-detect where chroma_db was extracted and move the contents up
+    CHROMA_PATH=$(find "$DATA_DIR" -maxdepth 3 -type d -name "chroma_db" | head -n 1)
+    if [ -n "$CHROMA_PATH" ] && [ "$CHROMA_PATH" != "$DATA_DIR/chroma_db" ]; then
+        PARENT_DIR=$(dirname "$CHROMA_PATH")
+        echo "🗂️ Found nested data at $PARENT_DIR, moving to root..."
+        mv "$PARENT_DIR"/* "$DATA_DIR"/ 2>/dev/null || true
+        rm -rf "$PARENT_DIR"
     fi
     rm -f $DATA_DIR/data.zip
     echo "✅ Databases successfully downloaded and extracted!"
