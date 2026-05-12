@@ -523,6 +523,22 @@ async def mark_endpoint(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/health/resources")
+def health_resources():
+    import os
+    try:
+        cpu = round(os.getloadavg()[0] / os.cpu_count() * 100, 1)
+        mem = 0
+        with open("/proc/meminfo", "r") as f:
+            lines = f.readlines()
+            avail = next((int(l.split()[1]) for l in lines if l.startswith("MemAvailable:")), 0)
+            total = next((int(l.split()[1]) for l in lines if l.startswith("MemTotal:")), 0)
+            if total > 0 and avail > 0:
+                mem = round((total - avail) / 1024)
+        return {"memory_mb": mem, "cpu_percent": cpu}
+    except Exception:
+        return {"memory_mb": 0, "cpu_percent": 0}
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
