@@ -1,3 +1,6 @@
+# ⚠️ CAUTION: CRITICAL DEPLOYMENT FILE
+# Before modifying, please read DEVOPS_GUIDE.md
+# ─────────────────────────────────────────────────────────────────────────────
 # ── Stage 1: Build Next.js frontend ──────────────────────────────────────────
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend

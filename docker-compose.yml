@@ -1,5 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # EduQuest AI — Docker Compose
+# ⚠️ CAUTION: Before modifying infrastructure, please read DEVOPS_GUIDE.md
+# ─────────────────────────────────────────────────────────────────────────────
 #
 # Services
 #   backend   FastAPI / Uvicorn  → http://localhost:8000

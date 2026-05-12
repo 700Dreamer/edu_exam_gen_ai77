@@ -1,4 +1,7 @@
 #!/bin/bash
+# ⚠️ CAUTION: CRITICAL DEPLOYMENT FILE
+# Before modifying, please read DEVOPS_GUIDE.md
+# ─────────────────────────────────────────────────────────────────────────────
 # Exit immediately if a command exits with a non-zero status
 set -e
 
