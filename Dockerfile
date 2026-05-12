@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install Node.js (needed to run Next.js in the same container)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl build-essential libgomp1 lsof \
+        curl build-essential libgomp1 lsof wget unzip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
