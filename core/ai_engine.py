@@ -4,7 +4,8 @@ import json, asyncio, uuid
 import base64
 from typing import Optional
 from openai import OpenAI, AsyncOpenAI
-from google import genai
+import google.generativeai as genai
+from google import genai as genai_new
 from core.db_engine import retrieve_syllabus_context
 from core.map_library import get_best_map
 from core.paper_structure import get_paper_structure, get_total_questions
@@ -12,12 +13,13 @@ from core.syllabus_master import MASTER_SYLLABUS
 import requests
 import uuid
 
-# ── Gemini Client Initialization ──
+# ── Gemini Draftsman Initialization ──
 google_key = os.environ.get("GOOGLE_API_KEY")
 if google_key:
-    gemini_client = genai.Client(api_key=google_key)
+    genai.configure(api_key=google_key)
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
 else:
-    gemini_client = None
+    gemini_model = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,10 +57,11 @@ async def generate_ai_image(prompt, subject="Geography", level=""):
 
     try:
         print(f"DEBUG: Imagen 4 fallback for [{subject}]...")
-        response = gemini_client.models.generate_images(
+        client = genai_new.Client(api_key=google_key)
+        response = client.models.generate_images(
             model="imagen-4.0-generate-001",
             prompt=full_prompt,
-            config=genai.types.GenerateImagesConfig(
+            config=genai_new.types.GenerateImagesConfig(
                 number_of_images=1,
                 aspect_ratio="1:1",
             ),
@@ -78,7 +81,7 @@ async def generate_ai_image(prompt, subject="Geography", level=""):
 
 async def generate_gemini_drawing(question_prompt, context_hint=""):
     """Uses Gemini 1.5 Pro to design a fresh, high-fidelity SVG/TikZ diagram based on the question prompt."""
-    if not gemini_client:
+    if not gemini_model:
         return None
     
     full_prompt = f"""### TASK:
@@ -100,10 +103,7 @@ async def generate_gemini_drawing(question_prompt, context_hint=""):
     """
     
     try:
-        response = await gemini_client.aio.models.generate_content(
-            model='gemini-1.5-flash',
-            contents=full_prompt
-        )
+        response = await gemini_model.generate_content_async(full_prompt)
         drawing_code = response.text.strip()
         # Clean up markdown
         drawing_code = re.sub(r'```(?:tikz|latex|html|svg)?\s*', '', drawing_code)
@@ -525,29 +525,88 @@ Output JSON structure:
         import traceback; traceback.print_exc()
         return None
 
-async def analyze_pedagogy(content_raw):
+async def analyze_pedagogy(content_raw, subject="General", level="Standard"):
     """Deep audit of syllabus coverage and Bloom's depth."""
     client = get_async_openai_client()
-    prompt = f"Analyze this exam for curriculum alignment and Bloom's Taxonomy. Return a brief summary and a percentage score for 'Syllabus Saturation'. CONTENT: {content_raw}"
-    try:
-        res = await client.chat.completions.create(model="gpt-4o", messages=[{{"role":"user","content":prompt}}])
-        return res.choices[0].message.content
-    except:
-        return "Audit service unavailable."
-
-async def generate_flow_step(step_idx, context, subject):
-    """Predictive generation of the next logical step in an exam structure."""
-    client = get_async_openai_client()
-    prompt = f"Given context: {context}. Generate the next exam question (Question {step_idx}) for {subject}. Output JSON format."
+    prompt = f"""
+    Analyze this exam for curriculum alignment and pedagogical depth for {subject} {level}.
+    Return a STRICT JSON object with the following schema:
+    {{
+      "summary": "Overall verdict on the exam quality...",
+      "readability": 85, // Percentage score
+      "time_estimate": 120, // Minutes
+      "bloom": [
+        {{ "subject": "Remember", "A": 40, "fullMark": 100 }},
+        {{ "subject": "Understand", "A": 30, "fullMark": 100 }},
+        {{ "subject": "Apply", "A": 20, "fullMark": 100 }},
+        {{ "subject": "Analyze", "A": 10, "fullMark": 100 }},
+        {{ "subject": "Evaluate", "A": 0, "fullMark": 100 }},
+        {{ "subject": "Create", "A": 0, "fullMark": 100 }}
+      ],
+      "difficulty_distribution": [30, 40, 50, 70, 80, 40, 30], // Array of difficulty percentages per question
+      "topic_saturation": {{
+         "Topic Name": 2, // Count of questions for this topic
+         "Another Topic": 1
+      }},
+      "missing_critical_topics": ["Topic A", "Topic B"]
+    }}
+    CONTENT TO ANALYZE: {content_raw}
+    """
     try:
         res = await client.chat.completions.create(
             model="gpt-4o", 
-            messages=[{{"role":"user","content":prompt}}],
-            response_format={{"type": "json_object"}}
+            messages=[{"role":"user","content":prompt}],
+            response_format={"type": "json_object"}
         )
         return json.loads(res.choices[0].message.content)
-    except:
-        return {{"text": "Failed to predict next step."}}
+    except Exception as e:
+        print(f"Pedagogical Audit Failure: {e}")
+        return {
+            "summary": "Audit service temporarily unavailable.",
+            "readability": 0,
+            "time_estimate": 0,
+            "bloom": [],
+            "difficulty_distribution": [],
+            "topic_saturation": {},
+            "missing_critical_topics": []
+        }
+
+async def generate_flow_step(topic, subject, level, bloom, out_format, reference):
+    """Predictive generation of the next logical step in an exam structure via Neural Flow."""
+    client = get_async_openai_client()
+    
+    rag_context = f"\nREFERENCE DOCUMENTATION/CONTEXT:\n{reference}\n" if reference else ""
+    
+    prompt = f"""
+    You are the EduQuest Generative Pedagogical Engine.
+    Generate a highly specific educational question.
+    
+    SUBJECT: {subject}
+    LEVEL: {level}
+    TOPIC: {topic}
+    COGNITIVE DEPTH (BLOOM'S TAXONOMY): {bloom}
+    REQUIRED FORMAT: {out_format}
+    {rag_context}
+    
+    Return a STRICT JSON object representing the generated content.
+    Schema required:
+    {{
+      "topic": "{topic}",
+      "question": "The actual question text...",
+      "options": ["Option A", "Option B", "Option C", "Option D"], // Only if multiple choice, otherwise empty array
+      "answer": "The correct answer or marking guide...",
+      "explanation": "A deep pedagogical explanation of why this tests the {bloom} cognitive level."
+    }}
+    """
+    try:
+        res = await client.chat.completions.create(
+            model="gpt-4o", 
+            messages=[{"role":"user","content":prompt}],
+            response_format={"type": "json_object"}
+        )
+        return json.loads(res.choices[0].message.content)
+    except Exception as e:
+        return {"topic": topic, "question": f"Failed to predict step: {str(e)}", "options": [], "answer": "", "explanation": ""}
 
 async def chat_response(message, history):
     """Chat-based pedagogical assistant."""

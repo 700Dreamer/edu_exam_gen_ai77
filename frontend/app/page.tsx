@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette, Compass } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import FlowView from "./FlowView";
@@ -11,7 +11,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // ── CONNECTIVITY ──
-const API_BASE = "";
+const API_BASE = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://localhost:8000";
 
 // ── TYPES ──
 type Page = "studio" | "ingestion" | "analytics" | "flow";
@@ -109,11 +109,11 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col transition-colors duration-500">
+    <div className="h-screen overflow-hidden flex flex-col transition-colors duration-500">
       <Header theme={theme} setTheme={setTheme} />
       
       {/* ── TOP NAV bar ── */}
-      <div className={cn("px-8 py-6 flex gap-4 border-b border-border-main z-10 transition-all duration-500", (theme === 'midnight' || theme === 'royal') ? "glass-premium" : "bg-surface/50 backdrop-blur-sm")}>
+      <div className={cn("px-4 md:px-8 py-3 md:py-6 flex gap-2 md:gap-4 border-b border-border-main z-10 transition-all duration-500 overflow-x-auto whitespace-nowrap hide-scrollbar", (theme === 'midnight' || theme === 'royal') ? "glass-premium" : "bg-surface/50 backdrop-blur-sm")}>
         <button 
           onClick={() => setCurrentPage("studio")}
           className={cn(
@@ -161,7 +161,7 @@ export default function Home() {
       </div>
 
       {/* ── CONTENT AREA ── */}
-      <main className="flex-1 overflow-hidden flex">
+      <main className="flex-1 overflow-hidden flex flex-col relative">
         {currentPage === "studio" ? (
           <StudioView 
             activeTab={activeTab} 
@@ -197,9 +197,8 @@ export default function Home() {
           />
         ) : currentPage === "flow" ? (
           <FlowView theme={theme} onBridge={(topic: string) => {
-               setBridgedPrompt(`[Neural Flow Bridge] Topic: ${topic}`);
-               setCurrentPage("studio");
-               setActiveTab("chat");
+               setBridgedPrompt((prev) => prev + "\n" + topic);
+               alert("Content successfully pushed to the main Studio.");
           }} />
         ) : (
           <IngestionView theme={theme} />
@@ -229,7 +228,7 @@ function StudioView({
   setBridgedPrompt
 }: any) {
   const [zoom, setZoom] = useState(100);
-  const [viewMode, setViewMode] = useState<"student" | "marking">("student");
+  const [viewMode, setViewMode] = useState<"student" | "marking" | "ref_map">("student");
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [illustratingWid, setIllustratingWid] = useState<string | null>(null);
   const [illustratedWids, setIllustratedWids] = useState<Set<string>>(new Set());
@@ -240,6 +239,19 @@ function StudioView({
   const [regenInstructions, setRegenInstructions] = useState<Record<string, string>>({});
   const [regenTopics, setRegenTopics] = useState<Record<string, string>>({});
   const [regeneratingWid, setRegeneratingWid] = useState<string | null>(null);
+
+  // Responsive drawer/sidebar states
+  const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true); // Default open for desktop
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
+
+  const handlePrintPdf = useCallback(() => {
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.print();
+    } else {
+      alert("Please generate a document first to print/download as PDF.");
+    }
+  }, []);
+
   // Parse questions out of lastRaw for the Illustrations panel
   const parsedQuestions: { wid: string; num: string | number; text: string }[] = (() => {
     try {
@@ -314,15 +326,20 @@ function StudioView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+           mode: lastConfig?.mode || 'Exams',
            subject: lastConfig?.subject || 'General',
            level: lastConfig?.level || 'Primary 4',
            term: lastConfig?.term || 'Term 1',
+           paper_style: lastConfig?.paper_style || 'uneb_standard',
            content_override: rawStr,
            question_count: 0
         })
       });
       const renderData = await renderRes.json();
-      if (!renderRes.ok) throw new Error(renderData.detail || 'Failed to render');
+      if (!renderRes.ok) {
+        const detail = typeof renderData.detail === 'object' ? JSON.stringify(renderData.detail) : renderData.detail;
+        throw new Error(detail || 'Failed to render');
+      }
 
       setLastRaw(renderData.raw);
       setPreviewHtml(renderData.html);
@@ -332,7 +349,9 @@ function StudioView({
         return next;
       });
     } catch (e: any) {
-      alert('Regeneration failed: ' + e.message);
+      const msg = e.message || String(e);
+      alert('Regeneration failed: ' + msg);
+      console.error(e);
     } finally {
       setRegeneratingWid(null);
     }
@@ -381,6 +400,42 @@ function StudioView({
     return () => window.removeEventListener('message', handleMessage);
   }, [viewMode]);
 
+  const handleDownload = async () => {
+    if (!lastRaw || !lastConfig) {
+      alert("Please generate an exam first.");
+      return;
+    }
+    
+    setIsGenerating(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/export/docx`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...lastConfig,
+          content_override: lastRaw
+        })
+      });
+      
+      if (!res.ok) throw new Error("Export failed");
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `EduQuest_${lastConfig.subject}_${lastConfig.level}.docx`.replace(/\s+/g, '_');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert("Download failed. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // 📡 VIEW MODE SYNC: Push view mode changes to the iframe
   useEffect(() => {
     const iframe = document.querySelector('iframe');
@@ -394,9 +449,29 @@ function StudioView({
 
 
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Sidebar Controls */}
-      <aside className={cn("w-[450px] border-r border-border-main overflow-y-auto p-6 flex flex-col gap-8 transition-all", theme === 'midnight' ? "glass" : "bg-surface")}>
+    <div className="flex flex-col flex-1 overflow-hidden relative w-full h-full">
+      
+      {/* Universal Workspace Toolbar */}
+      <div className="flex items-center justify-between bg-surface-soft border-b border-border-main p-3 shrink-0 z-50">
+        <button onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)} className="btn-secondary py-1.5 px-4 text-xs flex items-center gap-2">
+           <Columns className="w-4 h-4"/> {isLeftSidebarOpen ? "Hide Settings" : "Settings"}
+        </button>
+        {parsedQuestions.length > 0 && (
+          <button onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)} className="btn-secondary py-1.5 px-4 text-xs flex items-center gap-2 border-brand-800 text-brand-800">
+             <ImageIcon className="w-4 h-4"/> {isRightSidebarOpen ? "Hide Illustrations" : "Illustrations"}
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative w-full h-full">
+      {/* Sidebar Controls (Left Drawer) */}
+      <aside className={cn(
+        "border-r border-border-main overflow-y-auto flex flex-col gap-8 transition-all duration-300 absolute lg:relative h-full z-40 bg-surface",
+        theme === 'midnight' ? "glass" : "bg-surface",
+        isLeftSidebarOpen 
+          ? "translate-x-0 w-[85%] sm:w-[450px] p-4 lg:p-6 opacity-100" 
+          : "-translate-x-full lg:translate-x-0 lg:w-0 p-0 lg:opacity-0 lg:border-none"
+      )}>
         <div className="flex gap-1 bg-surface-soft p-1 rounded-xl">
            {(['gen', 'scenario', 'lib', 'insights', 'chat'] as const).map(tab => (
              <button 
@@ -427,6 +502,7 @@ function StudioView({
             setLastConfig={setLastConfig}
             lastRaw={lastRaw}
             lastConfig={lastConfig}
+            onPrint={handlePrintPdf}
           />
         )}
         {activeTab === 'scenario' && (
@@ -464,7 +540,7 @@ function StudioView({
       </aside>
 
       {/* Preview Area */}
-      <section id="preview-section" className="flex-1 bg-surface-soft/50 p-8 overflow-y-auto relative">
+      <section id="preview-section" className="flex-1 bg-surface-soft/50 p-4 lg:p-8 overflow-y-auto relative w-full">
         {/* Preview Orchestration Toolbar */}
         <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-surface/90 backdrop-blur-xl border border-border-main p-1.5 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] neon-glow-soft">
            <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
@@ -513,23 +589,27 @@ function StudioView({
                 <FileCheck className="w-3 h-3" />
                 Marking Guide
               </button>
-           </div>
+              <button 
+                onClick={() => setViewMode("ref_map")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                  viewMode === "ref_map" ? "bg-emerald-600 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100"
+                )}
+              >
+                <Compass className="w-3 h-3" />
+                Reference Map
+              </button>
+            </div>
 
            <div className="flex items-center gap-1 pl-1.5 border-l border-border-main">
               <button 
-                onClick={() => window.print()}
+                onClick={() => iframeRef.current?.contentWindow?.print()}
                 className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
                 title="Print Exam"
               >
                 <Printer className="w-4 h-4" />
               </button>
-              <button 
-                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
-                title="Download PDF"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-           </div>
+            </div>
         </div>
 
 
@@ -587,8 +667,11 @@ function StudioView({
       {/* ── RIGHT PANEL: Illustrations Studio ── */}
       {previewHtml && parsedQuestions.length > 0 && (
         <aside className={cn(
-          "w-[280px] border-l border-border-main flex flex-col overflow-hidden transition-all",
-          theme === 'midnight' ? "glass" : "bg-surface"
+          "border-l border-border-main flex flex-col overflow-hidden transition-all duration-300 absolute lg:relative right-0 h-full z-40 shadow-2xl lg:shadow-none bg-surface",
+          theme === 'midnight' ? "glass" : "bg-surface",
+          isRightSidebarOpen 
+            ? "translate-x-0 w-[85%] sm:w-[350px] opacity-100" 
+            : "translate-x-full lg:translate-x-0 lg:w-0 lg:opacity-0 lg:border-none"
         )}>
           {/* Header */}
           <div className="px-4 py-3 border-b border-border-main flex items-center gap-2 flex-shrink-0">
@@ -603,7 +686,7 @@ function StudioView({
 
           {/* Progress bar */}
           <div className="h-1 bg-surface-soft flex-shrink-0">
-            <div
+            <div 
               className="h-full bg-brand-800 transition-all duration-500"
               style={{ width: `${parsedQuestions.length > 0 ? (illustratedWids.size / parsedQuestions.length) * 100 : 0}%` }}
             />
@@ -668,28 +751,6 @@ function StudioView({
                       )}>
                         {isLoading ? "Generating..." : isDone ? "✓ Illustrated" : "No image"}
                       </span>
-
-                      {/* Auto-generate button */}
-                      <button
-                        onClick={() => handleIllustrate(q.wid, q.text, "", imageStyles[q.wid] || "png")}
-                        disabled={isLoading || illustratingWid !== null}
-                        title="Auto-generate from question"
-                        className={cn(
-                          "text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1",
-                          isDone
-                            ? "bg-surface border border-border-main text-foreground opacity-50 hover:opacity-100"
-                            : "bg-brand-800 text-white hover:bg-brand-900",
-                          "disabled:opacity-40"
-                        )}
-                      >
-                        {isLoading ? (
-                          <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Wait</>
-                        ) : isDone ? (
-                          <><RefreshCw className="w-2.5 h-2.5" /> Redo</>
-                        ) : (
-                          <><ImageIcon className="w-2.5 h-2.5" /> Auto</>
-                        )}
-                      </button>
 
                       {/* Toggle custom prompt */}
                       <button
@@ -814,6 +875,15 @@ function StudioView({
 
         </aside>
       )}
+
+      {/* Mobile Overlay Background (Dim) */}
+      {(isLeftSidebarOpen || isRightSidebarOpen) && (
+        <div 
+          className="absolute inset-0 bg-black/60 z-30 lg:hidden backdrop-blur-sm transition-opacity duration-300"
+          onClick={() => { setIsLeftSidebarOpen(false); setIsRightSidebarOpen(false); }}
+        />
+      )}
+      </div>
     </div>
   );
 }
@@ -1025,7 +1095,8 @@ function GeneratorControls({
   setLastRaw,
   setLastConfig,
   lastRaw,
-  lastConfig
+  lastConfig,
+  onPrint
 }: any) {
   const [mode, setMode] = useState<Mode>("Exams");
   const [level, setLevel] = useState(lastConfig?.level || "Primary 7");
@@ -1034,7 +1105,7 @@ function GeneratorControls({
   const [period, setPeriod] = useState("MOT");
   const [qCount, setQCount] = useState(20);
   const [duration, setDuration] = useState("2 HR");
-  const [paperStyle, setPaperStyle] = useState("uneb");
+  const [paperStyle, setPaperStyle] = useState("uneb_standard");
   const [topic, setTopic] = useState("");
   const [config, setConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
 
@@ -1110,7 +1181,7 @@ function GeneratorControls({
       const data = await res.json();
       setPreviewHtml(data.html);
       setLastRaw(data.raw);
-      setLastConfig({ subject, level, term: `${term} (${period})` });
+      setLastConfig({ mode, level, subject, term: `${term} (${period})`, paper_style: paperStyle });
       refreshLibrary();
     } catch (e) {
       alert("Generation failed.");
@@ -1298,6 +1369,12 @@ function GeneratorControls({
              className="w-full py-2 bg-surface border border-border-main rounded-lg text-xs font-bold text-foreground opacity-50 hover:opacity-100 hover:border-brand-800 hover:text-brand-800 transition-all"
            >
              Download Microsoft Word (.docx)
+           </button>
+           <button 
+             onClick={onPrint}
+             className="w-full py-2 bg-brand-800 border border-brand-800 rounded-lg text-xs font-bold text-white shadow-lg hover:bg-brand-900 transition-all mt-1"
+           >
+             Download PDF (Print Format)
            </button>
          </div>
       </div>
@@ -1808,31 +1885,40 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
                        {Object.keys(analysis.topic_saturation || {}).length} Domains Indexed
                     </div>
                 </div>
-                <div className="space-y-5">
-                    {Object.entries(analysis.topic_saturation || {}).map(([topic, pct]: [string, any]) => (
-                      <div key={topic} className="space-y-2">
-                        <div className="flex justify-between items-end">
-                            <span className="text-[10px] font-black text-foreground opacity-60 uppercase tracking-tight truncate max-w-[80%]">{topic}</span>
-                            <span className={cn(
-                               "text-[10px] font-black tabular-nums",
-                               pct > 80 ? "text-emerald-500" : pct > 40 ? "text-brand-500" : "text-rose-500"
-                            )}>
-                               {pct}%
-                            </span>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full overflow-hidden border relative bg-surface-soft border-border-main">
-                            <div 
-                              className={cn(
-                                "h-full transition-all duration-1000",
-                                pct > 80 ? "bg-emerald-500" : pct > 40 ? "bg-brand-500" : "bg-rose-500"
-                              )}
-                              style={{ width: `${pct}%` }}
-                            >
-                               <div className="w-full h-full animate-pulse bg-white/10"></div>
-                            </div>
-                        </div>
-                      </div>
-                    ))}
+                <div className="space-y-4">
+                    {(() => {
+                        const saturation = analysis.topic_saturation || {};
+                        // Group topics by question count
+                        const grouped: Record<number, string[]> = {};
+                        Object.entries(saturation).forEach(([topic, count]: [string, any]) => {
+                            const c = Number(count);
+                            if (!grouped[c]) grouped[c] = [];
+                            grouped[c].push(topic);
+                        });
+
+                        return Object.entries(grouped)
+                            .sort((a, b) => Number(b[0]) - Number(a[0])) // Highest count first
+                            .map(([count, topics]) => (
+                                <div key={count} className="p-4 rounded-2xl bg-surface-soft border border-border-main flex justify-between items-start group">
+                                    <div className="flex-1">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {topics.map((t, idx) => (
+                                                <span key={t} className="text-[10px] font-black text-foreground opacity-60 uppercase tracking-tight">
+                                                    {t}{idx < topics.length - 1 ? "," : ""}
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <div className="text-[8px] font-bold text-foreground/40 mt-1 uppercase tracking-tighter">
+                                            Curriculum Domain{topics.length > 1 ? 's' : ''}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end">
+                                        <div className="text-xl font-black text-brand-800">{count}</div>
+                                        <div className="text-[7px] font-black opacity-40 uppercase tracking-tighter">Questions</div>
+                                    </div>
+                                </div>
+                            ));
+                    })()}
 
                     {analysis.missing_critical_topics?.length > 0 && (
                       <div className="mt-8 pt-6 border-t border-dashed border-border-main">

@@ -15,6 +15,22 @@ def generate_docx_stream(data_json: str, config: dict):
 
     doc = DocxDocument()
     
+    # ── GLOBAL STYLING ──
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Times New Roman'
+    font.size = Pt(12)
+
+    def add_markdown(paragraph, text):
+        """Parses basic markdown **bold** and strips KaTeX $ symbols for cleaner Word output."""
+        clean_text = text.replace("$", "")
+        parts = clean_text.split("**")
+        for i, part in enumerate(parts):
+            if part:
+                run = paragraph.add_run(part)
+                if i % 2 == 1:
+                    run.bold = True
+
     # ── HEADER ──
     brand_name = config.get("brand_name", "EDUMERC")
     title_p = doc.add_heading(brand_name, 0)
@@ -33,6 +49,25 @@ def generate_docx_stream(data_json: str, config: dict):
     meta_p = doc.add_paragraph(meta)
     meta_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     
+    doc.add_paragraph("_" * 60).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("")
+    
+    # ── CANDIDATE DETAILS BOX ──
+    cand_table = doc.add_table(rows=2, cols=2)
+    cand_table.style = 'Table Grid'
+    
+    r0 = cand_table.rows[0].cells
+    r0[0].text = " CANDIDATE NAME:"
+    r0[0].paragraphs[0].runs[0].font.bold = True
+    r0[1].text = "" # Space for student to write
+    
+    r1 = cand_table.rows[1].cells
+    r1[0].text = " INDEX NUMBER:"
+    r1[0].paragraphs[0].runs[0].font.bold = True
+    r1[1].text = " SIGNATURE:"
+    r1[1].paragraphs[0].runs[0].font.bold = True
+    
+    doc.add_paragraph("")
     doc.add_paragraph("_" * 60).alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph("")
 
@@ -54,13 +89,36 @@ def generate_docx_stream(data_json: str, config: dict):
             r.bold = True
             r.font.color.rgb = RGBColor(0x80, 0x00, 0x20)
             
-            p.add_run(text)
+            p.add_run("  ")
+            add_markdown(p, text)
+            
             mr = p.add_run(f"  [{marks} Marks]")
             mr.bold = True
             mr.font.size = Pt(9)
-
             
+            # Embed generated images if available
+            tikz = q.get("tikz_code", "")
+            if tikz and "<img" in tikz:
+                import re, os
+                match = re.search(r'src="([^"]+)"', tikz)
+                if match:
+                    src = match.group(1)
+                    if src.startswith("/generated/"):
+                        img_path = os.path.join("frontend", "public", src.lstrip("/"))
+                        if os.path.exists(img_path):
+                            pic_p = doc.add_paragraph()
+                            pic_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            pic_r = pic_p.add_run()
+                            pic_r.add_picture(img_path, width=Inches(3.5))
+
+            if "options" in q and q["options"]:
+                for idx, opt in enumerate(q["options"]):
+                    letter = chr(65 + idx)
+                    opt_p = doc.add_paragraph(f"    {letter}. ")
+                    add_markdown(opt_p, opt)
+
             # Answer lines
+            doc.add_paragraph("")
             doc.add_paragraph("." * 100)
             doc.add_paragraph("")
     

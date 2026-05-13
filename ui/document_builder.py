@@ -123,7 +123,7 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
                     parsed_html += f"  <div style='border-bottom:1px dotted #000; margin:15px 0 10px 25px; height:1px;'></div>"
                 
                 # Image injection target zone
-                parsed_html += f"  <div class='q-img-zone' style='margin-top:8px;'></div>"
+                parsed_html += f"  <div class='q-img-zone' ></div>"
                 parsed_html += f"</div>"
                 
                 # Append to Hidden Answer Key
@@ -286,7 +286,7 @@ body {{
 @media print {{ 
   .style-panel, .panel-toggle, #preview-toolbar {{ display: none !important; }} 
   body {{ padding: 0; background: white; }}
-  .page {{ box-shadow: none !important; border: 1px solid #eee; page-break-after: always !important; }}
+  .page {{ box-shadow: none !important; border: none !important; margin: 0 !important; page-break-after: always !important; }}
   .tmpl-uneb.page {{ border: 6px double #000 !important; }}
 }}
 </style>
@@ -355,9 +355,19 @@ body {{
 
   <div class="col-l" style="margin-top:20px;">{left_col}{right_col}</div>
   
-  {syllabus_table}
-
   <div class="pgn">Page 1</div>
+</div>
+
+<!-- REFERENCE MAP PAGE (NEW) -->
+<div class="page" id="refMapP" style="display: none;">
+  <div class="brand-h">
+    <div>
+      <div class="brand-name">{brand_name}</div>
+      <div style="font-size:11px; font-weight:900; letter-spacing:5px;">CURRICULUM ALIGNMENT</div>
+    </div> 
+  </div>
+  {syllabus_table}
+  <div class="pgn">Reference Map — Neural Audit</div>
 </div>
 
 <!-- PAGE 2: CONTENT -->
@@ -476,6 +486,76 @@ document.addEventListener("DOMContentLoaded", function() {{
     }});
   }}
 
+  // 4. Auto-Paginate Content for 1:1.414 (A4) Aspect Ratio
+  function paginateContent() {{
+    const contentP = document.getElementById('contentP');
+    if (!contentP) return;
+    const bodyC = contentP.querySelector('.body-c');
+    if (!bodyC) return;
+    const items = Array.from(bodyC.children);
+    const mainPage = document.getElementById('mainP');
+    
+    // Virtual A4 height in pixels (roughly 297mm at 96dpi)
+    const A4_HEIGHT = 1050; // Slightly less than 1122 to allow for some breathing room
+    
+    let currentPage = contentP;
+    let currentBody = bodyC;
+    
+    // Clear the original body to redistribute
+    bodyC.innerHTML = '';
+    
+    for(let i=0; i<items.length; i++) {{
+        let item = items[i];
+        currentBody.appendChild(item);
+        
+        // Check if current page overflows
+        if (currentPage.scrollHeight > A4_HEIGHT) {{
+            // If this is the only item on the page and it's too big, we have to keep it here 
+            // but we'll still start a new page for the next item.
+            if (currentBody.children.length > 1) {{
+                // Create new page
+                const newPage = document.createElement('div');
+                newPage.className = mainPage.className;
+                newPage.style.marginTop = '40px';
+                
+                const breakIndicator = document.createElement('div');
+                breakIndicator.className = 'page-break-indicator';
+                breakIndicator.innerHTML = '<hr style="flex:1; border:none; border-top: 2px dashed #cbd5e1;"><span style="color: #94a3b8; font-weight: 800; font-size: 10px; letter-spacing: 2px;">✂ PAGE BREAK</span><hr style="flex:1; border:none; border-top: 2px dashed #cbd5e1;">';
+                breakIndicator.style.display = 'flex';
+                breakIndicator.style.alignItems = 'center';
+                breakIndicator.style.gap = '15px';
+                breakIndicator.style.width = '210mm';
+                breakIndicator.style.margin = '30px auto';
+                
+                if (!document.getElementById('pb-style')) {{
+                    const style = document.createElement('style');
+                    style.id = 'pb-style';
+                    style.innerHTML = '@media print {{ .page-break-indicator {{ display: none !important; }} }}';
+                    document.head.appendChild(style);
+                }}
+                
+                const newBody = document.createElement('div');
+                newBody.className = 'body-c';
+                newPage.appendChild(newBody);
+                
+                // Insert after current page
+                currentPage.parentNode.insertBefore(breakIndicator, currentPage.nextSibling);
+                currentPage.parentNode.insertBefore(newPage, breakIndicator.nextSibling);
+                
+                // Move the overflowing item to the new page
+                newBody.appendChild(item);
+                
+                currentPage = newPage;
+                currentBody = newBody;
+            }}
+        }}
+    }}
+  }}
+  
+  // Run pagination after a short delay to ensure layout is ready
+  window.addEventListener('load', () => setTimeout(paginateContent, 500));
+  setTimeout(paginateContent, 1500); // Fallback for dynamic content
+
   // 📡 READY SIGNAL
   window.parent.postMessage({{ type: 'EDUQUEST_READY' }}, '*');
 
@@ -569,14 +649,28 @@ window.addEventListener('message', (event) => {{
   // ─ View mode toggle ─
   if (d.type === 'EDUQUEST_VIEW_MODE') {{
     const mode = d.mode;
-    const studentPages = [document.getElementById('mainP'), document.getElementById('contentP')];
+    const allPages = document.querySelectorAll('.page');
     const markingPage = document.getElementById('marking-guide-page');
+    const refMapPage = document.getElementById('refMapP');
+    const breakIndicators = document.querySelectorAll('.page-break-indicator');
+    
+    // Hide everything first
+    allPages.forEach(p => {{ if(p) p.style.display = 'none'; }});
+    breakIndicators.forEach(b => {{ if(b) b.style.display = 'none'; }});
+
     if (mode === 'marking') {{
-      studentPages.forEach(p => {{ if(p) p.style.display = 'none'; }});
       if(markingPage) markingPage.style.display = 'block';
+    }} else if (mode === 'ref_map') {{
+      if(refMapPage) refMapPage.style.display = 'block';
     }} else {{
-      studentPages.forEach(p => {{ if(p) p.style.display = 'block'; }});
-      if(markingPage) markingPage.style.display = 'none';
+      // Show all pages EXCEPT marking and ref_map
+      allPages.forEach(p => {{
+        if (p !== markingPage && p !== refMapPage) {{
+            p.style.display = 'block';
+        }}
+      }});
+      // Show break indicators only in student mode
+      breakIndicators.forEach(b => {{ if(b) b.style.display = 'flex'; }});
     }}
   }}
 
