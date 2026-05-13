@@ -1,7 +1,8 @@
 import json
+from core.paper_structure import get_paper_structure
 
 
-def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, duration, school_name, brand_name, question_count, content_raw, topic="", logo_b64=None):
+def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, duration, school_name, brand_name, question_count, content_raw, topic="", logo_b64=None, paper_style="uneb_standard", view_mode="scroll"):
     """
     Constructs the full HTML document string, utilizing strict JSON outputs to guarantee formatting.
     """
@@ -9,15 +10,77 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
     title_text = f"{exam_type} {term_roman} Examination {exam_year}" if mode == "Exams" else f"{subject} | {topic}"
     
     # ── BUILD SCORING TABLE ──
-    exam_rows = ""
-    for i in range(1, question_count + 1, 10):
-        end = min(i + 9, question_count)
-        exam_rows += f"<tr><td>{i}-{end}</td><td></td><td></td></tr>"
-    exam_rows += "<tr class='total-row'><td><strong>TOTAL</strong></td><td></td><td></td></tr>"
+    rows = ["1-10", "11-20", "21-30", "31-40", "41-45", "46-50", "51-55", "TOTAL"]
+    exam_rows = "".join([f"<tr><td>{r}</td><td></td><td></td></tr>" for r in rows])
 
-    right_col = f"""<div class="ex-panel"><div class="time-badge">{duration}</div><div class="ex-label">OFFICIAL SCORING</div><table><tr><th>RANGE</th><th>MARKS</th><th>EXR</th></tr>{exam_rows}</table></div>"""
-    sa, sb = round(question_count*0.6), round(question_count*0.4)
-    left_col = f"""<div class="instr-panel"><div class="psec-title">CANDIDATE INSTRUCTIONS</div><ul><li>Section A: {sa} QNs. Section B: {sb} QNs.</li><li>All textual responses must use Dark Ink.</li></ul></div>"""
+    right_col = f"""<div class="ex-panel"><table><tr><th>Question</th><th>Marks</th><th>EXR'S</th></tr>{exam_rows}</table></div>"""
+    
+    # ── OFFICIAL PAPER STRUCTURE (from UNEB registry) ──
+    ps = get_paper_structure(subject, level)
+    sec_a_count = ps["sec_a_count"]
+    sec_a_marks = ps["sec_a_marks"]
+    sec_b_count = ps["sec_b_count"]
+    sec_b_marks = ps["sec_b_marks"]
+    total_marks = ps["total_marks"]
+    # Use registry duration if caller didn't specify a custom one
+    official_duration = ps.get("duration", duration) if duration in ("", "2 HR 30 MIN", None) else duration
+    sec_b_note = ps.get("sec_b_note", "Attempt all questions in Section B.")
+    has_two_sections = sec_b_count > 0
+
+    sec_b_line = (
+        f"<li>Section B has {sec_b_count} questions ({sec_b_marks} marks). {sec_b_note}</li>"
+        if has_two_sections else ""
+    )
+
+    left_col = f"""<div class="instr-panel">
+        <div style="text-align:center; text-decoration:underline; font-weight:900; margin-bottom:10px; font-size:11px;">READ THE FOLLOWING INSTRUCTIONS CAREFULLY BEFORE OPENING</div>
+        <ul class="instr-list">
+            <li>This paper has {'two sections: A and B' if has_two_sections else 'one section (Section A)'}.</li>
+            <li>Section A has {sec_a_count} questions ({sec_a_marks} marks).</li>
+            {sec_b_line}
+            <li>Total marks for this paper: <strong>{total_marks}</strong>.</li>
+            <li>Attempt all questions in both sections.</li>
+            <li>All answers must be written in black or blue ink.</li>
+            <li>Only diagrams must be drawn in pencil.</li>
+            <li>Any handwriting that cannot be easily read may lead to loss of marks.</li>
+            <li>Unnecessary alteration of work will lead to loss of marks.</li>
+            <li>Do not fill in boxes reserved for examiner's use only.</li>
+        </ul>
+    </div>"""
+
+    # ── BUILD SYLLABUS ANALYSIS ──
+    topic_map = {}
+    if mode == "Exams":
+        try:
+            data_raw = json.loads(content_raw)
+            for q in data_raw.get("questions", []):
+                t = q.get("topic", "General Core")
+                num = q.get("number", "?")
+                if t not in topic_map: topic_map[t] = []
+                topic_map[t].append(f"Q{num}")
+        except: pass
+    
+    syllabus_rows = "".join([f"<tr><td style='padding:4px; border-bottom:0.5px solid #eee;'>{t}</td><td style='text-align:center; padding:4px; border-bottom:0.5px solid #eee;'>{len(qs)}</td><td style='padding:4px; border-bottom:0.5px solid #eee; font-weight:700;'>{', '.join(qs)}</td></tr>" for t, qs in topic_map.items()])
+    syllabus_table = f"""
+    <div style="margin-top: 30px; border: 1px solid #000; border-radius:0; padding: 15px;">
+        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; border-bottom: 2px solid #000; padding-bottom: 5px; margin-bottom: 10px; display:flex; justify-content:space-between;">
+            <span>Syllabus Saturation Audit</span>
+            <span style="opacity:0.6;">Pedagogical Transparency Report</span>
+        </div>
+        <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+                <tr style="background:#f8fafc; border-bottom: 1px solid #000;">
+                    <th style="text-align: left; padding: 6px;">Curriculum Topic / Theme</th>
+                    <th style="width: 80px; padding: 6px;">Questions</th>
+                    <th style="text-align: left; padding: 6px;">Reference Map</th>
+                </tr>
+            </thead>
+            <tbody>
+                {syllabus_rows if syllabus_rows else "<tr><td colspan='3' style='text-align:center; padding:20px; color:#94a3b8;'>Processing Coverage Data...</td></tr>"}
+            </tbody>
+        </table>
+    </div>
+    """
 
     # ── PARSE JSON TO HTML & EXTRACT ANSWER KEY ──
     try:
@@ -41,19 +104,26 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
                 tikz = q.get("tikz_code")
                 ans = q.get("answer", "")
                 
-                # Build Question UI
-                parsed_html += f"<div style='margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1.5px dashed #e2e8f0;'>"
-                parsed_html += f"  <div style='font-weight: 900; font-size: 16px; margin-bottom: 12px; display: flex; justify-content: space-between;'><span>Q{num}. <span style='font-weight: 400;'>{text}</span></span><span style='font-size:12px; font-weight:900; color:var(--p); padding-left:15px; white-space:nowrap;'>[{marks} Marks]</span></div>"
-                if tikz:
-                    parsed_html += f"  <div style='text-align:center; padding: 15px;'>{tikz}</div>"
+                # Build Question UI — wrapped in interactive container
+                safe_text = text.replace('"', '&quot;').replace("'", "&#39;")
+                parsed_html += f"<div class='q-wrap' data-qtext='{safe_text}' data-subject='{subject}' data-level='{level}' style='margin-bottom:25px; clear:both; position:relative; border-radius:6px; transition: box-shadow 0.2s;'>"
+                parsed_html += f"  <div style='font-size:15px; display:flex; align-items:flex-start; margin-bottom:10px;'><span>{num}. &nbsp;</span><span style='flex:1;'>{text}</span></div>"
                 
-                # Dynamic drawing space for "Draw/Construct" questions
-                draw_keywords = ["draw", "construct", "sketch", "graph", "plot"]
-                if any(k in text.lower() for k in draw_keywords) and not tikz:
-                    parsed_html += f"  <div style='border: 1px solid #cbd5e1; height: 250px; margin: 15px 0; border-radius: 8px; position: relative;'><span style='position:absolute; top:10px; left:10px; font-size:10px; color:#94a3b8; font-weight:900;'>DRAWING / CONSTRUCTION SPACE</span></div>"
+                # AI-Assessed Semantic Drawing Flag
+                is_drawing_question = q.get("needs_student_drawing", False)
+                
+                if is_drawing_question:
+                    parsed_html += f"  <div style='border:1px solid #000; height:350px; margin:15px 0 25px 0; position:relative;'><span style='position:absolute; top:5px; left:5px; font-size:8px; opacity:0.3; text-transform:uppercase;'>STUDENT DRAWING SPACE</span></div>"
                 else:
-                    parsed_html += f"  <div style='letter-spacing: 3px; overflow:hidden; white-space:nowrap; margin-top:20px;'>.......................................................................................................................................................................</div>"
+                    if tikz:
+                        if "<img" in str(tikz).lower() or "<svg" in str(tikz).lower():
+                            parsed_html += f"  <div class='ill-box' style='width:100%; text-align:center; margin:20px auto; display:block;'>{tikz}</div>"
+                        else:
+                            parsed_html += f"  <div class='ill-box' style='text-align:center; padding:15px; width:100%;'>{tikz}</div>"
+                    parsed_html += f"  <div style='border-bottom:1px dotted #000; margin:15px 0 10px 25px; height:1px;'></div>"
                 
+                # Image injection target zone
+                parsed_html += f"  <div class='q-img-zone' style='margin-top:8px;'></div>"
                 parsed_html += f"</div>"
                 
                 # Append to Hidden Answer Key
@@ -92,44 +162,106 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <style>
 :root {{
-  --p: #800020; --s: #1e293b; --g: #f8fafc;
-  --logo-f: 'Outfit'; --br-l: 0px; --logo-s: 42px; --h-size: 20px; --watermark: 0.02;
+  --p: #800020;
+  --s: #1e293b;
+  --bg: #f8fafc;
+  --br-l: 12px;
 }}
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{ font-family: 'Outfit', sans-serif; background: transparent; padding-right: 50px; color: #1e293b; }}
 
-/* ── STUDIO SIDEBAR UI ── */
-.style-panel {{ position: fixed; top: 0; right: -350px; width: 330px; height: 100vh; background: #0f172a; color: white; transition: right 0.4s; padding: 30px 20px; z-index: 99999; box-shadow: -10px 0 40px rgba(0,0,0,0.5); overflow-y: auto; }}
-.style-panel.open {{ right: 0; }}
-.panel-toggle {{ position: fixed; top: 20px; right: 20px; background: var(--p); color: white; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 100000; }}
-.p-title {{ font-weight: 900; font-size: 13px; text-transform: uppercase; margin-bottom: 25px; border-left: 4px solid var(--p); padding-left: 10px; }}
-.style-group {{ margin-bottom: 25px; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; }}
-.tmpl-btn {{ background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; color: white; cursor: pointer; width: 100%; margin-bottom: 8px; }}
+* {{ box-sizing: border-box; transition: background 0.3s ease; margin: 0; padding: 0; }}
 
-/* ── DOCUMENT PAGE STRUCTURE ── */
-.page {{ width: 100%; max-width: 820px;  margin: 40px auto; padding: 16mm; position: relative; border-left: var(--br-l) solid var(--p); }}
-.page::after {{ content: "{brand_name}"; position: absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-45deg); font-size: 10rem; font-weight: 900; opacity: var(--watermark); pointer-events: none; }}
-.brand-h {{ display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 25px; }}
-.tmpl-classic .brand-h {{ flex-direction: column; align-items: center; border-bottom: 4px double #000; padding-bottom: 5px; }}
-.brand-name {{ font-family: var(--logo-f); font-size: var(--logo-s); font-weight: 900; color: var(--p); line-height: 1; }}
-.brand-logo {{ height: 60px; max-width: 150px; object-fit: contain; margin-bottom: 10px; }}
-.brand-h-left {{ display: flex; flex-direction: column; }}
-.sh-box {{ background: var(--p); color: white; padding: 12px 20px; border-radius: 12px; text-align: center; }}
-.tmpl-classic .sh-box {{ display: none; }}
-.doc-t {{ background: var(--s); color: white; padding: 16px; border-radius: 12px; font-size: var(--h-size); font-weight: 900; text-align: center; margin-bottom: 30px; }}
-.tmpl-classic .doc-t {{ background: none; color: #000; font-size: 24px; text-decoration: underline; margin: 15px 0; }}
-.nc-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; }}
-.nc-card {{ border: 2px solid #e2e8f0; border-radius: 12px; padding: 15px; }}
-.col-l {{ display: flex; gap: 30px; margin-bottom: 40px; }}
-.instr-panel {{ flex: 1.2; background: #fffcf0; border: 2px solid #fde68a; padding: 20px; border-radius: 16px; font-size: 13.5px; }}
-.ex-panel {{ flex: 0.8; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 16px; padding: 15px; }}
-table {{ border-collapse: collapse; width: 100%; font-size: 11px; }}
-th, td {{ border: 2px solid #cbd5e1; padding: 8px; text-align: center; }}
-.body-c {{ font-size: 15.5px; line-height: 2.2; white-space: pre-wrap; }}
-.body-c svg {{ max-width: 100%; max-height: 350px; width: auto; height: auto; display: block; margin: 25px auto; overflow: hidden; object-fit: contain; }}
-.pgn {{ position: absolute; bottom: 10mm; left: 0; right: 0; text-align: center; color: #94a3b8; font-size: 10px; font-weight: 900; letter-spacing: 3px; }}
-.qrc {{ position: absolute; bottom: 12mm; right: 18mm; width: 60px; height: 60px; filter: grayscale(1); opacity: 0.3; }}
-@media print {{ .style-panel, .panel-toggle {{ display: none; }} .page {{ border-top: none; box-shadow: none; }} }}
+body {{ 
+  background: var(--bg); 
+  font-family: 'Outfit', sans-serif; 
+  padding: 40px 0 120px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  min-height: 100vh;
+}}
+
+/* 📄 PREMIUM PAPER ENGINE */
+.page {{
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 20mm;
+  position: relative;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.05);
+  border-radius: 2px;
+  overflow: hidden;
+  color: #1e293b;
+  line-height: 1.5;
+  font-family: "Times New Roman", Times, serif;
+}}
+
+/* Dynamic Institutional Watermark */
+.page::after {{
+  content: "{brand_name}";
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  font-size: 8rem;
+  font-weight: 900;
+  color: #000;
+  opacity: var(--watermark, 0.02);
+  pointer-events: none;
+  z-index: 0;
+  white-space: nowrap;
+}}
+
+.brand-h {{ position: relative; z-index: 1; border-bottom: 4px solid var(--p); padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }}
+.brand-name {{ font-family: 'Playfair Display', serif; font-size: 28px; font-weight: 900; font-style: italic; color: var(--p); letter-spacing: -0.02em; }}
+.doc-t {{ text-transform: uppercase; font-weight: 900; letter-spacing: 0.2em; font-size: 10px; color: #64748b; }}
+
+.idx-grid {{ display: flex; gap: 4px; margin-top: 10px; }}
+.idx-box {{ width: 24px; height: 32px; border: 1.5px solid #1e293b; border-radius: 4px; }}
+
+.cand-box {{ background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin: 25px 0; font-size: 13px; }}
+.cand-line {{ border-bottom: 1px dashed #94a3b8; flex: 1; margin-left: 10px; height: 18px; }}
+
+.col-l {{ display: grid; grid-template-columns: 1.2fr 1fr; gap: 30px; margin-bottom: 30px; }}
+.instr-panel {{ font-size: 11.5px; color: #475569; line-height: 1.6; }}
+.ex-panel table {{ width: 100%; border-collapse: collapse; font-size: 10px; border-radius: 8px; overflow: hidden; }}
+.ex-panel th {{ background: var(--p); color: white; padding: 6px; text-transform: uppercase; }}
+.ex-panel td {{ border: 1px solid #e2e8f0; padding: 6px; text-align: center; height: 26px; }}
+
+.body-c {{ font-size: 15.5px; line-height: 2.2; white-space: pre-wrap; font-family: "Times New Roman", Times, serif !important; }}
+.pgn {{ position: absolute; bottom: 15mm; left: 0; width: 100%; text-align: center; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.1em; }}
+
+/* ── ILLUSTRATION & DIAGRAM STYLING ── */
+.ill-box img {{ max-width: 400px; height: auto; border-radius: 8px; margin: 0 auto; display: block; }}
+.ill-box svg {{ max-width: 400px; height: auto; display: block; margin: 0 auto; }}
+.ill-box svg * {{ stroke-width: 2px !important; }}
+
+/* ── REAL PAPER (UNEB) PROTOCOL ── */
+.tmpl-uneb {{ font-family: "Times New Roman", serif !important; }}
+.tmpl-uneb.page {{ border: 6px double #000 !important; box-shadow: none !important; border-radius: 0 !important; }}
+.tmpl-uneb .brand-h {{ flex-direction: column !important; align-items: center !important; text-align: center !important; border-bottom: 2px solid #000 !important; }}
+.tmpl-uneb .brand-name {{ font-family: serif !important; text-transform: uppercase !important; font-size: 32px !important; font-style: normal !important; color: #000 !important; }}
+.tmpl-uneb .doc-t {{ color: #000 !important; font-size: 14px !important; letter-spacing: 4px !important; margin-top: 10px !important; }}
+.tmpl-uneb .cand-box {{ background: transparent !important; border: 1px solid #000 !important; border-radius: 0 !important; }}
+.tmpl-uneb .idx-box {{ border-color: #000 !important; border-radius: 0 !important; }}
+
+/* ── UI ELEMENTS ── */
+.panel-toggle {{ position: fixed; top: 20px; right: 20px; z-index: 1000; width: 44px; height: 44px; background: var(--p); color: white; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 10px 15px -3px rgba(128,0,32,0.3); }}
+.style-panel {{ position: fixed; top: 80px; right: 20px; width: 280px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(20px); border-radius: 24px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); transform: translateX(320px); transition: 0.4s; z-index: 999; }}
+.style-panel.open {{ transform: translateX(0); }}
+.tmpl-btn {{ width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; background: white; font-size: 11px; font-weight: 700; margin-bottom: 8px; cursor: pointer; text-align: left; }}
+.tmpl-btn:hover {{ border-color: var(--p); background: #fff1f2; color: var(--p); }}
+
+#preview-toolbar {{ position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); backdrop-filter: blur(10px); border-radius: 20px; padding: 8px 16px; display: flex; align-items: center; gap: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); z-index: 1001; }}
+#preview-toolbar button {{ background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 6px 12px; font-size: 11px; font-weight: 800; color: white; cursor: pointer; }}
+#preview-toolbar button:hover {{ background: var(--p); border-color: var(--p); }}
+#zoom-level {{ color: white; font-size: 12px; font-weight: 900; min-width: 40px; text-align: center; }}
+
+@media print {{ 
+  .style-panel, .panel-toggle, #preview-toolbar {{ display: none !important; }} 
+  body {{ padding: 0; background: white; }}
+  .page {{ box-shadow: none !important; border: 1px solid #eee; page-break-after: always !important; }}
+  .tmpl-uneb.page {{ border: 6px double #000 !important; }}
+}}
 </style>
 </head>
 <body>
@@ -142,6 +274,7 @@ th, td {{ border: 2px solid #cbd5e1; padding: 8px; text-align: center; }}
     <button class="tmpl-btn" onclick="applyT('pro_protocol')">Official Protocol</button>
     <button class="tmpl-btn" onclick="applyT('academic_clean')">Academic Clean</button>
     <button class="tmpl-btn" onclick="applyT('classic')">Classical Image 4</button>
+    <button class="tmpl-btn" style="background:#000; color:#fff;" onclick="applyT('uneb_standard')">Real Paper (B&W Standard)</button>
   </div>
   <div style="font-size:10px; color:#64748b; margin-bottom:10px; font-weight:700;">WATERMARK INTENSITY</div>
   <input type="range" min="0" max="0.1" step="0.01" value="0.02" style="width:100%;" oninput="sv('--watermark',this.value)">
@@ -151,38 +284,49 @@ th, td {{ border: 2px solid #cbd5e1; padding: 8px; text-align: center; }}
 <!-- PAGE 1: HEADER -->
 <div class="page" id="mainP">
   <div class="brand-h">
-    <div class="brand-h-left">
-      {f'<img src="data:image/png;base64,{logo_b64}" class="brand-logo">' if logo_b64 else ''}
-      <div class="brand-name" id="liveB">{brand_name}</div>
-      <div style="font-size:11px; font-weight:900; letter-spacing:5px; margin-top:5px;">EXAMINATIONS SERVICES</div>
-    </div> 
-    <div class="sh-box"><div>YEAR</div><div style="font-size:24px; font-weight:900;">{exam_year}</div></div>
+    <div class="doc-t" style="margin-bottom:2px;">{title_text}</div>
+    <div class="brand-name">{level} - {subject}</div>
+    <div style="width:100%; text-align:right; font-weight:900; font-size:16px; margin-top:5px;">TIME: {duration}</div>
   </div>
-  <div class="doc-t">{title_text}</div>
-  <div style="display:flex; justify-content:space-between; font-weight:900; font-size:16px; margin-bottom:15px;">
-    <span>{level} &nbsp;–&nbsp; {subject}</span>
-    <span>TIME: 2 HR 30 MINUTES</span>
+
+  <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+    <div style="font-weight:900; font-size:14px;">INDEX NO:</div>
+    <div class="idx-grid">
+        <div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div>
+        <div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div><div class="idx-box"></div>
+    </div>
   </div>
-  <div class="nc-grid">
-    <div class="nc-card"><b>NAME</b></div>
-    <div class="nc-card"><b>BRANCH / SCHOOL</b></div>
+
+  <div class="cand-box">
+    <div style="display:flex; align-items:flex-end;"><b>NAME</b> <span style="margin-left:25px;">:</span> <div class="cand-line"></div></div>
+    <div style="display:flex; align-items:flex-end;"><b>SCHOOL</b> <span style="margin-left:15px;">:</span> <div class="cand-line"></div></div>
   </div>
-  <div class="col-l">{left_col}{right_col}</div>
-  <div class="pgn">Page 1 of 2 — Official release certified by EduQuest</div>
-  <img class="qrc" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Verify-{brand_name}">
+
+  <div class="col-l" style="margin-top:20px;">{left_col}{right_col}</div>
+  
+  {syllabus_table}
+
+  <div class="pgn">Page 1</div>
 </div>
 
 <!-- PAGE 2: CONTENT -->
-<div class="page">
+<div class="page" id="contentP">
   <div class="brand-logo" style="opacity:0.2; position:absolute; top:20px; right:20px; height:40px;">
     {f'<img src="data:image/png;base64,{logo_b64}" style="height:100%">' if logo_b64 else ''}
   </div>
-  <div class="body-c" id="content-body"></div>
+
+  <div style="text-align:center; margin-top:10px; border-bottom: 2px solid #000; padding-bottom:5px; margin-bottom:20px;">
+    <b style="text-decoration:underline; font-size:14px;">SECTION A (40 Marks)</b>
+  </div>
+
+  <div class="body-c" id="content-body">
+    {parsed_html}
+  </div>
   <div class="pgn">Page 2 of 2 — End of Release</div>
 </div>
 
 <!-- PAGE 3: MARKING GUIDE (TEACHER ONLY) -->
-<div class="page" id="marking-guide-page" style="display: {'block' if mode == 'Exams' else 'none'};">
+<div class="page" id="marking-guide-page" style="display: none;">
   <div class="brand-h">
     <div>
       <div class="brand-name">{brand_name}</div>
@@ -201,41 +345,55 @@ th, td {{ border: 2px solid #cbd5e1; padding: 8px; text-align: center; }}
       </tr>
     </thead>
     <tbody id="answer-body">
+      {answer_key_html}
     </tbody>
   </table>
   <div class="pgn">Page 3 of 3 — Secure Marking Key</div>
 </div>
 
+<!-- ── PREVIEW TOOLBAR ── -->
+<div id="preview-toolbar">
+  <button onclick="zoomOut()">−</button>
+  <span id="zoom-level">100%</span>
+  <button onclick="zoomIn()">+</button>
+  <div class="tb-sep" style="width:1px; height:20px; background:rgba(0,0,0,0.1); margin:0 10px;"></div>
+  <button onclick="window.print()">Print Final</button>
+</div>
+
 <!-- ── ENGINEERING SCRIPTS ── -->
 <script>
-const rawText = `{js_content}`;
-const rawAnswers = `{js_answers}`;
-
 function sv(n,v) {{ document.documentElement.style.setProperty(n,v); }}
 function toggleP() {{ document.getElementById('pS').classList.toggle('open'); }}
 
+// ── ZOOM CONTROLS ──
+let _zoom = 1.0;
+function updateZoom() {{
+  document.querySelectorAll('.page').forEach(p => {{
+    p.style.transform = `scale(${{_zoom}})`;
+    p.style.transformOrigin = 'top center';
+  }});
+  document.getElementById('zoom-level').textContent = Math.round(_zoom * 100) + '%';
+}}
+function zoomIn() {{ _zoom = Math.min(2.0, _zoom + 0.1); updateZoom(); }}
+function zoomOut() {{ _zoom = Math.max(0.4, _zoom - 0.1); updateZoom(); }}
+
 const tmpls = {{
-  elite_dark: {{ '--h-bg':'#1e293b','--h-tx':'#fff','--br-l':'0px','--logo-f':"'Outfit'",'class':'' }},
-  pro_protocol: {{ '--h-bg':'#fff','--h-tx':'#1e293b','--br-l':'20px','--logo-f':"'Playfair Display'",'class':'' }},
-  academic_clean: {{ '--h-bg':'#fff','--h-tx':'#64748b','--br-l':'0px','--logo-f':"'Outfit'",'class':'' }},
-  classic: {{ 'class':'tmpl-classic' }},
+  elite_dark: {{ '--p':'#800020','--s':'#1e293b','class':'' }},
+  pro_protocol: {{ '--p':'#1e293b','--s':'#64748b','class':'' }},
+  uneb_standard: {{ '--p':'#000','--s':'#000','class':'tmpl-uneb' }},
 }};
 
 function applyT(t) {{
+  const theme = tmpls[t] || tmpls['elite_dark'];
   const p = document.getElementById('mainP');
-  p.className = 'page ' + (tmpls[t].class || '');
-  Object.entries(tmpls[t]).forEach(([k,v]) => {{ if(k!=='class') sv(k,v); }});
+  p.className = 'page ' + (theme.class || '');
+  Object.entries(theme).forEach(([k,v]) => {{ if(k!=='class') sv(k,v); }});
 }}
 
 document.addEventListener("DOMContentLoaded", function() {{
-  const target = document.getElementById('content-body');
-  const answerTarget = document.getElementById('answer-body');
+  applyT('{paper_style}');
   
-  // 1. Process Markdown Context
-  target.innerHTML = marked.parse(rawText);
-  if (answerTarget) answerTarget.innerHTML = marked.parse(rawAnswers);
-
-  // 2. Safely Refresh Inserted Scripts for Browser Evaluation (Crucial for TikZ plugin)
+  // 1. Safely Refresh TikZ Scripts
   const scripts = document.querySelectorAll('script');
   scripts.forEach(s => {{
     if(s.type === 'text/tikz') {{
@@ -246,40 +404,138 @@ document.addEventListener("DOMContentLoaded", function() {{
     }}
   }});
 
-  // 3. Dynamically Trigger external TikZ Engine AFTER injection
+  // 2. Trigger TikZ Engine
   const tz = document.createElement('script');
   tz.src = 'https://tikzjax.com/v1/tikzjax.js';
   document.head.appendChild(tz);
   
-  // 4. Force KaTeX math rendering
-  renderMathInElement(document.body, {{
-    delimiters: [ 
-      {{left: "$$", right: "$$", display: true}},
-      {{left: "$", right: "$", display: false}} 
-    ],
-    throwOnError: false
+  // 3. Force KaTeX math rendering
+  if (window.renderMathInElement) {{
+    renderMathInElement(document.body, {{
+      delimiters: [ 
+        {{left: "$$", right: "$$", display: true}},
+        {{left: "$", right: "$", display: false}} 
+      ],
+      throwOnError: false
+    }});
+  }}
+
+  // 📡 READY SIGNAL
+  window.parent.postMessage({{ type: 'EDUQUEST_READY' }}, '*');
+
+  // ── QUESTION CLICK → postMessage to React parent (avoids srcDoc CORS) ──
+  let activeWrapId = null;
+
+  // Assign stable IDs and attach click handlers to every question
+  document.querySelectorAll('.q-wrap').forEach(function(wrap, idx) {{
+    const id = 'qw-' + idx;
+    wrap.setAttribute('data-wid', id);
+
+    wrap.addEventListener('click', function(e) {{
+      e.stopPropagation();
+
+      // Reset previous highlight
+      document.querySelectorAll('.q-wrap').forEach(function(w) {{
+        w.style.boxShadow = '';
+        w.style.borderRadius = '6px';
+      }});
+
+      activeWrapId = id;
+      wrap.style.boxShadow = '0 0 0 2.5px #800020';
+      wrap.style.borderRadius = '6px';
+
+      // Tell the React parent which question was clicked
+      window.parent.postMessage({{
+        type: 'QUESTION_CLICKED',
+        wid: id,
+        qtext: wrap.getAttribute('data-qtext'),
+        subject: wrap.getAttribute('data-subject') || 'General',
+        level: wrap.getAttribute('data-level') || 'Primary 4'
+      }}, '*');
+    }});
   }});
 
-  // 📡 SELECTION RELAY: Connect to Parent Studio
-  document.addEventListener('selectionchange', () => {{
-    const sel = window.getSelection();
-    if (sel.toString().trim()) {{
-      const range = sel.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      window.parent.postMessage({{
-        type: 'EDUQUEST_SELECTION',
-        text: sel.toString(),
-        rect: {{
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height
-        }}
-      }}, '*');
-    }} else {{
-      window.parent.postMessage({{ type: 'EDUQUEST_SELECTION_CLEAR' }}, '*');
-    }}
+  // Deselect when clicking blank area
+  document.addEventListener('click', function() {{
+    document.querySelectorAll('.q-wrap').forEach(function(w) {{ w.style.boxShadow = ''; }});
+    activeWrapId = null;
+    window.parent.postMessage({{ type: 'QUESTION_DESELECTED' }}, '*');
   }});
+}});
+
+// 📡 MESSAGE RELAY FROM REACT PARENT
+window.addEventListener('message', (event) => {{
+  const d = event.data;
+
+  // ─ View mode toggle ─
+  if (d.type === 'EDUQUEST_VIEW_MODE') {{
+    const mode = d.mode;
+    const studentPages = [document.getElementById('mainP'), document.getElementById('contentP')];
+    const markingPage = document.getElementById('marking-guide-page');
+    if (mode === 'marking') {{
+      studentPages.forEach(p => {{ if(p) p.style.display = 'none'; }});
+      if(markingPage) markingPage.style.display = 'block';
+    }} else {{
+      studentPages.forEach(p => {{ if(p) p.style.display = 'block'; }});
+      if(markingPage) markingPage.style.display = 'none';
+    }}
+  }}
+
+  // ─ Inject image from React parent into the right question zone ─
+  if (d.type === 'INJECT_IMAGE') {{
+    const wrap = document.querySelector(`.q-wrap[data-wid="${{d.wid}}"]`);
+    if (!wrap) return;
+    
+    // Inject custom styles for the interactive image container once
+    if (!document.getElementById('interactive-img-styles')) {{
+        const style = document.createElement('style');
+        style.id = 'interactive-img-styles';
+        style.innerHTML = `
+            .img-wrapper {{ position: relative; transition: all 0.2s; z-index: 10; display: block; clear: both; margin: 10px auto; }}
+            .img-wrapper.float-right {{ float: right; margin: 5px 0 5px 20px; clear: none; }}
+            .img-wrapper.float-left {{ float: left; margin: 5px 20px 5px 0; clear: none; }}
+            .img-wrapper.align-center {{ margin: 15px auto; display: flex; justify-content: center; width: max-content; }}
+            
+            .img-toolbar {{ position: absolute; top: -35px; left: 50%; transform: translateX(-50%); background: white; border: 1px solid #ccc; box-shadow: 0 4px 10px rgba(0,0,0,0.15); border-radius: 8px; padding: 4px; display: flex; gap: 4px; opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; white-space: nowrap; z-index: 20; }}
+            .img-wrapper:hover .img-toolbar {{ opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(5px); }}
+            
+            .img-toolbar button {{ background: none; border: none; cursor: pointer; font-size: 11px; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px; font-weight: bold; color: #333; }}
+            .img-toolbar button:hover {{ background: #f1f5f9; }}
+            
+            .img-resizable {{ resize: both; overflow: hidden; min-width: 150px; min-height: 150px; max-width: 100%; padding: 8px; border: 2px dashed transparent; border-radius: 6px; background: #fff; }}
+            .img-wrapper:hover .img-resizable {{ border-color: #cbd5e1; background: #f8fafc; }}
+            
+            .img-resizable svg, .img-resizable img {{ width: 100%; height: 100%; object-fit: contain; display: block; }}
+        `;
+        document.head.appendChild(style);
+    }}
+
+    let zone = wrap.querySelector('.q-img-zone');
+    if (!zone) {{
+      zone = document.createElement('div');
+      zone.className = 'q-img-zone';
+      // Insert at the top so float left/right text wrapping works perfectly
+      wrap.insertBefore(zone, wrap.firstChild);
+    }}
+    
+    const imgId = 'img-' + Math.random().toString(36).substr(2, 9);
+    
+    zone.innerHTML = `
+      <div id="${{imgId}}" class="img-wrapper align-center">
+        <div class="img-toolbar">
+            <button onclick="document.getElementById('${{imgId}}').className='img-wrapper float-left'" title="Move Left">◧ Left</button>
+            <button onclick="document.getElementById('${{imgId}}').className='img-wrapper align-center'" title="Center">◫ Center</button>
+            <button onclick="document.getElementById('${{imgId}}').className='img-wrapper float-right'" title="Move Right">◨ Right</button>
+            <div style="width:1px; background:#e2e8f0; margin:0 2px;"></div>
+            <button onclick="document.getElementById('${{imgId}}').remove()" style="color:#ef4444;" title="Delete Image">🗑️</button>
+        </div>
+        <div class="img-resizable" style="width: 300px; height: 250px;">
+            ${{d.image_html}}
+        </div>
+      </div>
+    `;
+    wrap.style.boxShadow = '';
+  }}
 }});
 </script>
 </body>

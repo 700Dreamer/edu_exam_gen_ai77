@@ -10,7 +10,7 @@ except ImportError:
     chromadb = None
 
 # 1. Secure Environment Loader
-BASE_DIR = "/Users/luke/Downloads/docs/Filemail.com - eduquest"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, ".env")
 if os.path.exists(env_path):
     with open(env_path) as f:
@@ -79,37 +79,37 @@ def build_vector_db():
     )
 
     # 3. Incremental Database Updates (Check for Existing Documents)
-    try:
-        collection = chroma_client.get_collection(
-            name="exam_syllabus_collection",
-            embedding_function=openai_ef
-        )
-        print("Connected to existing ChromaDB collection.")
-        # Fetch existing metadatas to track what we have already embedded
-        existing_data = collection.get(include=["metadatas"])
-        existing_filenames = set()
-        if existing_data and existing_data["metadatas"]:
-            for m in existing_data["metadatas"]:
-                if m and "filename" in m:
-                    existing_filenames.add(m["filename"])
-        print(f"Found {len(existing_filenames)} documents currently in the Vector DB.")
-    except Exception:
-        print("Creating a new ChromaDB collection...")
-        collection = chroma_client.create_collection(
-            name="exam_syllabus_collection", 
-            embedding_function=openai_ef
-        )
-        existing_filenames = set()
+    collection = chroma_client.get_or_create_collection(
+        name="exam_syllabus_collection",
+        embedding_function=openai_ef
+    )
+    print("Connected to existing ChromaDB collection.")
+    
+    # Fetch existing metadatas to track what we have already embedded (Paginated to avoid SQLite limits)
+    existing_filenames = set()
+    total_docs = collection.count()
+    batch_size = 10000
+    
+    if total_docs > 0:
+        print(f"Fetching {total_docs} existing metadata records to prevent duplicates...")
+        for offset in range(0, total_docs, batch_size):
+            try:
+                batch_data = collection.get(limit=batch_size, offset=offset, include=["metadatas"])
+                if batch_data and batch_data.get("metadatas"):
+                    for m in batch_data["metadatas"]:
+                        if m and "filename" in m:
+                            existing_filenames.add(m["filename"])
+            except Exception as e:
+                print(f"Warning skipping batch {offset}: {e}")
+                
+    print(f"Found {len(existing_filenames)} unique documents currently in the Vector DB.")
 
     documents = []
     metadatas = []
     ids = []
 
     print("Chunking documents...")
-    chunk_id_counter = 0
-    if existing_data and existing_data.get("ids"):
-        # Auto-increment from the highest chunk_id to avoid ID conflicts
-        chunk_id_counter = len(existing_data["ids"])
+    chunk_id_counter = total_docs  # Continue IDs from where we left off
 
     new_documents_added = 0
     for doc in tqdm(dataset, desc="Processing Document Chunks"):

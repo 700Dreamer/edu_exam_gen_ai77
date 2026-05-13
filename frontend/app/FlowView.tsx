@@ -211,7 +211,7 @@ function FlowViewInner({ theme, onBridge }: { theme: string, onBridge?: (t: stri
   // Fetch master syllabus for auto-sync
   const [masterSyllabus, setMasterSyllabus] = useState<any>(null);
   useEffect(() => {
-    fetch("/api/syllabus/config")
+    fetch("http://localhost:8000/api/syllabus/config")
       .then(res => res.json())
       .then(data => setMasterSyllabus(data.syllabus))
       .catch(e => console.error("Syllabus fetch failed", e));
@@ -270,7 +270,7 @@ function FlowViewInner({ theme, onBridge }: { theme: string, onBridge?: (t: stri
     setOutput(["[INIT] Neural Flow Pipeline Started..."]);
     
     try {
-      const response = await fetch("/api/flow/stream", {
+      const response = await fetch("http://localhost:8000/api/flow/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nodes: currentNodes, edges: currentEdges })

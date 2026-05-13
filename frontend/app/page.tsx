@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch } from "lucide-react";
+import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import FlowView from "./FlowView";
@@ -11,10 +11,10 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // ── CONNECTIVITY ──
-const API_BASE = typeof window !== "undefined" ? "" : "http://127.0.0.1:8000";
+const API_BASE = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://localhost:8000";
 
 // ── TYPES ──
-type Page = "studio" | "ingestion" | "analytics" | "flow";
+type Page = "studio" | "ingestion" | "analytics";
 type Mode = "Exams" | "Lesson Notes" | "Schemes of Work";
 
 interface Project {
@@ -228,75 +228,170 @@ function StudioView({
   bridgedPrompt,
   setBridgedPrompt
 }: any) {
-  const [selection, setSelection] = useState("");
-  const [selectionPos, setSelectionPos] = useState({ x: 0, y: 0 });
-  const [isRefining, setIsRefining] = useState(false);
-  const [isProcessingRefinement, setIsProcessingRefinement] = useState(false);
+  const [zoom, setZoom] = useState(100);
+  const [viewMode, setViewMode] = useState<"student" | "marking">("student");
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [illustratingWid, setIllustratingWid] = useState<string | null>(null);
+  const [illustratedWids, setIllustratedWids] = useState<Set<string>>(new Set());
+  const [expandedWids, setExpandedWids] = useState<Set<string>>(new Set());
+  const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
+  const [imageStyles, setImageStyles] = useState<Record<string, string>>({});
+  const [regenExpandedWids, setRegenExpandedWids] = useState<Set<string>>(new Set());
+  const [regenInstructions, setRegenInstructions] = useState<Record<string, string>>({});
+  const [regenTopics, setRegenTopics] = useState<Record<string, string>>({});
+  const [regeneratingWid, setRegeneratingWid] = useState<string | null>(null);
+  // Parse questions out of lastRaw for the Illustrations panel
+  const parsedQuestions: { wid: string; num: string | number; text: string }[] = (() => {
+    try {
+      const raw = typeof lastRaw === 'string' ? JSON.parse(lastRaw) : lastRaw;
+      const qs = raw?.questions || raw?.sections?.[0]?.questions || [];
+      return qs.map((q: any, i: number) => ({
+        wid: `qw-${i}`,
+        num: q.number ?? i + 1,
+        text: q.text ?? ''
+      }));
+    } catch { return []; }
+  })();
+
+  const handleIllustrate = async (wid: string, qtext: string, custom_prompt?: string, style: string = "png") => {
+    if (!iframeRef.current) return;
+    setIllustratingWid(wid);
+    try {
+      const res = await fetch(`${API_BASE}/api/generate-image`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_text: qtext,
+          subject: lastConfig?.subject || 'General',
+          level: lastConfig?.level || 'Primary 4',
+          custom_prompt: custom_prompt || '',
+          style: style
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed');
+      iframeRef.current.contentWindow?.postMessage({
+        type: 'INJECT_IMAGE',
+        wid,
+        image_html: data.image_html
+      }, '*');
+      setIllustratedWids(prev => new Set(prev).add(wid));
+    } catch (e: any) {
+      alert('Illustration failed: ' + e.message);
+    } finally {
+      setIllustratingWid(null);
+    }
+  };
+  const handleRegenerateQuestion = async (wid: string, index: number, topic: string, instruction: string) => {
+    setRegeneratingWid(wid);
+    try {
+      // 1. Fetch the new question
+      const res = await fetch(`${API_BASE}/api/regenerate-question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: lastConfig?.subject || 'General',
+          level: lastConfig?.level || 'Primary 4',
+          topic: topic,
+          instruction: instruction
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Failed to regenerate');
+      if (!data.question) throw new Error('Empty response from AI');
+
+      // 2. Splice it into lastRaw
+      const raw = typeof lastRaw === 'string' ? JSON.parse(lastRaw) : { ...lastRaw };
+      if (raw.questions && raw.questions[index]) {
+         raw.questions[index] = data.question;
+      } else if (raw.sections?.[0]?.questions?.[index]) {
+         raw.sections[0].questions[index] = data.question;
+      }
+
+      // 3. Re-generate HTML
+      const rawStr = JSON.stringify(raw);
+      const renderRes = await fetch(`${API_BASE}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+           subject: lastConfig?.subject || 'General',
+           level: lastConfig?.level || 'Primary 4',
+           term: lastConfig?.term || 'Term 1',
+           content_override: rawStr,
+           question_count: 0
+        })
+      });
+      const renderData = await renderRes.json();
+      if (!renderRes.ok) throw new Error(renderData.detail || 'Failed to render');
+
+      setLastRaw(renderData.raw);
+      setPreviewHtml(renderData.html);
+      setRegenExpandedWids(prev => {
+        const next = new Set(prev);
+        next.delete(wid);
+        return next;
+      });
+    } catch (e: any) {
+      alert('Regeneration failed: ' + e.message);
+    } finally {
+      setRegeneratingWid(null);
+    }
+  };
+  const loadingSequence = [
+    { title: "Synchronizing Neural Core", sub: "Authenticating database connection..." },
+    { title: "Retrieving Syllabus Context", sub: "Filtering vector database by subject and level..." },
+    { title: "Analyzing Pedagogical Logic", sub: "Applying Bloom's Taxonomy constraints..." },
+    { title: "Drafting Section A", sub: "Generating objective items..." },
+    { title: "Drafting Section B", sub: "Constructing structured scenarios..." },
+    { title: "Drawing Illustrations", sub: "Synthesizing AI cartography and diagrams..." },
+    { title: "Finalizing Document", sub: "Enforcing UNEB formatting guidelines..." },
+    { title: "Compiling Marking Guide", sub: "Generating the teacher's rubric..." }
+  ];
+  
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+
+  useEffect(() => {
+    if (!isGenerating) {
+      setLoadingMsgIdx(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingMsgIdx((prev) => (prev + 1 < loadingSequence.length ? prev + 1 : prev));
+    }, 3500);
+    
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   // 📡 SELECTION RELAY: Listen for messages from the Document Iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'EDUQUEST_SELECTION') {
-        const { text, rect } = event.data;
+      if (event.data.type === 'EDUQUEST_READY') {
+        // Iframe is ready! Push the current view mode immediately
         const iframe = document.querySelector('iframe');
-        if (iframe) {
-          const iframeRect = iframe.getBoundingClientRect();
-          setSelection(text);
-          setSelectionPos({
-            x: iframeRect.left + rect.left + (rect.width / 2),
-            y: iframeRect.top + rect.top
-          });
-        }
-      } else if (event.data.type === 'EDUQUEST_SELECTION_CLEAR') {
-        if (!isRefining) {
-           setSelection("");
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.postMessage({
+            type: 'EDUQUEST_VIEW_MODE',
+            mode: viewMode
+          }, '*');
         }
       }
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [isRefining]);
+  }, [viewMode]);
 
-
-  const handleRefine = async (instruction: string) => {
-    if (!selection) return;
-    setIsProcessingRefinement(true);
-
-    try {
-      const resp = await fetch(`${API_BASE}/api/refine`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          selected_text: selection,
-          instruction,
-          subject: lastConfig?.subject || "Mathematics", 
-          level: lastConfig?.level || "Primary 7",
-          term: lastConfig?.term || "Term 1"
-        })
-      });
-      
-      if (!resp.ok) {
-        const err = await resp.text();
-        throw new Error(`API Error ${resp.status}: ${err}`);
-      }
-
-      const data = await resp.json();
-      if (data.refined_text) {
-        const newHtml = previewHtml.replace(selection, data.refined_text);
-        setPreviewHtml(newHtml);
-        setIsRefining(false);
-        setSelection("");
-      } else {
-        alert("AI returned empty refinement. Try a different instruction.");
-      }
-    } catch (e: any) {
-      console.error("Refine failed", e);
-      alert(`Refinement Failed: ${e.message}\n\nCheck if the server is running and has the latest updates.`);
-    } finally {
-      setIsProcessingRefinement(false);
+  // 📡 VIEW MODE SYNC: Push view mode changes to the iframe
+  useEffect(() => {
+    const iframe = document.querySelector('iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({
+        type: 'EDUQUEST_VIEW_MODE',
+        mode: viewMode
+      }, '*');
     }
-  };
+  }, [viewMode, previewHtml]);
+
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -328,8 +423,6 @@ function StudioView({
             setIsGenerating={setIsGenerating} 
             refreshLibrary={refreshLibrary}
             theme={theme}
-            selection={selection}
-            setIsRefining={setIsRefining}
             setLastRaw={setLastRaw}
             setLastConfig={setLastConfig}
             lastRaw={lastRaw}
@@ -372,96 +465,90 @@ function StudioView({
 
       {/* Preview Area */}
       <section id="preview-section" className="flex-1 bg-surface-soft/50 p-8 overflow-y-auto relative">
-        <div className="absolute top-8 right-8 z-10 flex gap-2">
-           {!selection && (
-             <div className="px-4 py-1.5 bg-brand-800/10 border border-brand-800/20 rounded-full text-[9px] font-black text-brand-800 uppercase tracking-[0.2em] animate-pulse">
-               💡 Pro Tip: Highlight text to Refine via AI
-             </div>
-           )}
-           {['White', 'Cream', 'Recycled'].map(p => (
-             <button key={p} className="px-3 py-1 bg-surface/80 backdrop-blur-md border border-border-main rounded-full text-[9px] font-black opacity-40 hover:text-brand-800 hover:opacity-100 transition-all uppercase tracking-widest">{p}</button>
-           ))}
+        {/* Preview Orchestration Toolbar */}
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-surface/90 backdrop-blur-xl border border-border-main p-1.5 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] neon-glow-soft">
+           <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
+              <button 
+                onClick={() => setZoom(Math.max(50, zoom - 10))}
+                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
+                title="Zoom Out"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <div className="px-2 text-[10px] font-black text-brand-800 w-12 text-center">{zoom}%</div>
+              <button 
+                onClick={() => setZoom(Math.min(200, zoom + 10))}
+                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
+                title="Zoom In"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => setZoom(100)}
+                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
+                title="Reset Zoom"
+              >
+                <Maximize className="w-3.5 h-3.5" />
+              </button>
+           </div>
+
+           <div className="flex bg-surface-soft p-1 rounded-xl gap-1 mr-1.5">
+              <button 
+                onClick={() => setViewMode("student")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                  viewMode === "student" ? "bg-surface text-brand-800 shadow-sm" : "text-foreground opacity-40 hover:opacity-100"
+                )}
+              >
+                <Eye className="w-3 h-3" />
+                Question Paper
+              </button>
+              <button 
+                onClick={() => setViewMode("marking")}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                  viewMode === "marking" ? "bg-brand-800 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100"
+                )}
+              >
+                <FileCheck className="w-3 h-3" />
+                Marking Guide
+              </button>
+           </div>
+
+           <div className="flex items-center gap-1 pl-1.5 border-l border-border-main">
+              <button 
+                onClick={() => window.print()}
+                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
+                title="Print Exam"
+              >
+                <Printer className="w-4 h-4" />
+              </button>
+              <button 
+                className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800"
+                title="Download PDF"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+           </div>
         </div>
 
-        {selection && selectionPos && (
-          <div 
-            className="absolute z-[9999] animate-in fade-in zoom-in duration-200 pointer-events-auto"
-            style={{ 
-              top: selectionPos.y - 12, 
-              left: selectionPos.x,
-              transform: 'translate(-50%, -100%)' 
-            }}
-          >
-            <div className="flex flex-col items-center">
-              <button 
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsRefining(true);
-                }}
-                className="bg-brand-800 text-white px-5 py-2.5 rounded-full flex items-center gap-2 shadow-[0_10px_35px_rgba(0,0,0,0.4)] hover:scale-110 active:scale-95 transition-all text-[12px] font-black uppercase tracking-widest neon-glow border-2 border-brand-400"
-              >
-                <Sparkles className="w-4 h-4 text-brand-400" />
-                REFINE FRAGMENT
-              </button>
-              <div className="w-4 h-4 bg-brand-800 rotate-45 -mt-2.5 border-r-2 border-b-2 border-brand-400"></div>
-            </div>
-          </div>
-        )}
 
-        {isRefining && (
-          <div className="fixed inset-0 z-[60] bg-brand-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-             <div className="bg-surface w-full max-w-md rounded-2xl p-6 shadow-2xl border border-brand-500/30 neon-glow">
-                <div className="flex items-center gap-2 mb-4">
-                   <Sparkles className="w-5 h-5 text-brand-500" />
-                   <h3 className="text-lg font-black text-brand-800 uppercase tracking-tight">Holographic Refiner</h3>
-                </div>
-                <p className="text-[10px] text-foreground opacity-40 font-bold uppercase mb-2">Selected Snippet:</p>
-                <div className="bg-surface-soft p-3 rounded-xl border border-border-main text-[11px] text-foreground opacity-80 italic mb-4 max-h-32 overflow-y-auto">
-                  "{selection}"
-                </div>
-                <input 
-                  autoFocus
-                  placeholder="e.g. 'Make it harder', 'Add a diagram hint', 'Simplify level'..."
-                  className="refine-input w-full bg-surface-soft border-2 border-border-main rounded-xl p-3 text-xs font-bold outline-none focus:border-brand-500 transition-all mb-4"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleRefine((e.target as HTMLInputElement).value);
-                  }}
-                />
-                <div className="flex justify-end gap-2 text-right">
-                   <button 
-                     disabled={isProcessingRefinement}
-                     onClick={() => { setIsRefining(false); setSelection(""); }} 
-                     className="px-4 py-2 text-[10px] font-black uppercase text-foreground opacity-40 hover:opacity-100 disabled:opacity-50"
-                   >
-                     Cancel
-                   </button>
-                   <button 
-                     disabled={isProcessingRefinement}
-                     onClick={() => {
-                        const inp = document.querySelector('.refine-input') as HTMLInputElement;
-                        if (inp) handleRefine(inp.value);
-                     }} 
-                     className="px-6 py-2 bg-brand-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-brand-900 transition-all neon-glow"
-                   >
-                     {isProcessingRefinement ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                     {isProcessingRefinement ? "Synthesizing..." : "Execute Refinement"}
-                   </button>
-                </div>
-             </div>
-          </div>
-        )}
-
-        <div className="max-w-[850px] mx-auto bg-surface min-h-[1100px] shadow-2xl rounded-sm relative overflow-hidden transition-all duration-500">
+        <div 
+           className="mx-auto bg-surface shadow-2xl rounded-sm relative overflow-hidden transition-all duration-500 origin-top"
+           style={{ 
+             width: `${850 * (zoom / 100)}px`,
+             minHeight: `${1100 * (zoom / 100)}px`
+           }}
+        >
            {isGenerating && (
              <div className="absolute inset-0 z-50 bg-surface/80 backdrop-blur-sm flex flex-col items-center justify-center gap-6">
                 <div className="relative">
                   <Loader2 className="w-12 h-12 text-brand-800 animate-spin" />
                   <Sparkles className="w-5 h-5 text-brand-400 absolute -top-1 -right-1 animate-pulse" />
                 </div>
-                <div className="text-center">
-                  <h3 className="font-black text-brand-800 tracking-widest uppercase text-sm">Synchronizing Neural Core</h3>
-                  <p className="text-[10px] font-bold text-foreground opacity-40 mt-2 tracking-widest uppercase">Applying Bloom's Taxonomy & Pedagogical Logic...</p>
+                <div className="text-center h-12 flex flex-col justify-center">
+                  <h3 className="font-black text-brand-800 tracking-widest uppercase text-sm animate-pulse">{loadingSequence[loadingMsgIdx].title}</h3>
+                  <p className="text-[10px] font-bold text-foreground opacity-40 mt-2 tracking-widest uppercase transition-opacity duration-300">{loadingSequence[loadingMsgIdx].sub}</p>
                 </div>
                 <div className="w-48 h-1 bg-surface-soft rounded-full overflow-hidden mt-4">
                   <div className="h-full bg-brand-800 animate-loading-bar"></div>
@@ -470,10 +557,11 @@ function StudioView({
            )}
 
            {previewHtml ? (
-             <iframe 
-                srcDoc={previewHtml} 
-                className="w-full h-full min-h-[1100px] border-none"
-                title="Preview"
+             <iframe
+               ref={iframeRef}
+               srcDoc={previewHtml}
+               className="w-full h-full min-h-[1100px] border-none"
+               title="Preview"
              />
            ) : (
              <div className="p-[16mm] h-full">
@@ -495,6 +583,236 @@ function StudioView({
            )}
         </div>
       </section>
+
+      {/* ── RIGHT PANEL: Illustrations Studio ── */}
+      {previewHtml && parsedQuestions.length > 0 && (
+        <aside className={cn(
+          "w-[280px] border-l border-border-main flex flex-col overflow-hidden transition-all",
+          theme === 'midnight' ? "glass" : "bg-surface"
+        )}>
+          {/* Header */}
+          <div className="px-4 py-3 border-b border-border-main flex items-center gap-2 flex-shrink-0">
+            <div className="w-6 h-6 rounded-lg bg-brand-800 flex items-center justify-center">
+              <ImageIcon className="w-3.5 h-3.5 text-white" />
+            </div>
+            <div>
+              <p className="text-[11px] font-black text-foreground uppercase tracking-widest">Illustration Studio</p>
+              <p className="text-[9px] text-foreground opacity-40 font-bold">{illustratedWids.size}/{parsedQuestions.length} illustrated</p>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="h-1 bg-surface-soft flex-shrink-0">
+            <div
+              className="h-full bg-brand-800 transition-all duration-500"
+              style={{ width: `${parsedQuestions.length > 0 ? (illustratedWids.size / parsedQuestions.length) * 100 : 0}%` }}
+            />
+          </div>
+
+          {/* Bulk action */}
+          <div className="px-4 py-2 border-b border-border-main flex-shrink-0">
+            <button
+              onClick={() => {
+                parsedQuestions
+                  .filter(q => !illustratedWids.has(q.wid))
+                  .forEach((q, i) => {
+                    setTimeout(() => handleIllustrate(q.wid, q.text), i * 800);
+                  });
+              }}
+              disabled={illustratingWid !== null || illustratedWids.size === parsedQuestions.length}
+              className="w-full py-2 rounded-xl bg-brand-800/10 border border-brand-800/20 text-brand-800 text-[10px] font-black uppercase tracking-wider hover:bg-brand-800/20 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-3 h-3" />
+              Illustrate All Remaining
+            </button>
+          </div>
+
+          {/* Question list */}
+          <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+            {parsedQuestions.map((q, i) => {
+              const isDone = illustratedWids.has(q.wid);
+              const isLoading = illustratingWid === q.wid;
+              const isExpanded = expandedWids.has(q.wid);
+              const isRegenExpanded = regenExpandedWids.has(q.wid);
+              const customVal = customPrompts[q.wid] || '';
+              const regenInst = regenInstructions[q.wid] || '';
+              const regenTop = regenTopics[q.wid] || '';
+
+              return (
+                <div
+                  key={q.wid}
+                  className={cn(
+                    "rounded-xl border transition-all",
+                    isDone
+                      ? "border-green-200 bg-green-50"
+                      : "border-border-main bg-surface-soft hover:border-brand-800/30"
+                  )}
+                >
+                  {/* Card top — Q badge + question text */}
+                  <div className="p-3">
+                    <div className="flex items-start gap-2 mb-2">
+                      <span className={cn(
+                        "text-[9px] font-black px-2 py-0.5 rounded-full flex-shrink-0",
+                        isDone ? "bg-green-100 text-green-700" : "bg-brand-800/10 text-brand-800"
+                      )}>Q{q.num}</span>
+                      <p className="text-[10px] text-foreground leading-relaxed line-clamp-2 opacity-70">
+                        {q.text}
+                      </p>
+                    </div>
+
+                    {/* Status row + action buttons */}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className={cn(
+                        "text-[9px] font-bold uppercase tracking-wider flex-1",
+                        isDone ? "text-green-600" : "text-foreground opacity-30"
+                      )}>
+                        {isLoading ? "Generating..." : isDone ? "✓ Illustrated" : "No image"}
+                      </span>
+
+                      {/* Auto-generate button */}
+                      <button
+                        onClick={() => handleIllustrate(q.wid, q.text, "", imageStyles[q.wid] || "png")}
+                        disabled={isLoading || illustratingWid !== null}
+                        title="Auto-generate from question"
+                        className={cn(
+                          "text-[9px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1",
+                          isDone
+                            ? "bg-surface border border-border-main text-foreground opacity-50 hover:opacity-100"
+                            : "bg-brand-800 text-white hover:bg-brand-900",
+                          "disabled:opacity-40"
+                        )}
+                      >
+                        {isLoading ? (
+                          <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Wait</>
+                        ) : isDone ? (
+                          <><RefreshCw className="w-2.5 h-2.5" /> Redo</>
+                        ) : (
+                          <><ImageIcon className="w-2.5 h-2.5" /> Auto</>
+                        )}
+                      </button>
+
+                      {/* Toggle custom prompt */}
+                      <button
+                        onClick={() => setExpandedWids(prev => {
+                          const next = new Set(prev);
+                          next.has(q.wid) ? next.delete(q.wid) : next.add(q.wid);
+                          if (next.has(q.wid)) setRegenExpandedWids(r => { const n = new Set(r); n.delete(q.wid); return n; });
+                          return next;
+                        })}
+                        title="Illustration prompt"
+                        className={cn(
+                          "text-[9px] font-black px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 border",
+                          isExpanded
+                            ? "bg-brand-800/10 border-brand-800/30 text-brand-800"
+                            : "border-border-main text-foreground opacity-50 hover:opacity-100"
+                        )}
+                      >
+                        <Palette className="w-3 h-3" />
+                      </button>
+
+                      {/* Toggle regenerate prompt */}
+                      <button
+                        onClick={() => setRegenExpandedWids(prev => {
+                          const next = new Set(prev);
+                          next.has(q.wid) ? next.delete(q.wid) : next.add(q.wid);
+                          if (next.has(q.wid)) setExpandedWids(r => { const n = new Set(r); n.delete(q.wid); return n; });
+                          return next;
+                        })}
+                        title="Regenerate question text"
+                        className={cn(
+                          "text-[9px] font-black px-2.5 py-1.5 rounded-lg transition-all flex items-center gap-1 border",
+                          isRegenExpanded
+                            ? "bg-brand-800/10 border-brand-800/30 text-brand-800"
+                            : "border-border-main text-foreground opacity-50 hover:opacity-100"
+                        )}
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expandable custom prompt section */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 border-t border-border-main pt-2 animate-in slide-in-from-top-1 duration-150">
+                      <p className="text-[9px] font-black text-foreground opacity-40 uppercase tracking-widest mb-1.5">
+                        Custom Illustration Setup
+                      </p>
+                      <textarea
+                        rows={3}
+                        value={customVal}
+                        onChange={(e) => setCustomPrompts(prev => ({ ...prev, [q.wid]: e.target.value }))}
+                        placeholder={`e.g. "A labelled diagram of the human digestive system" or "A bar graph showing rainfall data"`}
+                        className="w-full text-[10px] bg-surface border border-border-main rounded-lg p-2 outline-none focus:border-brand-800 transition-all resize-none font-medium placeholder:opacity-40 text-foreground mb-2"
+                      />
+                      <div className="flex gap-2 mb-2">
+                        <select
+                          value={imageStyles[q.wid] || "png"}
+                          onChange={(e) => setImageStyles(prev => ({ ...prev, [q.wid]: e.target.value }))}
+                          className="flex-1 text-[10px] font-bold bg-surface border border-border-main rounded-lg p-1.5 outline-none focus:border-brand-800 text-foreground"
+                        >
+                          <option value="png">Format: Academic (PNG)</option>
+                          <option value="svg">Format: Vector Graph (SVG)</option>
+                          <option value="sketch">Style: Hand-Drawn Sketch</option>
+                          <option value="realistic">Style: Realistic Photo</option>
+                          <option value="3d">Style: 3D Render</option>
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => {
+                          handleIllustrate(q.wid, q.text, customVal.trim(), imageStyles[q.wid] || "png");
+                        }}
+                        disabled={isLoading || illustratingWid !== null}
+                        className="w-full py-1.5 rounded-lg bg-brand-800 text-white text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-brand-900 transition-all disabled:opacity-40"
+                      >
+                        {isLoading ? (
+                          <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Generating...</>
+                        ) : (
+                          <><Sparkles className="w-2.5 h-2.5" /> Generate Image</>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Expandable regenerate section */}
+                  {isRegenExpanded && (
+                    <div className="px-3 pb-3 border-t border-border-main pt-2 animate-in slide-in-from-top-1 duration-150">
+                      <p className="text-[9px] font-black text-foreground opacity-40 uppercase tracking-widest mb-1.5">
+                        Regenerate Question
+                      </p>
+                      <input
+                        type="text"
+                        value={regenTop}
+                        onChange={(e) => setRegenTopics(prev => ({ ...prev, [q.wid]: e.target.value }))}
+                        placeholder="Optional Topic (e.g. Algebra)"
+                        className="w-full text-[10px] bg-surface border border-border-main rounded-lg p-2 outline-none focus:border-brand-800 transition-all font-medium placeholder:opacity-40 text-foreground mb-2"
+                      />
+                      <textarea
+                        rows={2}
+                        value={regenInst}
+                        onChange={(e) => setRegenInstructions(prev => ({ ...prev, [q.wid]: e.target.value }))}
+                        placeholder="Instruction (e.g. Make it harder, or use a scenario about apples)"
+                        className="w-full text-[10px] bg-surface border border-border-main rounded-lg p-2 outline-none focus:border-brand-800 transition-all resize-none font-medium placeholder:opacity-40 text-foreground mb-2"
+                      />
+                      <button
+                        onClick={() => handleRegenerateQuestion(q.wid, i, regenTop, regenInst)}
+                        disabled={regeneratingWid !== null}
+                        className="w-full py-1.5 rounded-lg border-2 border-brand-800 text-brand-800 text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-brand-800/10 transition-all disabled:opacity-40"
+                      >
+                        {regeneratingWid === q.wid ? (
+                          <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Rewriting...</>
+                        ) : (
+                          <><RefreshCw className="w-2.5 h-2.5" /> Confirm Rewrite</>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+        </aside>
+      )}
     </div>
   );
 }
@@ -519,7 +837,7 @@ function ScenarioView({
   const [config, setConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config`)
+    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setConfig(data))
       .catch(() => {});
@@ -535,7 +853,6 @@ function ScenarioView({
     }
   }, [level, availableSubjects]);
 
-  // Filter topics based on subject and level
   const availableTopics = config.syllabus?.[subject]?.[level] || [];
 
   const handleGenerate = async () => {
@@ -704,32 +1021,68 @@ function GeneratorControls({
   setIsGenerating, 
   refreshLibrary, 
   theme,
-  selection,
-  setIsRefining,
   setLastRaw,
   setLastConfig,
   lastRaw,
   lastConfig
 }: any) {
   const [mode, setMode] = useState<Mode>("Exams");
-  const [level, setLevel] = useState("Primary 7");
-  const [subject, setSubject] = useState("Mathematics");
-  const [term, setTerm] = useState("Term 1");
+  const [level, setLevel] = useState(lastConfig?.level || "Primary 7");
+  const [subject, setSubject] = useState(lastConfig?.subject || "Mathematics");
+  const [term, setTerm] = useState(lastConfig?.term || "Term 1");
   const [period, setPeriod] = useState("MOT");
   const [qCount, setQCount] = useState(20);
+  const [duration, setDuration] = useState("2 HR");
+  const [paperStyle, setPaperStyle] = useState("uneb");
   const [topic, setTopic] = useState("");
-  const [config, setConfig] = useState<any>({ subjects: [], levels: [] });
+  const [config, setConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config`)
+    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setConfig(data))
       .catch(() => {});
   }, []);
 
-  const availableSubjects = config.subjects.filter((s: string) => 
+  const availableSubjects = config.subjects.filter((s: string) =>
     config.syllabus?.[s]?.[level]
   );
+
+  const availableTopics = config.syllabus?.[subject]?.[level] || [];
+
+  // 📄 PAPER STANDARDS MAPPING
+  useEffect(() => {
+    if (mode !== "Exams") return;
+    const standards: Record<string, Record<string, { count: number; duration: string }>> = {
+      "Primary 7": {
+        "Mathematics": { count: 32, duration: "2 HR 30 MIN" },
+        "Integrated Science": { count: 55, duration: "2 HR 15 MIN" },
+        "Social Studies with Religious Education": { count: 55, duration: "2 HR 15 MIN" },
+        "English": { count: 55, duration: "2 HR 15 MIN" },
+      },
+      "Primary 6": {
+        "Mathematics": { count: 30, duration: "2 HR 30 MIN" },
+        "Integrated Science": { count: 55, duration: "2 HR 15 MIN" },
+        "Social Studies with Religious Education": { count: 55, duration: "2 HR 15 MIN" },
+        "English": { count: 55, duration: "2 HR 15 MIN" }
+      },
+      "Primary 5": {
+        "Mathematics": { count: 30, duration: "2 HR 30 MIN" },
+        "Integrated Science": { count: 55, duration: "2 HR 15 MIN" },
+        "Social Studies with Religious Education": { count: 55, duration: "2 HR 15 MIN" },
+        "English": { count: 55, duration: "2 HR 15 MIN" }
+      },
+      "Primary 4": {
+        "Mathematics": { count: 30, duration: "2 HR 30 MIN" },
+        "Integrated Science": { count: 55, duration: "2 HR 15 MIN" },
+        "Social Studies with Religious Education": { count: 55, duration: "2 HR 15 MIN" },
+        "English": { count: 55, duration: "2 HR 15 MIN" }
+      },
+    };
+    const std = standards[level]?.[subject] || { count: 20, duration: "2 HR" };
+    setQCount(std.count);
+    setDuration(std.duration);
+  }, [level, subject, mode]);
 
   useEffect(() => {
     if (availableSubjects.length > 0 && !availableSubjects.includes(subject)) {
@@ -747,6 +1100,8 @@ function GeneratorControls({
           mode, level, subject,
           term: `${term} (${period})`,
           question_count: qCount,
+          duration,
+          paper_style: paperStyle,
           topic,
           brand_name: "EDUMERC"
         })
@@ -754,7 +1109,7 @@ function GeneratorControls({
       const data = await res.json();
       setPreviewHtml(data.html);
       setLastRaw(data.raw);
-      setLastConfig({ subject, level });
+      setLastConfig({ subject, level, term: `${term} (${period})` });
       refreshLibrary();
     } catch (e) {
       alert("Generation failed.");
@@ -788,7 +1143,7 @@ function GeneratorControls({
           <label className="sec-label">Grade / Level</label>
           <select 
             value={level}
-            onChange={(e) => setLevel(e.target.value)}
+            onChange={(e) => { setLevel(e.target.value); setTopic(""); }}
             className="w-full bg-surface-soft border border-border-main rounded-lg p-2.5 text-xs font-bold outline-none"
           >
             {config.levels.map((l: string) => <option key={l}>{l}</option>)}
@@ -798,10 +1153,10 @@ function GeneratorControls({
           <label className="sec-label">Subject</label>
           <select 
             value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="w-full bg-surface-soft border border-border-main rounded-lg p-2.5 text-xs font-bold outline-none cursor-pointer"
+            onChange={(e) => { setSubject(e.target.value); setTopic(""); }}
+            className="w-full bg-surface-soft border border-border-main rounded-lg p-2.5 text-xs font-bold outline-none"
           >
-             {availableSubjects.map((s: string) => <option key={s}>{s}</option>)}
+            {availableSubjects.map((s: string) => <option key={s}>{s}</option>)}
           </select>
         </div>
       </div>
@@ -809,59 +1164,74 @@ function GeneratorControls({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="sec-label">Academic Term</label>
-          <div className="flex gap-1 bg-surface-soft p-1 rounded-lg border border-border-main">
-             {["Term 1", "Term 2", "Term 3"].map(t => (
-               <button 
-                 key={t} 
-                 onClick={() => setTerm(t)}
-                 className={cn(
-                   "flex-1 py-1.5 rounded-md text-[9px] font-black transition-all",
-                   term === t ? "bg-surface shadow-md text-brand-800" : "text-foreground opacity-40 hover:opacity-100"
-                 )}
-               >
-                 T{t.split(' ')[1]}
-               </button>
-             ))}
+          <div className="flex gap-1 bg-surface-soft p-1 rounded-xl border border-border-main">
+            {["Term 1", "Term 2", "Term 3"].map(t => (
+              <button 
+                key={t} 
+                onClick={() => setTerm(t)}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-[9px] font-black transition-all",
+                  term === t ? "bg-surface shadow-md text-brand-800" : "text-foreground opacity-40 hover:opacity-100"
+                )}
+              >
+                T{t.split(' ')[1]}
+              </button>
+            ))}
           </div>
         </div>
         <div>
           <label className="sec-label">Exam Period</label>
-          <div className="flex gap-1 bg-brand-800/5 p-1 rounded-lg border border-brand-800/10">
-             {["BOT", "MOT", "EOT"].map(p => (
-               <button 
-                 key={p} 
-                 onClick={() => setPeriod(p)}
-                 className={cn(
-                   "flex-1 py-1.5 rounded-md text-[9px] font-black transition-all",
-                   period === p ? "bg-brand-800 text-white shadow-md" : "text-brand-800 opacity-40 hover:opacity-100"
-                 )}
-               >
-                 {p}
-               </button>
-             ))}
+          <div className="flex gap-1 bg-brand-800/5 p-1 rounded-xl border border-brand-800/10">
+            {["BOT", "MOT", "EOT"].map(p => (
+              <button 
+                key={p} 
+                onClick={() => setPeriod(p)}
+                className={cn(
+                  "flex-1 py-1.5 rounded-lg text-[9px] font-black transition-all",
+                  period === p ? "bg-brand-800 text-white shadow-md" : "text-brand-800 opacity-40 hover:opacity-100"
+                )}
+              >
+                {p}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="sec-label">Question Count</label>
-          <input 
-            type="number" 
-            value={qCount} 
-            onChange={(e) => setQCount(parseInt(e.target.value))}
-            className="w-full bg-surface-soft border border-border-main rounded-lg p-2.5 text-xs font-bold outline-none focus:border-brand-500 transition-all" 
-          />
-        </div>
-        <div>
-           <label className="sec-label">Topic Focus (Optional)</label>
-           <input 
-            type="text" 
-            value={topic} 
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Algebra, Fractions..."
-            className="w-full bg-surface-soft border border-border-main rounded-lg p-2.5 text-xs font-bold outline-none focus:border-brand-500 transition-all" 
-          />
+      <div>
+        <label className="sec-label">Target Topic (Optional)</label>
+        <select 
+          value={topic}
+          onChange={(e) => setTopic(e.target.value)}
+          className="w-full bg-surface-soft border border-border-main rounded-xl p-3 text-xs font-bold outline-none appearance-none cursor-pointer"
+        >
+          <option value="">Full Syllabus Coverage</option>
+          {availableTopics.map((t: string) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="sec-label">Paper Appearance</label>
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { key: "elite_dark", label: "Elite Dark", color: "bg-brand-800" },
+            { key: "pro_protocol", label: "Pro Protocol", color: "bg-slate-800" },
+            { key: "uneb_standard", label: "UNEB Classic", color: "bg-black" }
+          ].map(s => (
+            <button
+              key={s.key}
+              onClick={() => setPaperStyle(s.key)}
+              className={cn(
+                "py-2.5 rounded-xl text-[9px] font-black uppercase tracking-tighter flex flex-col items-center gap-1.5 border-2 transition-all",
+                paperStyle === s.key
+                  ? "border-brand-800 bg-brand-800/10 text-brand-800"
+                  : "border-border-main bg-surface-soft text-foreground opacity-50 hover:opacity-100"
+              )}
+            >
+              <div className={`w-5 h-3 rounded-sm ${s.color}`} />
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -869,30 +1239,21 @@ function GeneratorControls({
         disabled={isGenerating}
         onClick={handleGenerate}
         className={cn(
-          "w-full py-4 mt-6 rounded-2xl flex items-center justify-center gap-3 transition-all",
+          "w-full py-4 mt-2 rounded-2xl flex items-center justify-center gap-3 transition-all font-black uppercase tracking-[0.2em] text-sm disabled:opacity-50",
           theme === 'midnight' ? "bg-brand-500 text-black neon-glow hover:bg-brand-400" : "bg-brand-800 text-white hover:bg-brand-900 shadow-xl"
         )}
       >
         {isGenerating ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Generating...
+          </>
         ) : (
-          <Play className="w-4 h-4 fill-current" />
+          <>
+            <Sparkles className="w-5 h-5" />
+            GENERATE
+          </>
         )}
-        GENERATE {mode.toUpperCase()}
-      </button>
-
-      <button 
-        disabled={!selection || isGenerating}
-        onClick={() => setIsRefining(true)}
-        className={cn(
-          "w-full py-3 rounded-xl border-2 font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all mt-4",
-          selection 
-            ? "border-brand-500/50 text-brand-800 hover:bg-brand-500/5" 
-            : "border-border-main text-foreground cursor-not-allowed opacity-30"
-        )}
-      >
-        <Sparkles className="w-3.5 h-3.5" />
-        {selection ? "Refine Selection" : "Select Text to Refine"}
       </button>
 
       <div className="p-4 rounded-xl bg-surface-soft border border-border-main border-dashed">
@@ -926,15 +1287,13 @@ function GeneratorControls({
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `EduQuest_${subject}_${level}.docx`;
-                  document.body.appendChild(a);
+                  a.download = `${subject}_${level}_Exam.docx`;
                   a.click();
-                  a.remove();
-                } catch (e) {
-                  console.error(e);
-                  alert("DOCX Export failed.");
+                  window.URL.revokeObjectURL(url);
+                } catch(e) {
+                  alert("Export failed. Please try again.");
                 }
-              }}
+             }}
              className="w-full py-2 bg-surface border border-border-main rounded-lg text-xs font-bold text-foreground opacity-50 hover:opacity-100 hover:border-brand-800 hover:text-brand-800 transition-all"
            >
              Download Microsoft Word (.docx)
@@ -944,6 +1303,10 @@ function GeneratorControls({
     </div>
   )
 }
+
+
+
+
 
 function LibraryView({ library, onProjectLoad, theme }: any) {
   return (
@@ -1113,7 +1476,7 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config`)
+    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(d => setConfig(d))
       .catch(() => {});
@@ -1912,7 +2275,7 @@ function ChatView({ theme, bridgedPrompt, setBridgedPrompt }: { theme: string, b
       const data = await res.json();
       setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Remote Connection Error. Please verify the API is online.' }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Error: Remote Connection. Please verify the API is online.' }]);
     } finally {
       setIsTyping(false);
     }

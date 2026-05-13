@@ -23,18 +23,38 @@ def get_chroma_collection():
         print(f"Database Warning: {e}")
         return None
 
-def retrieve_syllabus_context(level, subject, term, topic, strategy="syllabus"):
-    """Safely retrieves context from the vector database with Semantic Re-Ranking."""
+def retrieve_syllabus_context(subject, level, term, topic, strategy="syllabus"):
+    """Safely retrieves context from the vector database with Semantic Re-Ranking and strict metadata filtering."""
     collection = get_chroma_collection()
     if not collection:
         return ""
     
     try:
         search_query = f"{level} {subject} {term} {topic} {strategy}"
-        # Step 1: Broad Retrieval (fetch 15 candidates)
-        results = collection.query(query_texts=[search_query], n_results=15)
         
-        if results and "documents" in results and results["documents"]:
+        # Build strict metadata filter
+        conditions = []
+        if subject and subject != "Unknown":
+            conditions.append({"subject": subject})
+        if level and level != "Unknown":
+            conditions.append({"level": level})
+        if term and term != "Unknown":
+            # Include exact term match AND year-round general content
+            conditions.append({"term": {"$in": [term, "Unknown"]}})
+            
+        where_filter = None
+        if len(conditions) > 1:
+            where_filter = {"$and": conditions}
+        elif len(conditions) == 1:
+            where_filter = conditions[0]
+
+        # Step 1: Broad Retrieval (fetch 15 candidates)
+        if where_filter:
+            results = collection.query(query_texts=[search_query], n_results=15, where=where_filter)
+        else:
+            results = collection.query(query_texts=[search_query], n_results=15)
+        
+        if results and "documents" in results and results["documents"] and len(results["documents"][0]) > 0:
             docs = results["documents"][0]
             metas = results["metadatas"][0] if "metadatas" in results else [{}]*len(docs)
             

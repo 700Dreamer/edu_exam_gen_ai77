@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from core.ai_engine import generate_ai_content, analyze_pedagogy, generate_flow_step, chat_response, get_openai_client, generate_scenario_content
+from core.ai_engine import generate_ai_content, analyze_pedagogy, generate_flow_step, chat_response, get_openai_client, generate_scenario_content, generate_ai_image, generate_illustration
 from core.db_engine import save_project, load_projects, init_db
 from ui.document_builder import build_full_html
 from core.syllabus_master import ALL_SUBJECTS, ALL_LEVELS, get_master_topics
@@ -32,18 +32,9 @@ from core.marking_engine import mark_student_work
 app = FastAPI(title="EduQuest AI Engine", version="3.1.0")
 
 # ── CORS — allow Next.js dev server ──
-_EXTRA_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        # Docker Compose service-name (server-side rendering calls)
-        "http://frontend:3000",
-        # Production — set CORS_ORIGINS env var for custom domains
-        *_EXTRA_ORIGINS,
-    ],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -57,11 +48,15 @@ class GenerateRequest(BaseModel):
     subject: str
     term: str
     question_count: int
+    duration: Optional[str] = "2 HR 30 MIN"
+    paper_style: Optional[str] = "uneb_standard"
+    view_mode: Optional[str] = "scroll"
     topic: Optional[str] = ""
     brand_name: Optional[str] = "EduQuest"
     ai_model: Optional[str] = "gpt-4o"
     content_override: Optional[str] = None
     pedagogy_hint: Optional[dict] = None
+    force_images: Optional[bool] = False
 
 class ScenarioRequest(BaseModel):
     subject: str
@@ -72,13 +67,14 @@ class ScenarioRequest(BaseModel):
     difficulty: Optional[str] = "Standard"
     brand_name: Optional[str] = "EduQuest"
     ai_model: Optional[str] = "gpt-4o"
+    force_images: Optional[bool] = False
 
 @app.post("/api/scenario")
 async def scenario_endpoint(req: ScenarioRequest):
     try:
-        raw_data, raw_str, title = generate_scenario_content(
-            req.theme, req.level, req.subject, req.term, req.topic, req.difficulty, req.ai_model
-        )
+        raw_str = await generate_scenario_content(req.subject, req.level, req.theme, force_images=req.force_images)
+        raw_data = json.loads(raw_str)
+        title = f"{req.subject} {req.level} - Competency Test"
         
         # Render HTML
         html = build_full_html(
@@ -122,23 +118,30 @@ async def generate_endpoint(req: GenerateRequest):
             raw, raw_str, title = await generate_ai_content(
                 req.mode, req.level, req.subject, req.term, 
                 req.question_count, "Balanced", req.ai_model, "Internal", 
-                req.topic, req.pedagogy_hint
+                req.topic, req.pedagogy_hint, req.force_images
             )
+        
+        term_val = req.term
+        term_roman = "I"
+        if "Term 2" in term_val: term_roman = "II"
+        elif "Term 3" in term_val: term_roman = "III"
         
         # Render the actual HTML for the frontend
         html = build_full_html(
             mode=req.mode,
-            exam_type="Internal",
+            exam_type="BEGINNING OF", # Matches image
             level=req.level,
             subject=req.subject,
-            term_roman=req.term,
+            term_roman=f"TERM {term_roman}",
             exam_year="2026",
-            duration="2 HR 30 MIN",
+            duration=req.duration,
             school_name="EduQuest Central",
             brand_name=req.brand_name,
             question_count=req.question_count,
             content_raw=raw_str,
-            topic=req.topic
+            topic=req.topic,
+            paper_style=req.paper_style,
+            view_mode=req.view_mode
         )
         
         # Auto-save history
@@ -159,6 +162,60 @@ async def analyze_endpoint(data: dict):
     try:
         analysis = await analyze_pedagogy(content, subject, level)
         return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/generate-image")
+async def generate_image_endpoint(data: dict):
+    """Manually generate an AI illustration for a single question on demand."""
+    question_text = data.get("question_text", "")
+    subject = data.get("subject", "General")
+    level = data.get("level", "Primary 4")
+    custom_prompt = data.get("custom_prompt", "")  # Optional teacher-supplied prompt
+    style = data.get("style", "png")
+
+    if not question_text and not custom_prompt:
+        raise HTTPException(status_code=400, detail="question_text or custom_prompt is required")
+
+    try:
+        result = await generate_illustration(question_text, subject, level, custom_prompt, style)
+
+        if not result:
+            raise HTTPException(
+                status_code=503,
+                detail="Illustration generation unavailable. Check your GOOGLE_API_KEY and ensure the Gemini API is enabled."
+            )
+
+        if result.strip().startswith("<svg"):
+            image_html = result
+        else:
+            image_html = f'<img src="{result}" style="width:100%; max-width:420px; display:block; margin:10px auto; border:1px solid #eee; border-radius:4px;"/>'
+
+        return {"image_html": image_html}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class QuestionRegenerateRequest(BaseModel):
+    subject: str
+    level: str
+    topic: str = ""
+    instruction: str = ""
+
+@app.post("/api/regenerate-question")
+async def regenerate_question_endpoint(req: QuestionRegenerateRequest):
+    try:
+        from core.ai_engine import regenerate_single_question
+        new_q = await regenerate_single_question(
+            subject=req.subject,
+            level=req.level,
+            topic=req.topic,
+            instruction=req.instruction
+        )
+        if not new_q:
+            raise HTTPException(status_code=500, detail="Failed to generate new question.")
+        return {"question": new_q}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -492,7 +549,7 @@ async def export_docx_endpoint(req: GenerateRequest):
             "term_roman": term_roman,
             "exam_type": "Internal", # Fallback
             "exam_year": "2026",
-            "duration": "2 HR 30 MIN",
+            "duration": req.duration,
             "mode": req.mode
         }
         
@@ -523,23 +580,6 @@ async def mark_endpoint(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/health/resources")
-def health_resources():
-    import os
-    try:
-        cpu = round(os.getloadavg()[0] / os.cpu_count() * 100, 1)
-        mem = 0
-        with open("/proc/meminfo", "r") as f:
-            lines = f.readlines()
-            avail = next((int(l.split()[1]) for l in lines if l.startswith("MemAvailable:")), 0)
-            total = next((int(l.split()[1]) for l in lines if l.startswith("MemTotal:")), 0)
-            if total > 0 and avail > 0:
-                mem = round((total - avail) / 1024)
-        return {"memory_mb": mem, "cpu_percent": cpu}
-    except Exception:
-        return {"memory_mb": 0, "cpu_percent": 0}
-
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

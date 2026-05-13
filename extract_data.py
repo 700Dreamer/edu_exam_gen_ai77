@@ -17,7 +17,7 @@ except ImportError:
     docx = None
 
 # Set the target dataset directory
-BASE_DIR = "/Users/luke/Downloads/docs/Filemail.com - eduquest"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Output file for our structured data
 OUTPUT_JSON = os.path.join(BASE_DIR, "extracted_syllabus_data.json")
 
