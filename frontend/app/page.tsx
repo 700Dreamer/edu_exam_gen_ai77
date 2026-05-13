@@ -755,6 +755,7 @@ function StudioView({
                           <option value="sketch">Style: Hand-Drawn Sketch</option>
                           <option value="realistic">Style: Realistic Photo</option>
                           <option value="3d">Style: 3D Render</option>
+                          <option value="raw">Style: Raw Prompt (DALL-E 3)</option>
                         </select>
                       </div>
                       <button

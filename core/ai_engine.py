@@ -161,27 +161,28 @@ Output the SVG code now:"""
             print(f"generate_illustration error (SVG): {e}")
             return None
 
-    # Handle all other styles with DALL-E 3 (PNGs)
-    style_modifiers = {
-        "png": "Style: clean black-and-white textbook illustration, pure white background, sharp black outlines, no shading. Highly accurate, educational.",
-        "sketch": "Style: rough hand-drawn pencil sketch, educational outline on white paper, no color.",
-        "realistic": "Style: hyper-realistic high-resolution photograph, well-lit, academic textbook style.",
-        "3d": "Style: 3D render, isometric projection, clean soft lighting, educational and professional.",
-    }
-    style_prompt = style_modifiers.get(style, style_modifiers["png"])
-
-    full_prompt = (
-        f"A professional academic diagram for a {level} exam. "
-        f"Description: {drawing_desc}. "
-        f"{style_prompt}"
-    )
+    if style == "raw":
+        full_prompt = drawing_desc
+    else:
+        style_modifiers = {
+            "png": "Style: clean black-and-white textbook illustration, pure white background, sharp black outlines, no shading. Highly accurate, educational.",
+            "sketch": "Style: rough hand-drawn pencil sketch, educational outline on white paper, no color.",
+            "realistic": "Style: hyper-realistic high-resolution photograph, well-lit, academic textbook style.",
+            "3d": "Style: 3D render, isometric projection, clean soft lighting, educational and professional.",
+        }
+        style_prompt = style_modifiers.get(style, style_modifiers["png"])
+        full_prompt = (
+            f"A professional academic diagram for a {level} exam. "
+            f"Description: {drawing_desc}. "
+            f"{style_prompt}"
+        )
 
     filename = f"img_{uuid.uuid4().hex[:8]}.png"
     save_path = os.path.join(BASE_DIR, "frontend", "public", "generated", filename)
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
     try:
-        print(f"DEBUG: Calling DALL-E 3 ({style}) for: {drawing_desc[:30]}...")
+        print(f"DEBUG: Calling DALL-E ({style}) for: {drawing_desc[:30]}...")
         res = await client.images.generate(
             model="dall-e-3",
             prompt=full_prompt,
@@ -197,6 +198,21 @@ Output the SVG code now:"""
         return f"/generated/{filename}"
     except Exception as e:
         print(f"generate_illustration error (DALL-E 3): {e}")
+        print("DEBUG: Falling back to Pollinations AI (Free API)...")
+        import urllib.parse
+        try:
+            encoded_prompt = urllib.parse.quote(full_prompt)
+            url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                with open(save_path, "wb") as f:
+                    f.write(response.content)
+                print(f"DEBUG: Pollinations Fallback Success -> {filename}")
+                return f"/generated/{filename}"
+            else:
+                print(f"DEBUG: Pollinations returned status code {response.status_code}")
+        except Exception as ge:
+            print(f"DEBUG: Pollinations Fallback Error: {ge}")
         return None
 
 def get_openai_client():
@@ -263,6 +279,98 @@ async def generate_ai_content(mode, level, subject, term, num_questions, difficu
     if subject in MASTER_SYLLABUS and level in MASTER_SYLLABUS[subject]:
         authorized_topics = MASTER_SYLLABUS[subject][level]
     authorized_topics_str = ", ".join(authorized_topics) if authorized_topics else "General Subject Knowledge"
+
+    if mode == "Lesson Notes":
+        prompt = f"""### LESSON NOTES PROTOCOL - {subject.upper()} | {level} | {term}
+You are an expert master teacher and curriculum designer.
+Topic Focus: {topic or 'A key topic from the syllabus'}
+Syllabus Context (RAG): {syllabus_rows}
+
+### PEDAGOGICAL CONSTRAINTS:
+1. TARGET AUDIENCE: {age_profile}. Ensure the tone and depth perfectly match this cognitive stage.
+2. FORMAT: Generate comprehensive, engaging, step-by-step Lesson Notes for the teacher to deliver in class.
+
+### FORMATTING PROTOCOL:
+- Return ONLY a valid JSON object.
+- Include a list of 'sections', where each section represents a phase of the lesson (e.g., Objectives, Introduction, Main Content, Examples, Conclusion, Evaluation).
+
+Output JSON structure:
+{{
+  "title": "{topic or 'Lesson Notes'}",
+  "sections": [
+    {{
+      "heading": "Lesson Objectives",
+      "content": "By the end of this lesson, learners should be able to... (use HTML <ul> for lists)"
+    }},
+    {{
+      "heading": "Introduction",
+      "content": "Rich instructional content formatted in HTML (use <b>, <i>, <ul>, etc.)"
+    }}
+  ]
+}}
+"""
+        try:
+            response = await client.chat.completions.create(
+                model=ai_model,
+                messages=[
+                    {"role": "system", "content": "You are a professional master teacher. Output ONLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "sections" not in data:
+                data["sections"] = [{"heading": "Lesson Content", "content": str(data)}]
+            return data, json.dumps(data), f"{subject} {level} - Lesson Notes"
+        except Exception as e:
+            print(f"Lesson Notes generation error: {e}")
+            fallback = {"sections": [{"heading": "Error", "content": "Failed to generate lesson notes."}]}
+            return fallback, json.dumps(fallback), "Error"
+
+    elif mode == "Schemes of Work":
+        prompt = f"""### SCHEME OF WORK PROTOCOL - {subject.upper()} | {level} | {term}
+You are an expert master teacher and Head of Department.
+Syllabus Context (RAG): {syllabus_rows}
+
+### PEDAGOGICAL CONSTRAINTS:
+1. TARGET AUDIENCE: {age_profile}.
+2. FORMAT: Generate a comprehensive, 4-week Scheme of Work (as an example timeframe) for the selected topic or general term syllabus.
+
+### FORMATTING PROTOCOL:
+- Return ONLY a valid JSON object.
+- Include a list of 'weeks', where each week has a 'week_number', 'topic', 'objectives', 'activities', and 'resources'.
+
+Output JSON structure:
+{{
+  "title": "Scheme of Work - {subject} ({term})",
+  "weeks": [
+    {{
+      "week_number": "Week 1",
+      "topic": "Subtopic Name",
+      "objectives": "Learners should be able to... (HTML format)",
+      "activities": "Teacher will... Learners will... (HTML format)",
+      "resources": "Textbooks, charts, etc. (HTML format)"
+    }}
+  ]
+}}
+"""
+        try:
+            response = await client.chat.completions.create(
+                model=ai_model,
+                messages=[
+                    {"role": "system", "content": "You are a Head of Department. Output ONLY valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(response.choices[0].message.content)
+            if "weeks" not in data:
+                data["weeks"] = [{"week_number": "Error", "topic": "N/A", "objectives": "N/A", "activities": str(data), "resources": "N/A"}]
+            return data, json.dumps(data), f"{subject} {level} - Scheme of Work"
+        except Exception as e:
+            print(f"Scheme of Work generation error: {e}")
+            fallback = {"weeks": [{"week_number": "Error", "topic": "N/A", "objectives": "Failed to generate", "activities": "", "resources": ""}]}
+            return fallback, json.dumps(fallback), "Error"
 
     async def _generate_chunk(chunk_size: int, start_num: int):
         prompt = f"""### NATIONAL EXAM PROTOCOL - {subject.upper()} | {level} | {term}
@@ -483,8 +591,8 @@ Output JSON:
     try:
         response = await client.chat.completions.create(
             model="gpt-4o",
-            messages=[{{"role": "user", "content": prompt}}],
-            response_format={{"type": "json_object"}}
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
         )
         data = json.loads(response.choices[0].message.content)
         

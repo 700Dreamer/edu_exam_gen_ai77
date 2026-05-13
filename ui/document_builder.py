@@ -129,7 +129,7 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
                 # Append to Hidden Answer Key
                 answer_key_html += f"<tr style='border-bottom: 1px solid #e2e8f0;'><td style='padding: 10px; font-weight:900;'>Q{num}</td><td style='padding: 10px;'>{ans}</td><td style='padding: 10px; font-weight:900; color:var(--p); text-align:center;'>{marks}</td></tr>"
                 
-        else:
+        elif mode == "Lesson Notes":
             for s in data.get("sections", []):
                 h = s.get("heading", "")
                 c = s.get("content", "")
@@ -141,6 +141,33 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
                 if tikz:
                     parsed_html += f"  <div style='text-align:center; padding: 15px;'>{tikz}</div>"
                 parsed_html += f"</div>"
+
+        elif mode == "Schemes of Work":
+            parsed_html += "<table style='width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 20px;'>"
+            parsed_html += "<thead><tr style='background: var(--p); color: white;'>"
+            parsed_html += "<th style='padding: 12px; border: 1px solid #e2e8f0; width: 80px;'>Week</th>"
+            parsed_html += "<th style='padding: 12px; border: 1px solid #e2e8f0; width: 150px;'>Topic</th>"
+            parsed_html += "<th style='padding: 12px; border: 1px solid #e2e8f0;'>Objectives</th>"
+            parsed_html += "<th style='padding: 12px; border: 1px solid #e2e8f0;'>Activities</th>"
+            parsed_html += "<th style='padding: 12px; border: 1px solid #e2e8f0; width: 120px;'>Resources</th>"
+            parsed_html += "</tr></thead><tbody>"
+            
+            for w in data.get("weeks", []):
+                wk = w.get("week_number", "")
+                top = w.get("topic", "")
+                obj = w.get("objectives", "")
+                act = w.get("activities", "")
+                res = w.get("resources", "")
+                
+                parsed_html += f"<tr>"
+                parsed_html += f"<td style='padding: 12px; border: 1px solid #e2e8f0; font-weight: bold; vertical-align: top;'>{wk}</td>"
+                parsed_html += f"<td style='padding: 12px; border: 1px solid #e2e8f0; font-weight: bold; color: var(--s); vertical-align: top;'>{top}</td>"
+                parsed_html += f"<td style='padding: 12px; border: 1px solid #e2e8f0; vertical-align: top;'>{obj}</td>"
+                parsed_html += f"<td style='padding: 12px; border: 1px solid #e2e8f0; vertical-align: top;'>{act}</td>"
+                parsed_html += f"<td style='padding: 12px; border: 1px solid #e2e8f0; font-style: italic; vertical-align: top; color: #64748b;'>{res}</td>"
+                parsed_html += f"</tr>"
+                
+            parsed_html += "</tbody></table>"
     except json.JSONDecodeError:
         parsed_html = content_raw
         answer_key_html = "<tr><td colspan='3'>JSON Error. Manual marking required.</td></tr>"
@@ -280,7 +307,31 @@ body {{
   <input type="range" min="0" max="0.1" step="0.01" value="0.02" style="width:100%;" oninput="sv('--watermark',this.value)">
   <button class="tmpl-btn" style="background:var(--p); color:white; padding:15px; border:none; border-radius:8px; margin-top:20px; font-weight:900;" onclick="window.print()">PRINT FINAL DOCUMENT</button>
 </div>
+"""
+    if mode in ["Lesson Notes", "Schemes of Work"]:
+        document_title = "LESSON NOTES" if mode == "Lesson Notes" else "SCHEME OF WORK"
+        document_body = f"""
+<!-- PAGE 1: CONTENT -->
+<div class="page" id="contentP">
+  <div class="brand-logo" style="opacity:0.2; position:absolute; top:20px; right:20px; height:40px;">
+    {'<img src="data:image/png;base64,' + logo_b64 + '" style="height:100%">' if logo_b64 else ''}
+  </div>
 
+  <div class="brand-h">
+    <div>
+      <div class="doc-t" style="margin-bottom:2px; font-size:12px;">{document_title} | {title_text}</div>
+      <div class="brand-name" style="font-size:36px;">{level} - {subject}</div>
+    </div>
+  </div>
+  
+  <div class="body-c" id="content-body" style="margin-top:20px;">
+    {parsed_html}
+  </div>
+  <div class="pgn">EduQuest Core | {document_title} Module</div>
+</div>
+"""
+    else:
+        document_body = f"""
 <!-- PAGE 1: HEADER -->
 <div class="page" id="mainP">
   <div class="brand-h">
@@ -312,7 +363,7 @@ body {{
 <!-- PAGE 2: CONTENT -->
 <div class="page" id="contentP">
   <div class="brand-logo" style="opacity:0.2; position:absolute; top:20px; right:20px; height:40px;">
-    {f'<img src="data:image/png;base64,{logo_b64}" style="height:100%">' if logo_b64 else ''}
+    {'<img src="data:image/png;base64,' + logo_b64 + '" style="height:100%">' if logo_b64 else ''}
   </div>
 
   <div style="text-align:center; margin-top:10px; border-bottom: 2px solid #000; padding-bottom:5px; margin-bottom:20px;">
@@ -350,6 +401,11 @@ body {{
   </table>
   <div class="pgn">Page 3 of 3 — Secure Marking Key</div>
 </div>
+"""
+
+    template += document_body
+
+    template += f"""
 
 <!-- ── PREVIEW TOOLBAR ── -->
 <div id="preview-toolbar">
@@ -422,6 +478,49 @@ document.addEventListener("DOMContentLoaded", function() {{
 
   // 📡 READY SIGNAL
   window.parent.postMessage({{ type: 'EDUQUEST_READY' }}, '*');
+
+  // ── UNIVERSAL IMAGE DRAG & RESIZE ──
+  let activeDragImg = null;
+  let startX=0, startY=0, initLeft=0, initTop=0;
+
+  document.addEventListener('mousedown', (e) => {{
+    let t = e.target;
+    if (t.closest && t.closest('svg')) t = t.closest('svg');
+    
+    if (t.tagName?.toLowerCase() === 'img' || t.tagName?.toLowerCase() === 'svg' || (t.closest && t.closest('.q-img-zone'))) {{
+      const rect = t.getBoundingClientRect();
+      if (e.clientX > rect.right - 25 && e.clientY > rect.bottom - 25) return; // Allow native resize corner
+      
+      activeDragImg = t;
+      if(window.getComputedStyle(t).position === 'static') {{
+        t.style.position = 'relative';
+      }}
+      t.style.cursor = 'move';
+      t.style.resize = 'both';
+      t.style.overflow = 'hidden';
+      t.style.zIndex = '1000';
+      
+      startX = e.clientX;
+      startY = e.clientY;
+      initLeft = parseInt(t.style.left || 0, 10);
+      initTop = parseInt(t.style.top || 0, 10);
+      e.preventDefault();
+    }}
+  }});
+
+  document.addEventListener('mousemove', (e) => {{
+    if (activeDragImg) {{
+      const dx = (e.clientX - startX) / (window._zoom || 1);
+      const dy = (e.clientY - startY) / (window._zoom || 1);
+      activeDragImg.style.left = `${{initLeft + dx}}px`;
+      activeDragImg.style.top = `${{initTop + dy}}px`;
+    }}
+  }});
+
+  document.addEventListener('mouseup', () => {{
+    if(activeDragImg) activeDragImg.style.cursor = 'default';
+    activeDragImg = null;
+  }});
 
   // ── QUESTION CLICK → postMessage to React parent (avoids srcDoc CORS) ──
   let activeWrapId = null;
