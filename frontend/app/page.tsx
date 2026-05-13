@@ -14,7 +14,7 @@ function cn(...inputs: ClassValue[]) {
 const API_BASE = typeof window !== "undefined" ? `http://${window.location.hostname}:8000` : "http://localhost:8000";
 
 // ── TYPES ──
-type Page = "studio" | "ingestion" | "analytics";
+type Page = "studio" | "ingestion" | "analytics" | "flow";
 type Mode = "Exams" | "Lesson Notes" | "Schemes of Work";
 
 interface Project {
