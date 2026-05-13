@@ -2,6 +2,7 @@ import os
 import sys
 import json, io, base64, re, asyncio
 from typing import Optional, List
+import psutil, shutil, tempfile
 
 # ── Load .env securely ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -340,6 +341,57 @@ def ingestion_stats():
         "error_count": st_stats["error_count"],
         "errors": st_stats["errors"]
     }
+
+@app.get("/api/health/resources")
+def health_resources():
+    """Returns system resource usage for the Neural Terminal."""
+    try:
+        cpu = psutil.cpu_percent(interval=None)
+        mem = psutil.virtual_memory().percent
+        return {"cpu": cpu, "memory": mem, "status": "Healthy"}
+    except Exception as e:
+        return {"cpu": 0, "memory": 0, "status": "Error", "detail": str(e)}
+
+@app.post("/api/ingestion/extract")
+async def ingestion_extract(files: List[UploadFile] = File(...)):
+    """Handles manual file uploads, extracts text, and saves to ingestion database."""
+    from core.ingestion_db import save_extracted_file
+    from extract_data import extract_metadata_from_filename, extract_text_from_pdf, extract_text_from_docx
+    
+    results = []
+    for file in files:
+        try:
+            filename = file.filename
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                tmp_path = tmp.name
+            
+            # 1. Extract Metadata
+            meta = extract_metadata_from_filename(filename)
+            meta['filename'] = filename
+            
+            # 2. Extract Text
+            ext = filename.lower().split('.')[-1]
+            text = ""
+            if ext == 'pdf':
+                text = extract_text_from_pdf(tmp_path)
+            elif ext in ['docx', 'doc']:
+                text = extract_text_from_docx(tmp_path)
+            
+            os.remove(tmp_path)
+            
+            if text.strip():
+                meta['content'] = text
+                meta['content_length'] = len(text)
+                save_extracted_file(meta)
+                results.append({"filename": filename, "status": "Success"})
+            else:
+                results.append({"filename": filename, "status": "Error", "detail": "No text extracted"})
+                
+        except Exception as e:
+            results.append({"filename": file.filename, "status": "Error", "detail": str(e)})
+            
+    return {"results": results}
 
 class ChatRequest(BaseModel):
     messages: List[dict]

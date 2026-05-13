@@ -183,27 +183,44 @@ Output the SVG code now:"""
 
     try:
         print(f"DEBUG: Calling DALL-E ({style}) for: {drawing_desc[:30]}...")
-        res = await client.images.generate(
-            model="dall-e-3",
-            prompt=full_prompt,
-            n=1,
-            size="1024x1024",
-            response_format="b64_json"
-        )
+        # First attempt with DALL-E 3
+        try:
+            res = await client.images.generate(
+                model="dall-e-3",
+                prompt=full_prompt,
+                n=1,
+                size="1024x1024",
+                response_format="b64_json"
+            )
+        except Exception as de:
+            # Check if it's a "model not found" error
+            if "model" in str(de).lower() and "exist" in str(de).lower():
+                print("DEBUG: DALL-E 3 not available on this key. Falling back to DALL-E 2...")
+                res = await client.images.generate(
+                    model="dall-e-2",
+                    prompt=full_prompt,
+                    n=1,
+                    size="1024x1024",
+                    response_format="b64_json"
+                )
+            else:
+                raise de
+
         image_b64 = res.data[0].b64_json
         with open(save_path, "wb") as f:
             f.write(base64.b64decode(image_b64))
             
-        print(f"DEBUG: DALL-E 3 Success -> {filename}")
+        print(f"DEBUG: DALL-E Success -> {filename}")
         return f"/generated/{filename}"
     except Exception as e:
-        print(f"generate_illustration error (DALL-E 3): {e}")
+        print(f"generate_illustration error (DALL-E): {e}")
         print("DEBUG: Falling back to Pollinations AI (Free API)...")
         import urllib.parse
         try:
             encoded_prompt = urllib.parse.quote(full_prompt)
             url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
-            response = requests.get(url, timeout=30)
+            # Use a shorter timeout for the free fallback
+            response = requests.get(url, timeout=15)
             if response.status_code == 200:
                 with open(save_path, "wb") as f:
                     f.write(response.content)
