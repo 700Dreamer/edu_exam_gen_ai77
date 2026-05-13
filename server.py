@@ -126,10 +126,14 @@ async def generate_endpoint(req: GenerateRequest):
         if "Term 2" in term_val: term_roman = "II"
         elif "Term 3" in term_val: term_roman = "III"
         
+        exam_type = "BEGINNING OF"
+        if "(MOT)" in term_val or "MOT" in term_val: exam_type = "MIDDLE OF"
+        elif "(EOT)" in term_val or "EOT" in term_val: exam_type = "END OF"
+        
         # Render the actual HTML for the frontend
         html = build_full_html(
             mode=req.mode,
-            exam_type="BEGINNING OF", # Matches image
+            exam_type=exam_type,
             level=req.level,
             subject=req.subject,
             term_roman=f"TERM {term_roman}",
@@ -511,20 +515,52 @@ Use clear academic language suitable for teachers preparing exam content."""
 @app.post("/api/flow/stream")
 async def stream_flow(data: dict):
     nodes = data.get("nodes", [])
+    edges = data.get("edges", [])
     
     async def generator():
-        source = next((n for n in nodes if n['type'] == 'source'), {'data': {}})
-        topics_node = next((n for n in nodes if n['type'] == 'topic'), {'data': {}})
-        logic = next((n for n in nodes if n['type'] == 'logic'), {'data': {}})
+        # Build adjacency for fast traversal
+        parents = {n['id']: [] for n in nodes}
+        children = {n['id']: [] for n in nodes}
+        for e in edges:
+            if e['target'] in parents and e['source'] in children:
+                parents[e['target']].append(e['source'])
+                children[e['source']].append(e['target'])
+                
+        def find_node_by_type(start_id, target_type, visited=None):
+            if visited is None: visited = set()
+            if start_id in visited: return None
+            visited.add(start_id)
+            
+            node = next((n for n in nodes if n['id'] == start_id), None)
+            if node and node.get('type') == target_type:
+                return node
+                
+            # Search both parents and children for flexibility
+            for neighbor in parents.get(start_id, []) + children.get(start_id, []):
+                res = find_node_by_type(neighbor, target_type, visited)
+                if res: return res
+            return None
+
+        # Find all topic nodes
+        topic_nodes = [n for n in nodes if n.get('type') == 'topic']
         
-        subject = source['data'].get('subject', 'General')
-        level = source['data'].get('level', 'Standard')
-        topic_list = topics_node['data'].get('topics', ['General Concept'])
-        bloom = logic['data'].get('bloom', 'Analysis')
-        
-        for t in topic_list:
-            q = await generate_flow_step(t, subject, level, bloom)
-            yield f"data: {json.dumps(q)}\n\n"
+        for t_node in topic_nodes:
+            source = find_node_by_type(t_node['id'], 'source') or {'data': {}}
+            logic = find_node_by_type(t_node['id'], 'logic') or {'data': {}}
+            format_node = find_node_by_type(t_node['id'], 'format') or {'data': {}}
+            ref_node = find_node_by_type(t_node['id'], 'reference') or {'data': {}}
+            
+            subject = source['data'].get('subject', 'General')
+            level = source['data'].get('level', 'Standard')
+            topic_list = t_node['data'].get('topics', ['General Concept'])
+            bloom = logic['data'].get('bloom', 'Analysis')
+            out_format = format_node['data'].get('format', 'Multiple Choice')
+            reference = ref_node['data'].get('reference', '')
+            
+            for t in topic_list:
+                # We inject format and reference into generate_flow_step
+                q = await generate_flow_step(t, subject, level, bloom, out_format, reference)
+                yield f"data: {json.dumps(q)}\n\n"
             
     return StreamingResponse(generator(), media_type="text/event-stream")
 
@@ -541,13 +577,17 @@ async def export_docx_endpoint(req: GenerateRequest):
         elif "Term 3" in term_val: term_roman = "III"
         elif "BOT" in term_val or "MOT" in term_val or "EOT" in term_val:
              term_roman = term_val # Keep as is if it's just a period
+        exam_type = "BEGINNING OF"
+        if "(MOT)" in term_val or "MOT" in term_val: exam_type = "MIDDLE OF"
+        elif "(EOT)" in term_val or "EOT" in term_val: exam_type = "END OF"
+
         config = {
             "brand_name": req.brand_name,
             "subject": req.subject,
             "level": req.level,
             "term": req.term,
             "term_roman": term_roman,
-            "exam_type": "Internal", # Fallback
+            "exam_type": exam_type,
             "exam_year": "2026",
             "duration": req.duration,
             "mode": req.mode
