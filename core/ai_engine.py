@@ -4,8 +4,7 @@ import json, asyncio, uuid
 import base64
 from typing import Optional
 from openai import OpenAI, AsyncOpenAI
-import google.generativeai as genai
-from google import genai as genai_new
+from google import genai
 from core.db_engine import retrieve_syllabus_context
 from core.map_library import get_best_map
 from core.paper_structure import get_paper_structure, get_total_questions
@@ -16,10 +15,9 @@ import uuid
 # ── Gemini Draftsman Initialization ──
 google_key = os.environ.get("GOOGLE_API_KEY")
 if google_key:
-    genai.configure(api_key=google_key)
-    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    genai_client = genai.Client(api_key=google_key)
 else:
-    gemini_model = None
+    genai_client = None
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -57,11 +55,14 @@ async def generate_ai_image(prompt, subject="Geography", level=""):
 
     try:
         print(f"DEBUG: Imagen 4 fallback for [{subject}]...")
-        client = genai_new.Client(api_key=google_key)
-        response = client.models.generate_images(
+        # Use the global genai_client
+        if not genai_client:
+             return None
+             
+        response = genai_client.models.generate_images(
             model="imagen-4.0-generate-001",
             prompt=full_prompt,
-            config=genai_new.types.GenerateImagesConfig(
+            config=genai.types.GenerateImagesConfig(
                 number_of_images=1,
                 aspect_ratio="1:1",
             ),
@@ -81,7 +82,7 @@ async def generate_ai_image(prompt, subject="Geography", level=""):
 
 async def generate_gemini_drawing(question_prompt, context_hint=""):
     """Uses Gemini 1.5 Pro to design a fresh, high-fidelity SVG/TikZ diagram based on the question prompt."""
-    if not gemini_model:
+    if not genai_client:
         return None
     
     full_prompt = f"""### TASK:
@@ -103,7 +104,11 @@ async def generate_gemini_drawing(question_prompt, context_hint=""):
     """
     
     try:
-        response = await gemini_model.generate_content_async(full_prompt)
+        # Use the global genai_client with async support
+        response = await genai_client.aio.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=full_prompt
+        )
         drawing_code = response.text.strip()
         # Clean up markdown
         drawing_code = re.sub(r'```(?:tikz|latex|html|svg)?\s*', '', drawing_code)
