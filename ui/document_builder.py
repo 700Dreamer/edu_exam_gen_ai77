@@ -495,8 +495,8 @@ document.addEventListener("DOMContentLoaded", function() {{
     const items = Array.from(bodyC.children);
     const mainPage = document.getElementById('mainP');
     
-    // Virtual A4 height in pixels (roughly 297mm at 96dpi)
-    const A4_HEIGHT = 1050; // Slightly less than 1122 to allow for some breathing room
+    // Maximum height for the content area (A4 1122px - 2x20mm padding)
+    const MAX_CONTENT_HEIGHT = 950; 
     
     let currentPage = contentP;
     let currentBody = bodyC;
@@ -509,7 +509,7 @@ document.addEventListener("DOMContentLoaded", function() {{
         currentBody.appendChild(item);
         
         // Check if current page overflows
-        if (currentPage.scrollHeight > A4_HEIGHT) {{
+        if (currentBody.offsetHeight > MAX_CONTENT_HEIGHT) {{
             // If this is the only item on the page and it's too big, we have to keep it here 
             // but we'll still start a new page for the next item.
             if (currentBody.children.length > 1) {{
