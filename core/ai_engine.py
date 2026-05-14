@@ -72,7 +72,7 @@ async def generate_ai_image(prompt, subject="Geography", level=""):
             with open(save_path, "wb") as f:
                 f.write(image_bytes)
             print(f"DEBUG: Imagen 4 Success -> {filename}")
-            return f"/generated/{filename}"
+            return f"/api/generated/{filename}"
         else:
             print("DEBUG: Imagen 4 returned no images.")
     except Exception as e:
@@ -200,7 +200,7 @@ Output the SVG code now:"""
             f.write(base64.b64decode(image_b64))
             
         print(f"DEBUG: DALL-E 3 Success -> {filename}")
-        return f"/generated/{filename}"
+        return f"/api/generated/{filename}"
     except Exception as e:
         print(f"generate_illustration error (DALL-E 3): {e}")
         print("DEBUG: Falling back to Pollinations AI (Free API)...")
@@ -213,7 +213,7 @@ Output the SVG code now:"""
                 with open(save_path, "wb") as f:
                     f.write(response.content)
                 print(f"DEBUG: Pollinations Fallback Success -> {filename}")
-                return f"/generated/{filename}"
+                return f"/api/generated/{filename}"
             else:
                 print(f"DEBUG: Pollinations returned status code {response.status_code}")
         except Exception as ge:

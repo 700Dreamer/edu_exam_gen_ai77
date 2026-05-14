@@ -19,6 +19,7 @@ sys.path.insert(0, BASE_DIR)
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from core.ai_engine import generate_ai_content, analyze_pedagogy, generate_flow_step, chat_response, get_openai_client, generate_scenario_content, generate_ai_image, generate_illustration
@@ -41,6 +42,11 @@ app.add_middleware(
 )
 
 init_db()
+
+# ── Serve generated images ──
+GENERATED_DIR = os.path.join(BASE_DIR, "frontend", "public", "generated")
+os.makedirs(GENERATED_DIR, exist_ok=True)
+app.mount("/api/generated", StaticFiles(directory=GENERATED_DIR), name="generated")
 
 class GenerateRequest(BaseModel):
     mode: str
