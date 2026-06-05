@@ -1,0 +1,39 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+
+# ── Local / OS ────────────────────────────────────────────────────────────────
+.DS_Store
+*.zip
+Archive.zip
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+
+# ── Large data directories (NOT copied into the image) ───────────────────────
+# These are mounted as Docker volumes or kept local-only.
+chroma_db/
+eduquest_history.db
+ingestion_staging.db
+extracted_syllabus_data.json
+
+# ── Educational material directories (very large, local-only) ─────────────────
+NURSERY ITEMS/
+ALL CLASSES/
+p1-p3 schems and notes/
+p4- p7  schems, notes and papers/
+the final schemes/
+
+# ── Node (frontend handled by its own Dockerfile) ─────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/.next/

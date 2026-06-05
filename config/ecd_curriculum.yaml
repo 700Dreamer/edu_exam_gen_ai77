@@ -1,0 +1,104 @@
+classes:
+  Baby Class:
+    age_range: "3 - 4"
+    math_limit: 5
+    cognitive_constraints:
+      - "Strictly no writing or spelling words from memory."
+      - "Writing tasks are limited entirely to tracing single letters or digits."
+      - "No logic sequencing or abstract math operations."
+    allowed_math_types:
+      - "count_circle"
+      - "draw_for_number"
+      - "match_numbers"
+      - "draw_colour"
+      - "shade_for_number"
+      - "trace_letter"
+    allowed_language_types:
+      - "trace_letter"
+      - "circle_correct"
+      - "match_words"
+      - "draw_colour"
+      - "copy_word"
+      - "odd_one_out"
+      - "name_sets"
+    allowed_social_types:
+      - "match_pictures"
+      - "circle_correct"
+      - "draw_colour"
+      - "shade_for_number"
+      - "copy_word"
+
+  Middle Class:
+    age_range: "4 - 5"
+    math_limit: 10
+    cognitive_constraints:
+      - "No full multi-syllable word spelling from memory."
+      - "Writing is limited to filling missing single letters (e.g. c_t) or single digits."
+      - "Odd-one-out must be row of pictures, not words."
+    allowed_math_types:
+      - "count_write"
+      - "sequence"
+      - "name_shapes"
+      - "write_in_words"
+      - "count_circle"
+      - "draw_for_number"
+      - "add_numbers"
+    allowed_language_types:
+      - "fill_missing_letter"
+      - "oral_questions"
+      - "days_of_week"
+      - "name_picture"
+      - "circle_correct"
+      - "copy_word"
+      - "odd_one_out"
+    allowed_social_types:
+      - "name_picture"
+      - "circle_correct"
+      - "match_words"
+      - "draw_colour"
+      - "fill_missing_letter"
+      - "write_yes_no"
+
+  Top Class:
+    age_range: "5 - 6"
+    math_limit: 20
+    cognitive_constraints:
+      - "Foundational literacy assumed. Children can write short words and copy sentences."
+      - "Can solve basic abstract math problems up to 20."
+    allowed_math_types:
+      - "add_numbers"
+      - "number_between"
+      - "count_write"
+      - "sequence"
+      - "name_shapes"
+      - "write_in_words"
+      - "write_number_names"
+    allowed_language_types:
+      - "make_sentence"
+      - "write_number_names"
+      - "copy_word"
+      - "fill_missing_letter"
+      - "write_correct_word"
+      - "match_words"
+    allowed_social_types:
+      - "name_picture"
+      - "circle_correct"
+      - "match_words"
+      - "draw_colour"
+      - "fill_missing_word"
+      - "write_yes_no"
+      - "make_sentence"
+
+learning_areas:
+  LA1: "Relating with Others"
+  LA2: "My Environment"
+  LA3: "Taking Care of Myself"
+  LA4: "Mathematical Concepts"
+  LA5: "Language Development"
+
+subject_focus:
+  LA1: "social roles, people at home/school, good/bad behaviors, and community. NO math or spelling."
+  LA2: "physical environment, garden tools, animals, weather, and transport. NO math or spelling."
+  LA3: "body parts, personal hygiene, health, and cleaning items. NO math or spelling."
+  LA4: "numbers, shapes, counting, addition, and sets. NO letter spelling, reading, or sentences."
+  LA5: "letters, phonics, reading, tracing, sounds, and word formation. NO math or shapes."

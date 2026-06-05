@@ -1,0 +1,139 @@
+<div class="q-wrap" data-qtext="{{ safe_text }}" data-subject="{{ subject }}" data-level="{{ level }}" style="margin-bottom:22px; clear:both; position:relative; line-height:1.5; white-space:normal;">
+  <div style="font-size:15px; display:flex; align-items:flex-start; margin-bottom:5px;">
+    <span style="font-weight:bold; margin-right:5px; flex-shrink:0;">{{ num }}.</span>
+    <span style="flex:1;">{{ text }}</span>
+    {% if q_type == 'mcq' %}
+    <div style="border: 2px solid #000; width: 32px; height: 32px; margin-left: 12px; flex-shrink: 0;"></div>
+    {% endif %}
+  </div>
+
+  <!-- ── REFERENCE DIAGRAM / STUDENT DRAWING (IMMEDIATELY BELOW STEM) ── -->
+  {% if is_drawing_question %}
+  <div style="border:1px solid #000; min-height:180px; margin:10px 0 15px 0; position:relative; display:flex; justify-content:center; align-items:center; padding: 20px;">
+    <span style="position:absolute; top:5px; left:5px; font-size:8px; opacity:0.3; text-transform:uppercase;">STUDENT DRAWING SPACE</span>
+    {% if diagram_url %}
+      <img src="{{ diagram_url }}" alt="Base diagram for student" style="max-width:90%; max-height:260px; object-fit:contain; opacity:0.85;">
+    {% endif %}
+  </div>
+  {% else %}
+
+    {% if diagram_url %}
+    <div style="text-align:center; margin: 10px 0 12px 0;">
+      <img src="{{ diagram_url }}" alt="Exam diagram"
+           style="max-width:90%; max-height:260px; object-fit:contain; display:inline-block;">
+    </div>
+    {% endif %}
+  {% endif %}
+
+  <!-- ── CONTENT / TASK PARTS ── -->
+  {% if q_type == 'mcq' and options %}
+  <div style="margin-left: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; margin-bottom: 15px; font-size: 14px;">
+    {% set labels = ['A', 'B', 'C', 'D', 'E'] %}
+    {% for opt in options %}
+    <div style="display:flex; gap:8px;">
+        <span style="font-weight:bold;">{{ labels[loop.index0] }}.</span>
+        <span>{{ opt }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if q_type == 'fill_blank' and fill_words %}
+  <div style="margin-left: 15px; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; font-size: 15px; font-family: monospace; letter-spacing: 2px;">
+    {% for fw in fill_words %}
+    <div>{{ fw }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if q_type == 'matching' and match_left and match_right %}
+  <div style="margin-left: 15px; display: flex; justify-content: space-around; margin-top: 10px; margin-bottom: 10px; font-size: 14px;">
+    <div style="display: flex; flex-direction: column; gap: 18px;">
+      {% for left in match_left %}
+      <div>{{ left }}</div>
+      {% endfor %}
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 18px;">
+      {% for right in match_right %}
+      <div>{{ right }}</div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if q_type == 'vertical_math' and math_top and math_bottom %}
+  <div style="margin-left: 30px; margin-top: 10px; font-size: 17px; font-family: monospace;">
+    <div style="text-align: right; width: 60px;">{{ math_top }}</div>
+    <div style="text-align: right; width: 60px; position: relative;">
+      <span style="position: absolute; left: 0;">{{ math_op }}</span> {{ math_bottom }}
+    </div>
+    <div style="border-top: 2px solid #000; border-bottom: 2px solid #000; width: 60px; height: 28px; margin-top: 4px;"></div>
+  </div>
+  {% endif %}
+
+  {% if q_type == 'structured' and sub_questions %}
+  <div style="margin-left: 15px; margin-top: 6px; font-size: 14px;">
+    {% for sub in sub_questions %}
+    <div style="display: flex; margin-bottom: 5px;">
+      <span>{{ sub.label }} &nbsp;</span>
+      <span style="flex:1;">{{ sub.text }}</span>
+      <span style="font-weight:bold;">({{ sub.marks }} marks)</span>
+    </div>
+    {% if sub.marks > 1 %}
+        <div class="ans-lines">
+        {% if is_math %}
+            <div style="height: {{ sub.marks * 60 }}px; width: 100%;"></div>
+        {% else %}
+            {% set roman = ['i', 'ii', 'iii', 'iv', 'v'] %}
+            {% for m in range(sub.marks) %}
+                <div style="display:flex; align-items:center;">
+                    <span style="margin-right: 8px; font-size:13px;">({{ roman[loop.index0] if loop.index0 < 5 else loop.index0 + 1 }})</span>
+                    <div class="ans-line" style="flex:1;"></div>
+                </div>
+            {% endfor %}
+        {% endif %}
+        </div>
+    {% else %}
+        <div class="ans-lines">
+        {% if is_math %}
+            <div style="height: 120px; width: 100%;"></div>
+        {% else %}
+            <div class="ans-line"></div>
+            <div class="ans-line"></div>
+        {% endif %}
+        </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- ── GENERAL SHORT ANSWER RESPONSE LINES ── -->
+  {% if not is_drawing_question %}
+    {% if not (q_type == 'structured' and sub_questions) and q_type not in ['vertical_math', 'matching', 'fill_blank'] and q_type != 'mcq' and '________' not in text %}
+        {% if marks > 1 %}
+            <div class="ans-lines">
+            {% if is_two_col_math or is_math %}
+                <div style="height: {{ marks * 60 }}px; width: 100%;"></div>
+            {% else %}
+                {% for m in range(marks) %}
+                <div style="display:flex; align-items:center;">
+                    <div class="ans-line" style="flex:1;"></div>
+                </div>
+                {% endfor %}
+            {% endif %}
+            </div>
+        {% else %}
+            <div class="ans-lines">
+            {% if is_two_col_math or is_math %}
+                <div style="height: 120px; width: 100%;"></div>
+            {% else %}
+                <div class="ans-line"></div>
+                <div class="ans-line"></div>
+            {% endif %}
+            </div>
+        {% endif %}
+    {% endif %}
+  {% endif %}
+
+  <div class="q-img-zone"></div>
+</div>

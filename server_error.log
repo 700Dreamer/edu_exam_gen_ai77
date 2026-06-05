@@ -1,0 +1,51 @@
+🛑 Cleaning up previous processes...
+🐍 Activating virtual environment...
+🚀 Starting EduQuest AI Engine (FastAPI)...
+🌐 Starting EduQuest Studio Frontend (Next.js)...
+
+> frontend@0.1.0 dev
+> next dev -H 0.0.0.0 -p 3000
+
+▲ Next.js 16.2.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+✓ Ready in 307ms
+/Users/luke/Downloads/docs/ eduquest 2 stabler/.venv/lib/python3.9/site-packages/google/api_core/_python_version_support.py:242: FutureWarning: You are using a non-supported Python version (3.9.6). Google will not post any further updates to google.api_core supporting this Python version. Please upgrade to the latest Python version, or at least Python 3.10, and then update google.api_core.
+  warnings.warn(message, FutureWarning)
+/Users/luke/Downloads/docs/ eduquest 2 stabler/.venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+/Users/luke/Downloads/docs/ eduquest 2 stabler/.venv/lib/python3.9/site-packages/google/auth/__init__.py:54: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/luke/Downloads/docs/ eduquest 2 stabler/.venv/lib/python3.9/site-packages/google/oauth2/__init__.py:40: FutureWarning: You are using a Python version 3.9 past its end of life. Google will update google-auth with critical bug fixes on a best-effort basis, but not with any other fixes or features. Please upgrade your Python version, and then update google-auth.
+  warnings.warn(eol_message.format("3.9"), FutureWarning)
+/Users/luke/Downloads/docs/ eduquest 2 stabler/core/ai_engine.py:5: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  import google.generativeai as genai
+
+ GET / 200 in 225ms (next.js: 87ms, application-code: 138ms)
+INFO:     Started server process [52687]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+ GET / 200 in 45ms (next.js: 4ms, application-code: 41ms)
+INFO:     127.0.0.1:58854 - "GET /api/syllabus/config?t=1778565909706 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58935 - "POST /api/scenario HTTP/1.1" 500 Internal Server Error
+ GET / 200 in 50ms (next.js: 5ms, application-code: 46ms)
+INFO:     127.0.0.1:59317 - "GET /api/syllabus/config?t=1778566013681 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59352 - "OPTIONS /api/generate HTTP/1.1" 200 OK
+DEBUG: Paper structure for Health Habits Baby Class: 10A + 0B = 10 questions
+DEBUG: Imagen 4 fallback for [Health Habits]...
+DEBUG: Imagen 4 Success -> map_c8c4e293.png
+DEBUG: Imagen 4 fallback for [Health Habits]...
+DEBUG: Imagen 4 Error: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/predict_requests_per_model_per_day_paid_tier_1, limit: 70, model: imagen-4.0-generate', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/predict_requests_per_model_per_day_paid_tier_1', 'quotaId': 'PredictRequestsPerDayPerProjectPerModelPaidTier1', 'quotaDimensions': {'location': 'global', 'model': 'imagen-4.0-generate'}, 'quotaValue': '70'}]}]}}
+DEBUG: Imagen 4 fallback for [Health Habits]...
+DEBUG: Imagen 4 Error: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/predict_requests_per_model_per_day_paid_tier_1, limit: 70, model: imagen-4.0-generate', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/predict_requests_per_model_per_day_paid_tier_1', 'quotaId': 'PredictRequestsPerDayPerProjectPerModelPaidTier1', 'quotaDimensions': {'model': 'imagen-4.0-generate', 'location': 'global'}, 'quotaValue': '70'}]}]}}
+INFO:     127.0.0.1:59352 - "POST /api/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59352 - "GET /api/library HTTP/1.1" 200 OK
+start.sh: line 21: 52687 Killed: 9               python3 -m uvicorn server:app --host 0.0.0.0 --port 8000  (wd: ~/Downloads/docs/ eduquest 2 stabler)

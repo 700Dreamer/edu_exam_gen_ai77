@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<title>EduQuest Academy – Baby Class LA4</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Comic Sans MS", "Chalkboard SE", "Comic Neue", "Nunito", sans-serif; background: #f5f7fa; padding: 20px; color: #111; font-size: 28px; }
+.nq-page { background: white; width: 210mm; min-height: 297mm; margin: 0 auto 30px auto; padding: 10mm 12mm 14mm 12mm; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+
+/* DYNAMIC BASE64 BACKGROUNDS */
+.dyn-bg-tree, .dyn-bg-pencil, .dyn-bg-box, .dyn-bg-sweet { background-image: url("data:image/png;base64,123"); }
+
+/* HEADER */
+.nq-header { text-align: center; border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 14px; }
+.nq-school { font-size: 26px; font-weight: 900; text-transform: uppercase; letter-spacing: 1.5px; }
+.nq-exam-title { font-size: 18px; font-weight: 700; text-transform: uppercase; margin-top: 3px; }
+.nq-class-info { font-size: 17px; font-weight: 700; margin-top: 2px; text-transform: uppercase; }
+.nq-la-title { font-size: 17px; font-weight: 900; margin-top: 2px; text-transform: uppercase; text-decoration: underline; }
+
+/* FIELDS */
+.nq-fields { display: flex; flex-direction: column; gap: 24px; margin: 20px 0 36px 0; }
+.nq-field-row { display: flex; align-items: flex-end; gap: 8px; font-size: 22px; font-weight: 700; }
+.nq-field-line { flex: 1; border-bottom: 2px dotted #444; min-width: 200px; height: 28px; }
+
+/* QUESTION BLOCK */
+.nq-block { display: flex; gap: 14px; margin-bottom: 80px; page-break-inside: avoid; }
+.nq-num { font-size: 34px; font-weight: 900; min-width: 42px; padding-top: 2px; flex-shrink: 0; }
+.nq-body { flex: 1; }
+.nq-instruction { font-size: 30px; font-weight: 900; text-decoration: underline; margin-bottom: 36px; text-transform: capitalize; line-height: 1.4; }
+.nq-content { padding-left: 4px; }
+
+/* COUNT & WRITE */
+.nq-count-row { display: flex; flex-direction: column; gap: 50px; align-items: flex-start; }
+.nq-count-item { display: flex; align-items: center; gap: 20px; }
+.nq-pic-box { border: 2px solid #bbb; border-radius: 8px; padding: 8px 10px; min-width: 110px; min-height: 110px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 3px; background: #fafafa; }
+.nq-write-line { font-size: 24px; font-weight: 700; }
+
+.nq-pic-img-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px;
+  border: 2px solid #bbb;
+  border-radius: 8px;
+  min-width: 90px;
+  min-height: 90px;
+  align-items: center;
+  justify-content: center;
+  background: #fafafa;
+}
+.nq-pic-img-row img {
+  object-fit: contain;
+}
+
+/* SEQUENCE */
+.nq-seq-list { display: flex; flex-direction: column; gap: 30px; }
+.nq-seq-line { font-size: 34px; font-weight: 700; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 2px 6px; line-height: 2.4; }
+
+/* DRAW FOR NUMBER */
+.nq-draw-grid { display: flex; flex-direction: column; gap: 28px; }
+.nq-draw-box { display: flex; align-items: flex-end; gap: 14px; }
+.nq-draw-num { font-size: 52px; font-weight: 900; min-width: 44px; line-height: 1; }
+.nq-draw-dotline { flex: 1; border-bottom: 2px dashed #888; min-width: 200px; height: 80px; margin-bottom: 2px; }
+
+/* ADD NUMBERS TABLE */
+.nq-add-table { border-collapse: collapse; margin-top: 6px; border-spacing: 6px; }
+.nq-add-table tr { height: 80px; }
+.nq-add-cell { border: 2.5px solid #000; width: 72px; height: 72px; text-align: center; font-size: 36px; font-weight: 900; padding: 0; vertical-align: middle; }
+.nq-add-op { font-size: 36px; font-weight: 900; padding: 0 10px; text-align: center; vertical-align: middle; }
+.nq-add-ans { border: 2.5px solid #000; width: 110px; height: 72px; vertical-align: middle; }
+
+/* MATCH */
+.nq-match-table { display: flex; flex-direction: column; gap: 40px; max-width: 500px; }
+.nq-match-row { display: flex; align-items: center; gap: 16px; }
+.nq-match-left, .nq-match-right { font-size: 28px; font-weight: 700; min-width: 130px; }
+.nq-match-right { text-align: right; }
+.nq-match-line { flex: 1; min-width: 100px; }
+.nq-match-bullet { font-size: 34px; color: #000; margin: 0 16px; display: flex; align-items: center; justify-content: center; }
+
+/* SHAPES */
+.nq-shapes-row { display: flex; flex-direction: column; gap: 50px; align-items: flex-start; }
+.nq-shape-item { display: flex; align-items: center; gap: 24px; }
+.nq-shape-svg svg { width: 90px !important; height: 90px !important; }
+.nq-shape-name { font-size: 18px; font-weight: 700; }
+
+/* WRITE IN WORDS */
+.nq-words-grid { display: flex; flex-wrap: wrap; gap: 20px 40px; }
+.nq-words-item { font-size: 26px; font-weight: 700; display: flex; align-items: flex-end; gap: 6px; }
+.nq-num-big { font-size: 36px; font-weight: 900; }
+.nq-hint { font-size: 14px; font-style: italic; margin-top: 8px; color: #555; width: 100%; }
+
+/* NUMBER BETWEEN */
+.nq-between-grid { display: flex; flex-wrap: wrap; gap: 20px 40px; }
+.nq-between-item { font-size: 34px; font-weight: 700; display: flex; align-items: flex-end; gap: 6px; }
+
+/* CIRCLE CORRECT */
+.nq-task-label { font-size: 17px; font-style: italic; margin-bottom: 10px; }
+.nq-circle-row { display: flex; flex-wrap: wrap; gap: 24px; }
+.nq-circle-opt { font-weight: 900; border: 2.5px solid #000; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+
+/* FILL MISSING LETTER */
+.nq-fill-grid { display: flex; flex-wrap: wrap; gap: 20px 40px; }
+.nq-fill-item { font-size: 36px; font-weight: 900; display: flex; align-items: flex-end; gap: 2px; }
+
+/* DRAW & COLOUR */
+.nq-draw-colour-grid { display: flex; flex-direction: column; gap: 50px; }
+.nq-dc-item { display: flex; align-items: center; gap: 24px; }
+.nq-dc-box { width: 180px; height: 170px; border: 2px dashed #aaa; border-radius: 8px; }
+.nq-dc-label { font-size: 22px; font-weight: 700; text-align: center; }
+
+/* COPY WORD */
+.nq-copy-list { display: flex; flex-direction: column; gap: 40px; }
+.nq-copy-item { font-size: 32px; display: flex; align-items: flex-end; gap: 14px; line-height: 1.6; }
+.nq-copy-word { font-weight: 900; min-width: 120px; }
+
+/* ODD ONE OUT */
+.nq-odd-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.nq-odd-word { font-size: 28px; font-weight: 700; border: 2px solid #000; border-radius: 8px; padding: 6px 18px; }
+
+/* SENTENCE */
+.nq-sentence-words { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.nq-sent-word { font-size: 28px; font-weight: 700; border: 2px solid #000; border-radius: 8px; padding: 6px 16px; }
+
+/* TRACE */
+.nq-trace-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.nq-trace-box { width: 130px; height: 130px; border: 1.5px dashed #ccc; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+
+/* SHADE FOR NUMBER */
+.nq-shade-grid { display: flex; flex-direction: column; gap: 22px; }
+.nq-shade-row { display: flex; align-items: center; gap: 14px; }
+.nq-shade-num { font-size: 36px; font-weight: 900; min-width: 36px; }
+.nq-shade-boxes { display: flex; gap: 4px; flex-wrap: wrap; }
+.nq-shade-box { width: 34px; height: 34px; border: 2px solid #000; }
+.nq-shade-box.filled { background: #000; }
+
+/* NAME THE SETS */
+.nq-sets-list { display: flex; flex-direction: column; gap: 22px; }
+.nq-set-row { font-size: 26px; font-weight: 700; display: flex; align-items: flex-end; flex-wrap: wrap; gap: 6px; }
+.nq-set-word { font-weight: 900; }
+.nq-set-hint { font-size: 13px; font-style: italic; color: #666; width: 100%; margin-top: 2px; }
+
+/* DAYS OF WEEK */
+.nq-days-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 32px; }
+.nq-day-item { font-size: 28px; font-weight: 700; }
+
+/* WRITE NUMBER NAMES */
+.nq-numnames-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px 36px; }
+.nq-numname-item { font-size: 28px; font-weight: 700; display: flex; align-items: flex-end; gap: 8px; }
+.nq-numname-num { font-size: 38px; font-weight: 900; min-width: 36px; }
+.nq-numnames-hint { grid-column: 1/-1; font-size: 14px; font-style: italic; color: #555; }
+
+/* ORAL QUESTIONS */
+.nq-oral-list { display: flex; flex-direction: column; gap: 20px; }
+.nq-oral-item { font-size: 26px; font-weight: 700; }
+
+/* COUNT AND CIRCLE */
+.nq-ccircle-grid { display: flex; flex-wrap: wrap; gap: 28px; }
+.nq-ccircle-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+/* FOOTER */
+.nq-footer { margin-top: 28px; padding-top: 6px; border-top: 1.5px solid #aaa; display: flex; justify-content: space-between; font-size: 11px; font-weight: 900; color: #333; text-transform: uppercase; letter-spacing: 0.5px; }
+
+@media print {
+  body { background: none; padding: 0; }
+  .nq-page { box-shadow: none; margin: 0; page-break-after: always; width: 100%; padding: 12mm 14mm; }
+}
+
+/* Dynamic VLM Visual layout patch overrides */
+
+</style>
+</head>
+<body>
+<div class="nq-page">
+  <div class="nq-header">
+    <div class="nq-school">EduQuest Academy</div>
+    <div class="nq-exam-title">END OF TERM I EXAMINATION &ndash; 2025</div>
+    <div class="nq-class-info">BABY CLASS (4 – 5 YEARS)</div>
+    <div class="nq-la-title">LEARNING AREA 4: MATHEMATICAL CONCEPTS</div>
+  </div>
+  <div class="nq-fields">
+    <div class="nq-field-row">My name is: <span class="nq-field-line">&nbsp;</span></div>
+    <div class="nq-field-row">My School is: <span class="nq-field-line">&nbsp;</span></div>
+    <div class="nq-field-row">I am in: <span style="min-width:120px" class="nq-field-line">&nbsp;</span>&nbsp;&nbsp;Date: <span style="min-width:100px" class="nq-field-line">&nbsp;</span></div>
+  </div>
+
+<div class="nq-block">
+  <div class="nq-num">1.</div>
+  <div class="nq-body">
+    <div class="nq-instruction">Count and write.</div>
+    <div class="nq-content">
+<div class="nq-count-row">
+<div class="nq-count-item">
+  <div class="nq-pic-img-row"><div class="dyn-bg-tree" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-tree" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-tree" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-tree" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div></div>
+  <div class="nq-write-line">= <span style="display:inline-block;width:70px;border-bottom:2px solid #000;margin:0 8px;vertical-align:bottom;">&nbsp;</span></div>
+</div>
+<div class="nq-count-item">
+  <div class="nq-pic-img-row"><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-pencil" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div></div>
+  <div class="nq-write-line">= <span style="display:inline-block;width:70px;border-bottom:2px solid #000;margin:0 8px;vertical-align:bottom;">&nbsp;</span></div>
+</div>
+<div class="nq-count-item">
+  <div class="nq-pic-img-row"></div>
+  <div class="nq-write-line">= <span style="display:inline-block;width:70px;border-bottom:2px solid #000;margin:0 8px;vertical-align:bottom;">&nbsp;</span></div>
+</div>
+<div class="nq-count-item">
+  <div class="nq-pic-img-row"><div class="dyn-bg-sweet" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div><div class="dyn-bg-sweet" style="width: 70px; height: 70px; background-size: contain; background-repeat: no-repeat; background-position: center; display: inline-block;"></div></div>
+  <div class="nq-write-line">= <span style="display:inline-block;width:70px;border-bottom:2px solid #000;margin:0 8px;vertical-align:bottom;">&nbsp;</span></div>
+</div></div>
+    </div>
+  </div>
+</div>
+<div class="nq-footer"><span>EduQuest Academy &nbsp; Baby Class LA4</span><span>Page1 END</span></div>
+</div>
+</body>
+</html>
