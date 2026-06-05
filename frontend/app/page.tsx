@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette, Compass, Camera, X } from "lucide-react";
+import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette, Compass, Camera, X, Lock, Clock, ShieldAlert, LogOut, User } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { NurseryASTViewer } from "./NurseryASTViewer";
@@ -16,9 +16,27 @@ function cn(...inputs: ClassValue[]) {
 const API_BASE = "";
 const STREAM_BASE = "";
 
+// ── AUTHENTICATED FETCH WRAPPER ──
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("eduquest_token") : null;
+  const headers = {
+    ...options.headers,
+    ...(token ? { "Authorization": `Bearer ${token}` } : {})
+  };
+  const response = await window.fetch(url, { ...options, headers });
+  if (response.status === 401) {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("eduquest_token");
+      window.dispatchEvent(new Event("eduquest_logout"));
+    }
+  }
+  return response;
+};
+
 // ── TYPES ──
-type Page = "studio" | "ingestion" | "analytics" | "pkg" | "assessment";
+type Page = "studio" | "ingestion" | "analytics" | "pkg" | "assessment" | "audit_logs";
 type Mode = "Exams" | "Lesson Notes" | "Schemes of Work";
+
 
 interface Project {
   id: string;
@@ -33,109 +51,154 @@ interface Project {
 
 // ── COMPONENTS ──
 
-const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpen, setIsLeftSidebarOpen, isRightSidebarOpen, setIsRightSidebarOpen, parsedQuestionsLength, zoom, setZoom, viewMode, setViewMode, iframeRef }: any) => (
-  <header className="bg-surface border-b border-border-main text-foreground px-8 py-2 shadow-sm flex justify-between items-center sticky top-0 z-50 transition-colors duration-500">
-    <div className="flex items-center gap-6">
-      <div className="flex items-center gap-3 group px-4 py-2 hover:bg-foreground/5 rounded-2xl transition-all cursor-default">
-        <div className="bg-brand-500/10 border border-brand-500/20 p-2 rounded-lg backdrop-blur-md relative overflow-hidden">
-           <Database className="w-6 h-6 text-brand-500 relative z-10" />
-           <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
-        </div>
-        <div>
-           <h1 className="text-xl font-black tracking-widest leading-none">EDUQUEST <span className="font-light opacity-40 italic">STUDIO</span></h1>
-           <p className="text-[9px] tracking-[0.3em] font-bold mt-1 uppercase text-brand-500 opacity-80">Enterprise Content Engine</p>
-        </div>
-    </div>
-      <div className="flex gap-2 border-l border-border-main pl-6 items-center">
-        <button 
-          onClick={() => setCurrentPage("studio")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
-            currentPage === "studio" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
-            (theme === 'midnight' || theme === 'royal') && currentPage === "studio" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
-          )}
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          Studio
-        </button>
-        <button 
-          onClick={() => setCurrentPage("analytics")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
-            currentPage === "analytics" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
-            (theme === 'midnight' || theme === 'royal') && currentPage === "analytics" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
-          )}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          Analytics
-        </button>
-        <button 
-          onClick={() => setCurrentPage("ingestion")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
-            currentPage === "ingestion" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
-            (theme === 'midnight' || theme === 'royal') && currentPage === "ingestion" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
-          )}
-        >
-          <Database className="w-3.5 h-3.5" />
-          Data Digestion
-        </button>
-        <button 
-          onClick={() => setCurrentPage("pkg")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
-            currentPage === "pkg" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
-            (theme === 'midnight' || theme === 'royal') && currentPage === "pkg" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
-          )}
-        >
-          <Compass className="w-3.5 h-3.5" />
-          Pedagogical Graph
-        </button>
-        <button 
-          onClick={() => setCurrentPage("assessment")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
-            currentPage === "assessment" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
-            (theme === 'midnight' || theme === 'royal') && currentPage === "assessment" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
-          )}
-        >
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Assessment
-        </button>
-      </div>
-    </div>
-    {currentPage === "studio" && (
-      <div className="flex items-center gap-1 bg-surface-soft p-1.5 rounded-2xl border border-border-main shadow-inner">
-         <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
-            <button onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)} className={cn("p-2 rounded-xl transition-all", isLeftSidebarOpen ? "bg-brand-500/10 text-brand-800" : "text-foreground/60 hover:text-brand-800 hover:bg-brand-500/10")} title="Toggle Settings"><Columns className="w-4 h-4" /></button>
-         </div>
-         
-         <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
-            <button onClick={() => setZoom(Math.max(50, zoom - 10))} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Zoom Out"><ZoomOut className="w-4 h-4" /></button>
-            <div className="px-2 text-[10px] font-black text-brand-800 w-12 text-center">{zoom}%</div>
-            <button onClick={() => setZoom(Math.min(200, zoom + 10))} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Zoom In"><ZoomIn className="w-4 h-4" /></button>
-            <button onClick={() => setZoom(100)} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Reset Zoom"><Maximize className="w-3.5 h-3.5" /></button>
-         </div>
+const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpen, setIsLeftSidebarOpen, isRightSidebarOpen, setIsRightSidebarOpen, parsedQuestionsLength, zoom, setZoom, viewMode, setViewMode, iframeRef, user, onLogout }: any) => {
+  const isAdmin = user?.role === "admin";
+  const isTeacher = user?.role === "teacher";
+  const isStudent = user?.role === "student";
 
-         <div className="flex bg-surface p-1 rounded-xl gap-1 mr-1.5 shadow-sm border border-border-main">
-            <button onClick={() => setViewMode("student")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "student" ? "bg-surface-soft text-brand-800 shadow-sm" : "text-foreground opacity-40 hover:opacity-100")}><Eye className="w-3 h-3" /> Question Paper</button>
-            <button onClick={() => setViewMode("marking")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "marking" ? "bg-brand-800 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100")}><FileCheck className="w-3 h-3" /> Marking Guide</button>
-            <button onClick={() => setViewMode("ref_map")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "ref_map" ? "bg-emerald-600 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100")}><Compass className="w-3 h-3" /> Reference Map</button>
+  return (
+    <header className="bg-surface border-b border-border-main text-foreground px-8 py-2 shadow-sm flex justify-between items-center sticky top-0 z-50 transition-colors duration-500">
+      <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 group px-4 py-2 hover:bg-foreground/5 rounded-2xl transition-all cursor-default">
+          <div className="bg-brand-500/10 border border-brand-500/20 p-2 rounded-lg backdrop-blur-md relative overflow-hidden">
+             <Database className="w-6 h-6 text-brand-500 relative z-10" />
+             <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
           </div>
-
-         <div className="flex items-center gap-1 pl-1.5 border-l border-border-main">
-            <button onClick={() => iframeRef.current?.contentWindow?.print()} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Print Exam"><Printer className="w-4 h-4" /></button>
-            {parsedQuestionsLength > 0 && (
-              <>
-                <div className="w-[1px] h-4 bg-border-main mx-1"></div>
-                <button onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)} className={cn("p-2 rounded-xl transition-all", isRightSidebarOpen ? "bg-brand-500/10 text-brand-800" : "text-foreground/60 hover:text-brand-800 hover:bg-brand-500/10")} title="Toggle Illustrations"><ImageIcon className="w-4 h-4" /></button>
-              </>
+          <div>
+             <h1 className="text-xl font-black tracking-widest leading-none">EDUQUEST <span className="font-light opacity-40 italic">STUDIO</span></h1>
+             <p className="text-[9px] tracking-[0.3em] font-bold mt-1 uppercase text-brand-500 opacity-80">Enterprise Content Engine</p>
+          </div>
+        </div>
+        <div className="flex gap-2 border-l border-border-main pl-6 items-center">
+          {(isAdmin || isTeacher) && (
+            <button 
+              onClick={() => setCurrentPage("studio")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+                currentPage === "studio" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+                (theme === 'midnight' || theme === 'royal') && currentPage === "studio" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
+              )}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Studio
+            </button>
+          )}
+          {(isAdmin || isTeacher) && (
+            <button 
+              onClick={() => setCurrentPage("analytics")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+                currentPage === "analytics" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+                (theme === 'midnight' || theme === 'royal') && currentPage === "analytics" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
+              )}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              Analytics
+            </button>
+          )}
+          {isAdmin && (
+            <button 
+              onClick={() => setCurrentPage("ingestion")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+                currentPage === "ingestion" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+                (theme === 'midnight' || theme === 'royal') && currentPage === "ingestion" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
+              )}
+            >
+              <Database className="w-3.5 h-3.5" />
+              Data Digestion
+            </button>
+          )}
+          {isAdmin && (
+            <button 
+              onClick={() => setCurrentPage("pkg")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+                currentPage === "pkg" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+                (theme === 'midnight' || theme === 'royal') && currentPage === "pkg" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
+              )}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              Pedagogical Graph
+            </button>
+          )}
+          <button 
+            onClick={() => setCurrentPage("assessment")}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+              currentPage === "assessment" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+              (theme === 'midnight' || theme === 'royal') && currentPage === "assessment" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
             )}
-          </div>
+          >
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Assessment
+          </button>
+          {isAdmin && (
+            <button 
+              onClick={() => setCurrentPage("audit_logs")}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs transition-all",
+                currentPage === "audit_logs" ? "bg-brand-800 text-white shadow-md" : "bg-transparent text-foreground opacity-50 hover:text-brand-800 hover:opacity-100",
+                (theme === 'midnight' || theme === 'royal') && currentPage === "audit_logs" && "neon-glow shadow-[0_0_15px_var(--glow-accent)]"
+              )}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Audit Logs
+            </button>
+          )}
+        </div>
       </div>
-    )}
-  </header>
-);
+      <div className="flex items-center gap-4">
+        {currentPage === "studio" && (
+          <div className="flex items-center gap-1 bg-surface-soft p-1.5 rounded-2xl border border-border-main shadow-inner">
+             <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
+                <button onClick={() => setIsLeftSidebarOpen(!isLeftSidebarOpen)} className={cn("p-2 rounded-xl transition-all", isLeftSidebarOpen ? "bg-brand-500/10 text-brand-800" : "text-foreground/60 hover:text-brand-800 hover:bg-brand-500/10")} title="Toggle Settings"><Columns className="w-4 h-4" /></button>
+             </div>
+             
+             <div className="flex items-center gap-0.5 border-r border-border-main pr-1.5 mr-1.5">
+                <button onClick={() => setZoom(Math.max(50, zoom - 10))} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Zoom Out"><ZoomOut className="w-4 h-4" /></button>
+                <div className="px-2 text-[10px] font-black text-brand-800 w-12 text-center">{zoom}%</div>
+                <button onClick={() => setZoom(Math.min(200, zoom + 10))} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Zoom In"><ZoomIn className="w-4 h-4" /></button>
+                <button onClick={() => setZoom(100)} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Reset Zoom"><Maximize className="w-3.5 h-3.5" /></button>
+             </div>
+
+             <div className="flex bg-surface p-1 rounded-xl gap-1 mr-1.5 shadow-sm border border-border-main">
+                <button onClick={() => setViewMode("student")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "student" ? "bg-surface-soft text-brand-800 shadow-sm" : "text-foreground opacity-40 hover:opacity-100")}><Eye className="w-3 h-3" /> Question Paper</button>
+                <button onClick={() => setViewMode("marking")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "marking" ? "bg-brand-800 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100")}><FileCheck className="w-3 h-3" /> Marking Guide</button>
+                <button onClick={() => setViewMode("ref_map")} className={cn("px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all", viewMode === "ref_map" ? "bg-emerald-600 text-white shadow-lg neon-glow" : "text-foreground opacity-40 hover:opacity-100")}><Compass className="w-3 h-3" /> Reference Map</button>
+              </div>
+
+             <div className="flex items-center gap-1 pl-1.5 border-l border-border-main">
+                <button onClick={() => iframeRef.current?.contentWindow?.print()} className="p-2 hover:bg-brand-500/10 rounded-xl transition-all text-foreground/60 hover:text-brand-800" title="Print Exam"><Printer className="w-4 h-4" /></button>
+                {parsedQuestionsLength > 0 && (
+                  <>
+                    <div className="w-[1px] h-4 bg-border-main mx-1"></div>
+                    <button onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)} className={cn("p-2 rounded-xl transition-all", isRightSidebarOpen ? "bg-brand-500/10 text-brand-800" : "text-foreground/60 hover:text-brand-800 hover:bg-brand-500/10")} title="Toggle Illustrations"><ImageIcon className="w-4 h-4" /></button>
+                  </>
+                )}
+              </div>
+          </div>
+        )}
+        {user && (
+          <div className="flex items-center gap-3 border-l border-border-main pl-4">
+            <div className="text-right">
+              <div className="text-xs font-bold truncate max-w-[150px]">{user.email}</div>
+              <div className="text-[9px] font-black uppercase tracking-wider text-brand-500">{user.role}</div>
+            </div>
+            <button 
+              onClick={onLogout}
+              className="p-2 hover:bg-red-50 hover:text-red-600 rounded-xl transition-all text-foreground/60"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+      </div>
+    </header>
+  );
+};
+
 
 function AssessmentView({ theme }: { theme: string }) {
   const [subject, setSubject] = useState("");
@@ -175,7 +238,7 @@ function AssessmentView({ theme }: { theme: string }) {
   const [apiConfig, setApiConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
   
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
+    authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setApiConfig(data))
       .catch(() => {});
@@ -210,7 +273,7 @@ function AssessmentView({ theme }: { theme: string }) {
       formData.append("level", level);
       formData.append("strictness", strictness.toString());
 
-      const res = await fetch("/api/assess/vision", {
+      const res = await authFetch("/api/assess/vision", {
         method: "POST",
         body: formData,
       });
@@ -488,6 +551,176 @@ function AssessmentView({ theme }: { theme: string }) {
   );
 }
 
+function AuditLogsView({ theme }: { theme: string }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [actionFilter, setActionFilter] = useState("");
+  const [offset, setOffset] = useState(0);
+  const limit = 50;
+
+  const fetchLogs = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const url = `${API_BASE}/api/admin/audit-logs?limit=${limit}&offset=${offset}` + (actionFilter ? `&action=${actionFilter}` : "");
+      const res = await authFetch(url);
+      if (!res.ok) {
+        if (res.status === 403) {
+          throw new Error("You do not have permission to view audit logs.");
+        }
+        throw new Error("Failed to load audit logs.");
+      }
+      const data = await res.json();
+      setLogs(data.logs || []);
+    } catch (err: any) {
+      setError(err.message || "An error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLogs();
+  }, [actionFilter, offset]);
+
+  const handleExportCSV = () => {
+    if (logs.length === 0) return;
+    const headers = ["Timestamp", "User Email", "Action", "Details"];
+    const rows = logs.map(log => [
+      log.timestamp,
+      log.user_email,
+      log.action,
+      JSON.stringify(log.details || {})
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + [headers.join(","), ...rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(","))].join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `eduquest_audit_logs_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div className="flex-1 bg-[#F8FAFC] text-slate-900 overflow-hidden flex flex-col p-6 lg:p-10">
+      <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <div>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-brand-600" /> Admin Activity Audit Monitor
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">Real-time system event auditing and security trails</p>
+          </div>
+          <button
+            onClick={handleExportCSV}
+            disabled={logs.length === 0}
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center gap-2 shadow-sm"
+          >
+            <Download className="w-4 h-4" /> Export CSV
+          </button>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center mb-6">
+          <div className="w-full sm:w-64">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Filter Action</label>
+            <select
+              value={actionFilter}
+              onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
+              className="w-full text-xs border border-slate-200 rounded-md p-2 bg-slate-50 focus:bg-white focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+            >
+              <option value="">All Actions</option>
+              <option value="login">User Login</option>
+              <option value="register">User Registration</option>
+              <option value="generate_exam">Generate Exam</option>
+              <option value="generate_scenario">Generate Scenario</option>
+              <option value="generate_image">Generate Image</option>
+            </select>
+          </div>
+          <div className="flex-1"></div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setOffset(Math.max(0, offset - limit))}
+              disabled={offset === 0}
+              className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-md text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => setOffset(offset + limit)}
+              disabled={logs.length < limit}
+              className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-md text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="bg-red-50 border border-red-200 text-red-700 p-6 rounded-xl text-center">
+            <ShieldAlert className="w-8 h-8 text-red-500 mx-auto mb-2" />
+            <h3 className="text-sm font-semibold">Access Denied / Error</h3>
+            <p className="text-xs text-red-500 mt-1">{error}</p>
+          </div>
+        ) : loading ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+            <Loader2 className="w-10 h-10 animate-spin text-brand-500 mb-3" />
+            <span className="text-xs uppercase tracking-wider font-bold">Querying system log...</span>
+          </div>
+        ) : logs.length === 0 ? (
+          <div className="flex-1 bg-white border border-slate-200 rounded-xl flex flex-col items-center justify-center p-12 text-center text-slate-400">
+            <Clock className="w-12 h-12 mb-3 text-slate-300" />
+            <h3 className="text-sm font-semibold text-slate-700">No Logs Found</h3>
+            <p className="text-xs text-slate-500 mt-1">No activity audit entries match the active criteria.</p>
+          </div>
+        ) : (
+          <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <th className="py-3 px-4">User</th>
+                    <th className="py-3 px-4">Action</th>
+                    <th className="py-3 px-4">Details</th>
+                    <th className="py-3 px-4">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="text-xs divide-y divide-slate-100 text-slate-700">
+                  {logs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3.5 px-4 font-medium">{log.user_email}</td>
+                      <td className="py-3.5 px-4">
+                        <span className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
+                          log.action === "login" && "bg-blue-50 text-blue-700 border border-blue-100",
+                          log.action === "register" && "bg-purple-50 text-purple-700 border border-purple-100",
+                          log.action.startsWith("generate") && "bg-emerald-50 text-emerald-700 border border-emerald-100",
+                          !["login", "register"].some(x => log.action.includes(x)) && "bg-slate-50 text-slate-700 border border-slate-100"
+                        )}>
+                          {log.action.replace("_", " ")}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 max-w-xs sm:max-w-md truncate font-mono text-[10px] text-slate-500" title={JSON.stringify(log.details)}>
+                        {JSON.stringify(log.details)}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-400 font-mono text-[10px]">
+                        {new Date(log.timestamp).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [currentPage, setCurrentPage] = useState<Page>("studio");
   const [activeTab, setActiveTab] = useState<"gen" | "lib" | "insights" | "chat" | "scenario" | "nursery">("gen");
@@ -501,6 +734,17 @@ export default function Home() {
   const [lastConfig, setLastConfig] = useState<any>(null);
 
   const [theme, setTheme] = useState<'burgundy' | 'midnight' | 'emerald' | 'royal' | 'studio'>('burgundy');
+
+  // ── AUTHENTICATION STATES ──
+  const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<{ id: string; email: string; role: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("teacher");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState(false);
 
   // Responsive drawer/sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -532,10 +776,117 @@ export default function Home() {
     localStorage.setItem('eduquest-theme', theme);
   }, [theme]);
 
+  // Load token and fetch profile
+  useEffect(() => {
+    const storedToken = localStorage.getItem("eduquest_token");
+    if (storedToken) {
+      setToken(storedToken);
+      fetchUserProfile(storedToken);
+    } else {
+      setAuthLoading(false);
+    }
+
+    // Listen to global logout events
+    const handleLogoutEvent = () => {
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem("eduquest_token");
+      setAuthLoading(false);
+    };
+    window.addEventListener("eduquest_logout", handleLogoutEvent);
+    return () => window.removeEventListener("eduquest_logout", handleLogoutEvent);
+  }, []);
+
+  const fetchUserProfile = async (authToken: string) => {
+    try {
+      const res = await window.fetch(`${API_BASE}/api/users/me`, {
+        headers: { "Authorization": `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const userData = await res.json();
+        setUser(userData);
+        if (userData.role === "student") {
+          setCurrentPage("assessment");
+        } else if (userData.role === "teacher" || userData.role === "admin") {
+          setCurrentPage("studio");
+        }
+      } else {
+        localStorage.removeItem("eduquest_token");
+        setToken(null);
+      }
+    } catch (err) {
+      console.error("Failed to load user profile:", err);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const formData = new URLSearchParams();
+      formData.append("username", email);
+      formData.append("password", password);
+
+      const res = await window.fetch(`${API_BASE}/api/auth/jwt/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData.toString()
+      });
+
+      if (!res.ok) {
+        throw new Error("Invalid email or password.");
+      }
+
+      const data = await res.json();
+      const authToken = data.access_token;
+      localStorage.setItem("eduquest_token", authToken);
+      setToken(authToken);
+      await fetchUserProfile(authToken);
+    } catch (err: any) {
+      setAuthError(err.message || "Login failed");
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await window.fetch(`${API_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || "Registration failed. Choose a stronger password.");
+      }
+
+      setRegisterSuccess(true);
+      setAuthMode("login");
+      setAuthError(null);
+    } catch (err: any) {
+      setAuthError(err.message || "Registration failed");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("eduquest_token");
+    setToken(null);
+    setUser(null);
+  };
+
   // Fetch library on load
   const fetchLibrary = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/library`);
+      const res = await authFetch(`${API_BASE}/api/library`);
       const data = await res.json();
       setLibrary(data);
     } catch (e) {
@@ -543,9 +894,139 @@ export default function Home() {
     }
   };
 
+  // ── RENDER AUTH OVERLAY ──
+  if (!token && !authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-outfit" data-theme={theme}>
+        {/* Animated background blobs */}
+        <div className="absolute top-[-10%] left-[-10%] w-[55%] aspect-square rounded-full bg-brand-500/10 blur-[130px] animate-pulse duration-10000"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[55%] aspect-square rounded-full bg-emerald-500/5 blur-[130px] animate-pulse duration-7000"></div>
+
+        <div className="w-full max-w-md bg-slate-900/40 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-8 relative z-10 shadow-2xl flex flex-col gap-6 animate-in fade-in zoom-in duration-500">
+          <div className="flex flex-col items-center text-center gap-2">
+            <div className="bg-brand-500/10 border border-brand-500/20 p-4 rounded-2xl backdrop-blur-md relative overflow-hidden mb-2">
+               <Database className="w-8 h-8 text-brand-500 relative z-10" />
+               <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
+            </div>
+            <h1 className="text-2xl font-black tracking-widest text-white leading-none">
+              EDUQUEST <span className="font-light opacity-60 italic text-brand-400">STUDIO</span>
+            </h1>
+            <p className="text-[10px] tracking-[0.3em] font-bold uppercase text-brand-500">
+              Enterprise Content Engine
+            </p>
+          </div>
+
+          <div className="flex bg-slate-800/40 p-1 rounded-xl border border-slate-800/80">
+            <button
+              onClick={() => { setAuthMode("login"); setAuthError(null); }}
+              className={cn(
+                "flex-1 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all",
+                authMode === "login" ? "bg-brand-800 text-white shadow-md" : "text-slate-400 hover:text-white"
+              )}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => { setAuthMode("register"); setAuthError(null); }}
+              className={cn(
+                "flex-1 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all",
+                authMode === "register" ? "bg-brand-800 text-white shadow-md" : "text-slate-400 hover:text-white"
+              )}
+            >
+              Register
+            </button>
+          </div>
+
+          {authError && (
+            <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl text-xs flex items-center gap-2.5">
+              <ShieldAlert className="w-4 h-4 text-red-400 flex-shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {registerSuccess && authMode === "login" && (
+            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 p-4 rounded-xl text-xs flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+              <span>Registration successful! Please log in below.</span>
+            </div>
+          )}
+
+          <form onSubmit={authMode === "login" ? handleLogin : handleRegister} className="flex flex-col gap-4">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Email Address</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="teacher@eduquest.com"
+                className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Password</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
+              />
+            </div>
+
+            {authMode === "register" && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Account Role</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
+                >
+                  <option value="teacher">Teacher (Generate Exams/Notes & Grade)</option>
+                  <option value="student">Student (Grade Assessments only)</option>
+                  <option value="admin">Administrator (Full Access & Activity Logs)</option>
+                </select>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full mt-4 bg-brand-800 text-white font-bold uppercase tracking-wider text-xs py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-lg flex items-center justify-center gap-2"
+            >
+              {authLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Processing...
+                </>
+              ) : authMode === "login" ? (
+                "Sign In"
+              ) : (
+                "Create Account"
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Show a full-screen loading spinner while verifying local storage credentials
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-10 h-10 animate-spin text-brand-500" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Verifying session...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen overflow-hidden flex flex-col transition-colors duration-500">
-      <Header theme={theme} setTheme={setTheme} currentPage={currentPage} setCurrentPage={setCurrentPage} isLeftSidebarOpen={isLeftSidebarOpen} setIsLeftSidebarOpen={setIsLeftSidebarOpen} isRightSidebarOpen={isRightSidebarOpen} setIsRightSidebarOpen={setIsRightSidebarOpen} parsedQuestionsLength={parsedQuestionsLength} zoom={zoom} setZoom={setZoom} viewMode={viewMode} setViewMode={setViewMode} iframeRef={iframeRef} />
+      <Header theme={theme} setTheme={setTheme} currentPage={currentPage} setCurrentPage={setCurrentPage} isLeftSidebarOpen={isLeftSidebarOpen} setIsLeftSidebarOpen={setIsLeftSidebarOpen} isRightSidebarOpen={isRightSidebarOpen} setIsRightSidebarOpen={setIsRightSidebarOpen} parsedQuestionsLength={parsedQuestionsLength} zoom={zoom} setZoom={setZoom} viewMode={viewMode} setViewMode={setViewMode} iframeRef={iframeRef} user={user} onLogout={handleLogout} />
+
 
       {/* ── CONTENT AREA ── */}
       <main className="flex-1 overflow-hidden flex flex-col relative">
@@ -586,6 +1067,7 @@ export default function Home() {
             viewMode={viewMode}
             setViewMode={setViewMode}
             iframeRef={iframeRef}
+            user={user}
           />
         ) : currentPage === "analytics" ? (
           <AnalyticsView 
@@ -600,10 +1082,13 @@ export default function Home() {
           <SyllabusGraphView theme={theme} />
         ) : currentPage === "assessment" ? (
           <AssessmentView theme={theme} />
+        ) : currentPage === "audit_logs" ? (
+          <AuditLogsView theme={theme} />
         ) : (
           <IngestionView theme={theme} />
         )}
       </main>
+
     </div>
   );
 }
@@ -639,7 +1124,8 @@ function StudioView({
   setZoom,
   viewMode,
   setViewMode,
-  iframeRef
+  iframeRef,
+  user
 }: any) {
   const [illustratingWid, setIllustratingWid] = useState<string | null>(null);
   const [illustratedWids, setIllustratedWids] = useState<Set<string>>(new Set());
@@ -702,7 +1188,7 @@ function StudioView({
     if (!iframeRef.current) return;
     setIllustratingWid(wid);
     try {
-      const res = await fetch(`${API_BASE}/api/generate-image`, {
+      const res = await authFetch(`${API_BASE}/api/generate-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -743,7 +1229,7 @@ function StudioView({
     setRegeneratingWid(wid);
     try {
       // 1. Fetch the new question
-      const res = await fetch(`${API_BASE}/api/regenerate-question`, {
+      const res = await authFetch(`${API_BASE}/api/regenerate-question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -767,7 +1253,7 @@ function StudioView({
 
       // 3. Re-generate HTML
       const rawStr = JSON.stringify(raw);
-      const renderRes = await fetch(`${API_BASE}/api/generate`, {
+      const renderRes = await authFetch(`${API_BASE}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -853,7 +1339,7 @@ function StudioView({
     
     setIsGenerating(true);
     try {
-      const res = await fetch(`${API_BASE}/api/export/docx`, {
+      const res = await authFetch(`${API_BASE}/api/export/docx`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -893,6 +1379,12 @@ function StudioView({
   }, [viewMode, previewHtml]);
 
 
+  useEffect(() => {
+    if (user?.role === "student" && activeTab !== "lib") {
+      setActiveTab("lib");
+    }
+  }, [user, activeTab]);
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative w-full h-full">
       
@@ -908,7 +1400,9 @@ function StudioView({
           : "-translate-x-full lg:translate-x-0 lg:w-0 p-0 lg:opacity-0 lg:border-none"
       )}>
         <div className="flex gap-1 bg-surface-soft p-1 rounded-xl">
-           {(['gen', 'scenario', 'nursery', 'lib', 'insights', 'chat'] as const).map(tab => (
+           {(['gen', 'scenario', 'nursery', 'lib', 'insights', 'chat'] as const)
+             .filter(tab => user?.role !== "student" || tab === "lib")
+             .map(tab => (
              <button 
                key={tab}
                onClick={() => setActiveTab(tab)}
@@ -926,6 +1420,7 @@ function StudioView({
              </button>
            ))}
         </div>
+
 
         {activeTab === 'gen' && (
           <GeneratorControls 
@@ -1341,7 +1836,7 @@ function ScenarioView({
   const [config, setConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
+    authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setConfig(data))
       .catch(() => {});
@@ -1362,7 +1857,7 @@ function ScenarioView({
   const handleGenerate = async () => {
     setIsGenerating(true);
     try {
-      const res = await fetch(`${API_BASE}/api/scenario`, {
+      const res = await authFetch(`${API_BASE}/api/scenario`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1547,7 +2042,7 @@ function GeneratorControls({
   const [config, setConfig] = useState<any>({ subjects: [], levels: [], syllabus: {} });
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
+    authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setConfig(data))
       .catch(() => {});
@@ -1605,7 +2100,7 @@ function GeneratorControls({
     setIsAnalyzingImageNeeds(false);
 
     try {
-      const res = await fetch(`${API_BASE}/api/generate`, {
+      const res = await authFetch(`${API_BASE}/api/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1637,7 +2132,7 @@ function GeneratorControls({
       if (finalQuestions.length > 0) {
         setIsAnalyzingImageNeeds(true);
         try {
-          const agentRes = await fetch(`${API_BASE}/api/analyze-image-needs`, {
+          const agentRes = await authFetch(`${API_BASE}/api/analyze-image-needs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ questions: finalQuestions, subject, level })
@@ -1825,7 +2320,7 @@ function GeneratorControls({
                   return;
                 }
                 try {
-                  const res = await fetch(`${API_BASE}/api/export/docx`, {
+                  const res = await authFetch(`${API_BASE}/api/export/docx`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -1882,7 +2377,7 @@ function LibraryView({ library, onProjectLoad, theme }: any) {
             style={{ animationDelay: `${i * 0.05}s` }}
             onClick={async () => {
                try {
-                 const res = await fetch(`${API_BASE}/api/generate`, {
+                 const res = await authFetch(`${API_BASE}/api/generate`, {
                    method: "POST",
                    headers: { "Content-Type": "application/json" },
                    body: JSON.stringify({
@@ -2003,7 +2498,7 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
     setIsDrilling(true);
     setDrilldownData(null);
     try {
-      const res = await fetch(`${API_BASE}/api/knowledge/drilldown?topic=${encodeURIComponent(topic)}&subject=${subject}&level=${level}`);
+      const res = await authFetch(`${API_BASE}/api/knowledge/drilldown?topic=${encodeURIComponent(topic)}&subject=${subject}&level=${level}`);
       const d = await res.json();
       setDrilldownData(d);
     } catch (e) {
@@ -2020,7 +2515,7 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
     setIsQuickIndexing(true);
     setQuickIndexResult(null);
     try {
-      const res = await fetch(`${API_BASE}/api/knowledge/quick-index`, {
+      const res = await authFetch(`${API_BASE}/api/knowledge/quick-index`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic, subject, level })
@@ -2028,7 +2523,7 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
       const d = await res.json();
       setQuickIndexResult(d.preview || "Indexed successfully.");
       // Refresh coverage data to update the heatmap
-      const cov = await fetch(`${API_BASE}/api/insights/coverage?subject=${subject}&level=${level}`);
+      const cov = await authFetch(`${API_BASE}/api/insights/coverage?subject=${subject}&level=${level}`);
       setData(await cov.json());
     } catch (e) {
       setQuickIndexResult("❌ Indexing failed. Please check your API connection.");
@@ -2038,14 +2533,14 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
   };
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
+    authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(d => setConfig(d))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/insights/coverage?subject=${subject}&level=${level}`)
+    authFetch(`${API_BASE}/api/insights/coverage?subject=${subject}&level=${level}`)
       .then(res => res.json())
       .then(json => setData(json))
       .catch(() => {});
@@ -2082,7 +2577,7 @@ function InsightsView({ theme, previewHtml, lastRaw, lastConfig, onBridge }: { t
 
     setIsAnalyzing(true);
     try {
-      const res = await fetch(`${API_BASE}/api/analyze`, {
+      const res = await authFetch(`${API_BASE}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: contentToAudit, subject, level })
@@ -2466,7 +2961,7 @@ function IngestionView({ theme }: any) {
 
   const fetchStats = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/ingestion/stats`);
+      const res = await authFetch(`${API_BASE}/api/ingestion/stats`);
       const data = await res.json();
       setStats(data);
     } catch (e) {}
@@ -2474,7 +2969,7 @@ function IngestionView({ theme }: any) {
 
   const fetchResources = async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/health/resources`);
+      const res = await authFetch(`${API_BASE}/api/health/resources`);
       const data = await res.json();
       setResources(data);
     } catch (e) {}
@@ -2498,7 +2993,7 @@ function IngestionView({ theme }: any) {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/ingestion/extract`, {
+      const response = await authFetch(`${API_BASE}/api/ingestion/extract`, {
         method: "POST",
         body: formData,
       });
@@ -2543,7 +3038,7 @@ function IngestionView({ theme }: any) {
     setCurrentFile("Starting Neural Training...");
     setCurrentProgress(null);
     try {
-      const response = await fetch(`${API_BASE}/api/ingestion/embed`, { method: "POST" });
+      const response = await authFetch(`${API_BASE}/api/ingestion/embed`, { method: "POST" });
       
       if (!response.body) return;
       const reader = response.body.getReader();
@@ -2834,7 +3329,7 @@ function ChatView({ theme, bridgedPrompt, setBridgedPrompt }: { theme: string, b
     setIsTyping(true);
 
     try {
-      const res = await fetch(`${API_BASE}/api/chat`, {
+      const res = await authFetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3055,7 +3550,7 @@ function AnalyticsView({ theme, onBridge }: { theme: string, onBridge?: (t: stri
   const [auditingLevels, setAuditingLevels] = useState<any>({});
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/analytics/global`)
+    authFetch(`${API_BASE}/api/analytics/global`)
       .then(res => res.json())
       .then(json => {
         setData(json);
@@ -3069,7 +3564,7 @@ function AnalyticsView({ theme, onBridge }: { theme: string, onBridge?: (t: stri
   const handleLevelAudit = async (subject: string, level: string) => {
     setAuditingLevels((prev: any) => ({ ...prev, [`${subject}-${level}`]: true }));
     try {
-      const res = await fetch(`${API_BASE}/api/analytics/audit?subject=${subject}&level=${level}`);
+      const res = await authFetch(`${API_BASE}/api/analytics/audit?subject=${subject}&level=${level}`);
       const d = await res.json();
       setLevelAudits((prev: any) => ({ ...prev, [`${subject}-${level}`]: d }));
     } catch (e) {}
@@ -3243,7 +3738,7 @@ function NurseryView({ setPreviewHtml, setExamData, setExamImages, isGenerating,
     setIsGenerating(true);
     setIntegrity(null);
     try {
-      const res = await fetch(`${API_BASE}/api/nursery-exam`, {
+      const res = await authFetch(`${API_BASE}/api/nursery-exam`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ class_level: classLevel, learning_area: learningArea, term, period, school_name: schoolName, year })
@@ -3274,7 +3769,7 @@ function NurseryView({ setPreviewHtml, setExamData, setExamImages, isGenerating,
     if (!localLastData) return;
     setIsDeepChecking(true);
     try {
-      const res = await fetch(`${API_BASE}/api/integrity-check`, {
+      const res = await authFetch(`${API_BASE}/api/integrity-check`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ exam_data: localLastData, ai_check: true, ai_sample_size: 3 }),
@@ -3514,7 +4009,7 @@ function SyllabusGraphView({ theme }: { theme: string }) {
   const [selectedLevel, setSelectedLevel] = useState("Top Class");
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/syllabus/graph`)
+    authFetch(`${API_BASE}/api/syllabus/graph`)
       .then((res) => res.json())
       .then((data) => {
         setNodes(data.nodes || []);

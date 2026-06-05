@@ -33,7 +33,41 @@ from core.ingestion_db import get_ingest_stats
 from core.export_engine import generate_docx_stream
 from core.marking_engine import mark_student_work
 
-app = FastAPI(title="EduQuest AI Engine", version="3.1.0")
+from contextlib import asynccontextmanager
+from core.models import create_db_and_tables, User
+from core.auth import fastapi_users, auth_backend, require_role, UserRead, UserCreate, UserUpdate, log_user_activity
+from fastapi import Depends
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_db_and_tables()
+    yield
+
+app = FastAPI(title="EduQuest AI Engine", version="3.1.0", lifespan=lifespan)
+
+# ── Authentication Routes ──
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend),
+    prefix="/api/auth/jwt",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/api/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/api/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/api/users",
+    tags=["users"],
+)
+
+
 
 # Serve generated nursery images as static files
 from pathlib import Path as _Path
@@ -85,7 +119,11 @@ class ScenarioRequest(BaseModel):
     force_images: Optional[bool] = False
 
 @app.post("/api/scenario")
-async def scenario_endpoint(req: ScenarioRequest):
+async def scenario_endpoint(
+    req: ScenarioRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     try:
         raw_str = await generate_scenario_content(req.subject, req.level, req.theme, force_images=req.force_images)
         raw_data = json.loads(raw_str)
@@ -110,6 +148,14 @@ async def scenario_endpoint(req: ScenarioRequest):
         # Auto-save
         save_project(req.subject, req.level, req.term, raw_str, html, title)
         
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "generate_scenario",
+            {"subject": req.subject, "level": req.level, "theme": req.theme, "title": title}
+        )
+        
         return {"raw": raw_data, "html": html, "title": title}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -123,7 +169,11 @@ class RefineRequest(BaseModel):
     term: str
 
 @app.post("/api/generate")
-async def generate_endpoint(req: GenerateRequest, background_tasks: BackgroundTasks):
+async def generate_endpoint(
+    req: GenerateRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     try:
         if req.content_override:
             raw = json.loads(req.content_override)
@@ -179,6 +229,14 @@ async def generate_endpoint(req: GenerateRequest, background_tasks: BackgroundTa
         # Dispatch background PDF generation
         background_tasks.add_task(save_pdf_background, html, raw_str, req.subject, req.level, title)
         
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "generate_exam",
+            {"subject": req.subject, "level": req.level, "term": req.term, "question_count": req.question_count, "title": title}
+        )
+        
         return {"raw": raw_str, "html": html, "title": title}
     except Exception as e:
         import traceback
@@ -186,8 +244,20 @@ async def generate_endpoint(req: GenerateRequest, background_tasks: BackgroundTa
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate-stream")
-async def generate_stream_endpoint(req: GenerateRequest):
+async def generate_stream_endpoint(
+    req: GenerateRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     try:
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "generate_exam_stream",
+            {"subject": req.subject, "level": req.level, "term": req.term, "question_count": req.question_count}
+        )
+
         # We wrap the generator to handle StreamingResponse
         async def event_generator():
             try:
@@ -217,6 +287,7 @@ async def generate_stream_endpoint(req: GenerateRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/progress")
 async def progress_stream_endpoint():
@@ -257,7 +328,11 @@ async def analyze_endpoint(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate-image")
-async def generate_image_endpoint(data: dict):
+async def generate_image_endpoint(
+    data: dict,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     """Manually generate an AI illustration for a single question on demand."""
     question_text = data.get("question_text", "")
     subject = data.get("subject", "General")
@@ -282,6 +357,14 @@ async def generate_image_endpoint(data: dict):
         else:
             image_html = f'<img src="{result}" style="width:100%; max-width:420px; display:block; margin:10px auto; border:1px solid #eee; border-radius:4px;"/>'
 
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "generate_image",
+            {"question_text": question_text, "subject": subject, "level": level, "custom_prompt": custom_prompt}
+        )
+
         return {"image_html": image_html}
 
     except HTTPException:
@@ -293,6 +376,7 @@ async def generate_image_endpoint(data: dict):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Illustration engine error: {str(e)}")
+
 
 class QuestionRegenerateRequest(BaseModel):
     subject: str
@@ -345,9 +429,21 @@ class NurseryRequest(BaseModel):
     year: Optional[str] = "2025"
 
 @app.post("/api/nursery-exam")
-async def nursery_exam_endpoint(req: NurseryRequest, background_tasks: BackgroundTasks):
+async def nursery_exam_endpoint(
+    req: NurseryRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     """Generate an authentic Ugandan nursery/ECD exam for Baby, Middle or Top class."""
     try:
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "generate_nursery_exam",
+            {"class_level": req.class_level, "learning_area": req.learning_area, "term": req.term, "period": req.period}
+        )
+
         exam_data = await generate_nursery_exam(
             class_level=req.class_level,
             learning_area=req.learning_area,
@@ -457,9 +553,20 @@ class FeedbackRequest(BaseModel):
     action: str = "edit" # 'edit' or 'simplify'
 
 @app.post("/api/feedback")
-async def rlhf_feedback_endpoint(req: FeedbackRequest):
+async def rlhf_feedback_endpoint(
+    req: FeedbackRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(require_role(["teacher", "admin"]))
+):
     """Phase 5: RLHF endpoint to store human corrections."""
     try:
+        # Log activity
+        background_tasks.add_task(
+            log_user_activity,
+            current_user.id,
+            "rlhf_feedback",
+            {"class_level": req.class_level, "learning_area": req.learning_area, "action": req.action}
+        )
         import sqlite3
         import uuid
         import chromadb
@@ -568,6 +675,49 @@ async def test_image_model(req: ImageModelTestRequest):
     except Exception as e:
         elapsed = round(time.time() - start, 2)
         return {"success": False, "error": str(e), "elapsed": elapsed, "model": "chatgpt-image"}
+
+# ── Admin Audit Logs Endpoint ──
+from sqlalchemy import select, desc
+import uuid
+
+@app.get("/api/admin/audit-logs", dependencies=[Depends(require_role(["admin"]))])
+async def get_audit_logs(
+    user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    try:
+        from core.models import async_session_maker, AuditLog, User
+        async with async_session_maker() as session:
+            query = select(AuditLog, User.email).outerjoin(User, AuditLog.user_id == User.id).order_by(desc(AuditLog.timestamp))
+            if user_id:
+                try:
+                    uid = uuid.UUID(user_id)
+                    query = query.where(AuditLog.user_id == uid)
+                except ValueError:
+                    pass
+            if action:
+                query = query.where(AuditLog.action == action)
+            
+            query = query.limit(limit).offset(offset)
+            results = await session.execute(query)
+            
+            logs = []
+            for row in results.all():
+                log_item, email = row
+                logs.append({
+                    "id": str(log_item.id),
+                    "user_id": str(log_item.user_id) if log_item.user_id else None,
+                    "user_email": email or "Guest/System",
+                    "action": log_item.action,
+                    "timestamp": log_item.timestamp.isoformat(),
+                    "details": log_item.details
+                })
+            return {"logs": logs}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/library")
 def get_library():

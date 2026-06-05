@@ -25,7 +25,7 @@ async def save_pdf_background(html_content: str, raw_json_str: str, subject: str
         with open(json_path, "w", encoding="utf-8") as f:
             f.write(raw_json_str)
             
-        print(f"📄 [PDF Engine] Starting background PDF generation for: {safe_title}")
+        print(f"[PDF Engine] Starting background PDF generation for: {safe_title}")
         
         # Convert relative image URLs to absolute localhost URLs so Playwright can fetch them
         html_content = html_content.replace('src="/api/', 'src="http://localhost:8000/api/')
@@ -50,7 +50,6 @@ async def save_pdf_background(html_content: str, raw_json_str: str, subject: str
             
             await browser.close()
             
-        print(f"✅ [PDF Engine] Successfully saved PDF and JSON to /generated papers: {safe_title}")
-        
+        print(f"[PDF Engine SUCCESS] Successfully saved PDF and JSON to /generated papers: {safe_title}")
     except Exception as e:
-        print(f"❌ [PDF Engine] Failed to generate PDF: {e}")
+        print(f"[PDF Engine ERROR] Failed to generate PDF: {str(e).encode('ascii', errors='ignore').decode('ascii')}")
