@@ -38,7 +38,7 @@ export function NurseryASTViewer({ examData, images }: { examData: any, images: 
 
     // Send RLHF feedback to backend
     try {
-      await fetch("http://localhost:8000/api/feedback", {
+      await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -11,9 +11,10 @@ function cn(...inputs: ClassValue[]) {
 }
 
 // ── CONNECTIVITY ──
-const API_BASE = "http://localhost:8000";
-// SSE streaming must bypass Next.js proxy (which buffers responses) and go directly to FastAPI
-const STREAM_BASE = "http://localhost:8000";
+// Empty string = relative URLs → Next.js proxy forwards /api/* to the FastAPI backend.
+// This works correctly on Railway, in Docker, and locally without any env var required.
+const API_BASE = "";
+const STREAM_BASE = "";
 
 // ── TYPES ──
 type Page = "studio" | "ingestion" | "analytics" | "pkg" | "assessment";
@@ -209,7 +210,7 @@ function AssessmentView({ theme }: { theme: string }) {
       formData.append("level", level);
       formData.append("strictness", strictness.toString());
 
-      const res = await fetch("http://localhost:8000/api/assess/vision", {
+      const res = await fetch("/api/assess/vision", {
         method: "POST",
         body: formData,
       });
@@ -658,8 +659,7 @@ function StudioView({
     let es: EventSource | null = null;
     if (isGenerating) {
       // Connect to the new SSE endpoint for real-time progress
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      es = new EventSource(`${API_BASE}/api/progress`);
+      es = new EventSource(`/api/progress`);
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
