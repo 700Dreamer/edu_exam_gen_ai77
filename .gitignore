@@ -3,3 +3,4 @@ __pycache__/
 chroma_db/
 *.pyc
 .DS_Store
+ingestion_staging.db

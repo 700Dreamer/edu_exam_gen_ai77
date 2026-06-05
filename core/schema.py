@@ -3,8 +3,11 @@ from enum import Enum
 from pydantic import BaseModel, Field
 from typing import List, Union, Dict, Any, Optional
 
+import os as _os
+
 def load_curriculum_config():
-    with open("config/ecd_curriculum.yaml", "r") as f:
+    _config_path = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))), "config", "ecd_curriculum.yaml")
+    with open(_config_path, "r") as f:
         return yaml.safe_load(f)
 
 def get_nursery_schema(class_level: str, learning_area: str) -> type[BaseModel]:
