@@ -22,7 +22,7 @@ if [ ! -d "$DATA_DIR/chroma_db" ] || [ ! -f "$DATA_DIR/ingestion_staging.db" ]; 
     wget -qO $DATA_DIR/data.zip "https://storage.googleapis.com/scholar-bucket-n/data.zip"
     
     echo "🗜️ Extracting databases..."
-    unzip -q $DATA_DIR/data.zip -d $DATA_DIR/
+    unzip -qo $DATA_DIR/data.zip -d $DATA_DIR/
     
     # Auto-detect where chroma_db was extracted and move the contents up
     CHROMA_PATH=$(find "$DATA_DIR" -maxdepth 3 -type d -name "chroma_db" | head -n 1)
