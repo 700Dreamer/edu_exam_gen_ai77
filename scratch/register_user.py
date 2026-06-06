@@ -4,9 +4,9 @@ import sys
 def main():
     url = "http://127.0.0.1:8000/api/auth/register"
     payload = {
-        "email": "teacher_test@eduquest.com",
+        "email": "staff_test@eduquest.com",
         "password": "SecurePassword123!",
-        "role": "teacher"
+        "role": "staff"
     }
     print(f"Registering user on running server: {url}")
     try:

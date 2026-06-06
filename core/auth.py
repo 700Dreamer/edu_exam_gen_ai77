@@ -18,7 +18,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     role: str
 
 class UserCreate(schemas.BaseUserCreate):
-    role: Optional[str] = "student"
+    role: Optional[str] = "staff"
 
 class UserUpdate(schemas.BaseUserUpdate):
     role: Optional[str] = None

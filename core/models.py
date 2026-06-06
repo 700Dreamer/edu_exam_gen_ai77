@@ -17,7 +17,7 @@ class Base(DeclarativeBase):
     pass
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
-    role: Mapped[str] = mapped_column(String(50), default="student", nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="staff", nullable=False)
 
 class AuditLog(Base):
     __tablename__ = "audit_log"

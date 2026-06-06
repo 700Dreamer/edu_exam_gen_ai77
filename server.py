@@ -122,7 +122,7 @@ class ScenarioRequest(BaseModel):
 async def scenario_endpoint(
     req: ScenarioRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     try:
         raw_str = await generate_scenario_content(req.subject, req.level, req.theme, force_images=req.force_images)
@@ -172,7 +172,7 @@ class RefineRequest(BaseModel):
 async def generate_endpoint(
     req: GenerateRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     try:
         if req.content_override:
@@ -247,7 +247,7 @@ async def generate_endpoint(
 async def generate_stream_endpoint(
     req: GenerateRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     try:
         # Log activity
@@ -331,7 +331,7 @@ async def analyze_endpoint(data: dict):
 async def generate_image_endpoint(
     data: dict,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     """Manually generate an AI illustration for a single question on demand."""
     question_text = data.get("question_text", "")
@@ -432,7 +432,7 @@ class NurseryRequest(BaseModel):
 async def nursery_exam_endpoint(
     req: NurseryRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     """Generate an authentic Ugandan nursery/ECD exam for Baby, Middle or Top class."""
     try:
@@ -556,7 +556,7 @@ class FeedbackRequest(BaseModel):
 async def rlhf_feedback_endpoint(
     req: FeedbackRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role(["teacher", "admin"]))
+    current_user: User = Depends(require_role(["staff", "admin"]))
 ):
     """Phase 5: RLHF endpoint to store human corrections."""
     try:

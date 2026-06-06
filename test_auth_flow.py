@@ -30,26 +30,17 @@ async def test_flow():
         print("\n--- Test Phase 1: User Registration ---")
         
         # Register Teacher
-        teacher_payload = {
-            "email": "teacher@eduquest.com",
+        staff_payload = {
+            "email": "staff@eduquest.com",
             "password": "SecurePassword123!",
-            "role": "teacher"
+            "role": "staff"
         }
-        res = await client.post("/api/auth/register", json=teacher_payload)
+        res = await client.post("/api/auth/register", json=staff_payload)
         assert res.status_code == status.HTTP_201_CREATED, f"Teacher registration failed: {res.text}"
-        teacher_data = res.json()
-        print("Teacher registered:", teacher_data["email"], "ID:", teacher_data["id"])
+        staff_data = res.json()
+        print("Staff registered:", staff_data["email"], "ID:", staff_data["id"])
         
-        # Register Student
-        student_payload = {
-            "email": "student@eduquest.com",
-            "password": "SecurePassword123!",
-            "role": "student"
-        }
-        res = await client.post("/api/auth/register", json=student_payload)
-        assert res.status_code == status.HTTP_201_CREATED
-        student_data = res.json()
-        print("Student registered:", student_data["email"], "ID:", student_data["id"])
+        
         
         # Register Admin
         admin_payload = {
@@ -64,23 +55,16 @@ async def test_flow():
         
         print("\n--- Test Phase 2: Login and JWT Strategy ---")
         
-        # Login Teacher
+        # Login Staff
         res = await client.post("/api/auth/jwt/login", data={
-            "username": "teacher@eduquest.com",
+            "username": "staff@eduquest.com",
             "password": "SecurePassword123!"
         })
         assert res.status_code == status.HTTP_200_OK
-        teacher_token = res.json()["access_token"]
-        print("Teacher logged in successfully. Token acquired.")
+        staff_token = res.json()["access_token"]
+        print("Staff logged in successfully. Token acquired.")
         
-        # Login Student
-        res = await client.post("/api/auth/jwt/login", data={
-            "username": "student@eduquest.com",
-            "password": "SecurePassword123!"
-        })
-        assert res.status_code == status.HTTP_200_OK
-        student_token = res.json()["access_token"]
-        print("Student logged in successfully. Token acquired.")
+        
         
         # Login Admin
         res = await client.post("/api/auth/jwt/login", data={
@@ -110,27 +94,19 @@ async def test_flow():
         assert res.status_code == status.HTTP_401_UNAUTHORIZED
         print("Guest access rejected correctly.")
         
-        # Request with Student token (Student - should be forbidden since only teachers/admins can generate)
-        print("Testing student access to /api/generate (should be 403 Forbidden)...")
-        res = await client.post("/api/generate", json=payload, headers={"Authorization": f"Bearer {student_token}"})
-        assert res.status_code == status.HTTP_403_FORBIDDEN
-        print("Student access rejected correctly.")
+        
         
         # Request with Teacher token (Teacher - should succeed)
-        print("Testing teacher access to /api/generate (mocking generate_ai_content for test)...")
+        print("Testing staff access to /api/generate (mocking generate_ai_content for test)...")
         # To avoid calling OpenAI APIs during unit testing, we pass content_override
         payload["content_override"] = json.dumps({"questions": [{"number": 1, "type": "multiple_choice", "instruction": "Solve 1+1", "content": {}}]})
-        res = await client.post("/api/generate", json=payload, headers={"Authorization": f"Bearer {teacher_token}"})
+        res = await client.post("/api/generate", json=payload, headers={"Authorization": f"Bearer {staff_token}"})
         assert res.status_code == status.HTTP_200_OK
-        print("Teacher generation request succeeded.")
+        print("Staff generation request succeeded.")
         
         print("\n--- Test Phase 4: Audit Logging and Activity Monitoring ---")
         
-        # Query audit logs as student (should be 403 Forbidden)
-        print("Testing student access to /api/admin/audit-logs (should be 403 Forbidden)...")
-        res = await client.get("/api/admin/audit-logs", headers={"Authorization": f"Bearer {student_token}"})
-        assert res.status_code == status.HTTP_403_FORBIDDEN
-        print("Student audit log access rejected correctly.")
+        
         
         # Query audit logs as admin (should succeed)
         print("Testing admin access to /api/admin/audit-logs (should succeed)...")
@@ -145,7 +121,7 @@ async def test_flow():
         actions = [l["action"] for l in logs_data]
         emails = [l["user_email"] for l in logs_data]
         assert "generate_exam" in actions, "generate_exam not found in audit log"
-        assert "teacher@eduquest.com" in emails, "teacher email not found in audit log"
+        assert "staff@eduquest.com" in emails, "teacher email not found in audit log"
         
         print("\nVerification successful: All auth and logging checks passed.")
 

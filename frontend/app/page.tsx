@@ -1,14 +1,71 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, Columns, Square, Image as ImageIcon, Palette, Compass, Camera, X, Lock, Clock, ShieldAlert, LogOut, User } from "lucide-react";
+import { Sparkles, Settings, Database, BookOpen, Layers, CheckCircle2, AlertCircle, FileText, Download, Play, RefreshCw, Filter, Loader2, GitBranch, ArrowDown, ZoomIn, ZoomOut, Printer, Maximize, FileCheck, Eye, EyeOff, Columns, Square, Image as ImageIcon, Palette, Compass, Camera, X, Lock, Clock, ShieldAlert, LogOut, User } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { NurseryASTViewer } from "./NurseryASTViewer";
+import loginWavesData from "../animation/login_waves.json";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const LoginWavesBackground = () => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    let anim: any = null;
+    
+    const initLottie = (lottieLib: any) => {
+      if (!containerRef.current) return;
+      if (anim) anim.destroy();
+      anim = lottieLib.loadAnimation({
+        container: containerRef.current,
+        renderer: "svg",
+        loop: true,
+        autoplay: true,
+        animationData: loginWavesData,
+        rendererSettings: {
+          preserveAspectRatio: "none"
+        }
+      });
+    };
+
+    if (typeof window !== "undefined") {
+      const existingScript = document.getElementById("lottie-cdn-script");
+      const onLottieReady = () => {
+        const win = window as any;
+        if (win.lottie) initLottie(win.lottie);
+      };
+
+      if ((window as any).lottie) {
+        initLottie((window as any).lottie);
+      } else if (existingScript) {
+        existingScript.addEventListener("load", onLottieReady);
+      } else {
+        const script = document.createElement("script");
+        script.id = "lottie-cdn-script";
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js";
+        script.async = true;
+        script.onload = onLottieReady;
+        document.body.appendChild(script);
+      }
+    }
+
+    return () => {
+      if (anim) anim.destroy();
+    };
+  }, []);
+
+  return (
+    <div 
+      ref={containerRef} 
+      className="absolute inset-0 w-full h-full pointer-events-none opacity-80"
+      style={{ mixBlendMode: "screen" }}
+    />
+  );
+};
 
 // ── CONNECTIVITY ──
 // Empty string = relative URLs → Next.js proxy forwards /api/* to the FastAPI backend.
@@ -53,8 +110,7 @@ interface Project {
 
 const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpen, setIsLeftSidebarOpen, isRightSidebarOpen, setIsRightSidebarOpen, parsedQuestionsLength, zoom, setZoom, viewMode, setViewMode, iframeRef, user, onLogout }: any) => {
   const isAdmin = user?.role === "admin";
-  const isTeacher = user?.role === "teacher";
-  const isStudent = user?.role === "student";
+  const isStaff = user?.role === "staff";
 
   return (
     <header className="bg-surface border-b border-border-main text-foreground px-8 py-2 shadow-sm flex justify-between items-center sticky top-0 z-50 transition-colors duration-500">
@@ -70,7 +126,7 @@ const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpe
           </div>
         </div>
         <div className="flex gap-2 border-l border-border-main pl-6 items-center">
-          {(isAdmin || isTeacher) && (
+          {(isAdmin || isStaff) && (
             <button 
               onClick={() => setCurrentPage("studio")}
               className={cn(
@@ -83,7 +139,7 @@ const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpe
               Studio
             </button>
           )}
-          {(isAdmin || isTeacher) && (
+          {(isAdmin || isStaff) && (
             <button 
               onClick={() => setCurrentPage("analytics")}
               className={cn(
@@ -182,7 +238,7 @@ const Header = ({ theme, setTheme, currentPage, setCurrentPage, isLeftSidebarOpe
         {user && (
           <div className="flex items-center gap-3 border-l border-border-main pl-4">
             <div className="text-right">
-              <div className="text-xs font-bold truncate max-w-[150px]">{user.email}</div>
+              <div className="text-xs font-bold truncate max-w-[150px]">{user.email ? user.email.split('@')[0] : "User"}</div>
               <div className="text-[9px] font-black uppercase tracking-wider text-brand-500">{user.role}</div>
             </div>
             <button 
@@ -557,6 +613,7 @@ function AuditLogsView({ theme }: { theme: string }) {
   const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState("");
   const [offset, setOffset] = useState(0);
+  const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const limit = 50;
 
   const fetchLogs = async () => {
@@ -584,6 +641,33 @@ function AuditLogsView({ theme }: { theme: string }) {
     fetchLogs();
   }, [actionFilter, offset]);
 
+  const formatLogDetails = (action: string, details: any) => {
+    if (!details || typeof details !== "object" || Object.keys(details).length === 0) {
+      return "No details available";
+    }
+    try {
+      switch (action) {
+        case "login":
+          return `Signed in securely from IP address ${details.ip || "unknown"}`;
+        case "register":
+          const roleName = details.role === "admin" ? "Administrator" : "Staff Member";
+          return `Created account as ${roleName}`;
+        case "generate_exam":
+          return `Generated ${details.subject || "content"} exam for ${details.level || "unknown level"} (${details.term || "unknown term"}) containing ${details.question_count || 0} questions`;
+        case "generate_scenario":
+          return `Generated competency scenario for ${details.subject || "content"} (${details.level || "unknown level"}) - Theme: "${details.theme || "N/A"}"`;
+        case "generate_image":
+          return `Created diagram/illustration for ${details.subject || "content"} (${details.level || "unknown level"})`;
+        default:
+          return Object.entries(details)
+            .map(([key, val]) => `${key.replace("_", " ")}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
+            .join(", ");
+      }
+    } catch (e) {
+      return JSON.stringify(details);
+    }
+  };
+
   const handleExportCSV = () => {
     if (logs.length === 0) return;
     const headers = ["Timestamp", "User Email", "Action", "Details"];
@@ -606,31 +690,31 @@ function AuditLogsView({ theme }: { theme: string }) {
   };
 
   return (
-    <div className="flex-1 bg-[#F8FAFC] text-slate-900 overflow-hidden flex flex-col p-6 lg:p-10">
+    <div className="flex-1 bg-surface-soft/30 text-foreground overflow-hidden flex flex-col p-6 lg:p-10 transition-colors duration-500">
       <div className="max-w-7xl mx-auto w-full flex-1 flex flex-col overflow-hidden">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-brand-600" /> Admin Activity Audit Monitor
+            <h2 className="text-xl font-black tracking-tight text-foreground flex items-center gap-2">
+              <Clock className="w-5 h-5 text-brand-500 animate-pulse" /> Admin Activity Audit Monitor
             </h2>
-            <p className="text-xs text-slate-500 mt-1">Real-time system event auditing and security trails</p>
+            <p className="text-xs text-foreground/60 mt-1 font-medium">Real-time system event auditing and security trails</p>
           </div>
           <button
             onClick={handleExportCSV}
             disabled={logs.length === 0}
-            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-wider hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center gap-2 shadow-sm"
+            className="px-4 py-2 bg-brand-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-brand-700 disabled:opacity-50 transition-all hover:-translate-y-0.5 flex items-center gap-2 shadow-md hover:shadow-lg duration-200 cursor-pointer"
           >
             <Download className="w-4 h-4" /> Export CSV
           </button>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center mb-6">
+        <div className="bg-surface border border-border-main rounded-2xl shadow-sm p-4 flex flex-col sm:flex-row gap-4 items-center mb-6">
           <div className="w-full sm:w-64">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Filter Action</label>
+            <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/40 mb-1.5 block">Filter Action</label>
             <select
               value={actionFilter}
               onChange={(e) => { setActionFilter(e.target.value); setOffset(0); }}
-              className="w-full text-xs border border-slate-200 rounded-md p-2 bg-slate-50 focus:bg-white focus:ring-1 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all"
+              className="w-full text-xs border border-border-main rounded-xl p-3 bg-surface text-foreground focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all cursor-pointer font-semibold"
             >
               <option value="">All Actions</option>
               <option value="login">User Login</option>
@@ -645,14 +729,14 @@ function AuditLogsView({ theme }: { theme: string }) {
             <button
               onClick={() => setOffset(Math.max(0, offset - limit))}
               disabled={offset === 0}
-              className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-md text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
+              className="px-3 py-1.5 border border-border-main text-foreground/80 rounded-xl text-xs font-bold hover:bg-surface-soft disabled:opacity-40 transition-colors shadow-sm bg-surface cursor-pointer"
             >
               Previous
             </button>
             <button
               onClick={() => setOffset(offset + limit)}
               disabled={logs.length < limit}
-              className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-md text-xs font-bold hover:bg-slate-50 disabled:opacity-40"
+              className="px-3 py-1.5 border border-border-main text-foreground/80 rounded-xl text-xs font-bold hover:bg-surface-soft disabled:opacity-40 transition-colors shadow-sm bg-surface cursor-pointer"
             >
               Next
             </button>
@@ -660,53 +744,61 @@ function AuditLogsView({ theme }: { theme: string }) {
         </div>
 
         {error ? (
-          <div className="bg-red-50 border border-red-200 text-red-700 p-6 rounded-xl text-center">
-            <ShieldAlert className="w-8 h-8 text-red-500 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold">Access Denied / Error</h3>
-            <p className="text-xs text-red-500 mt-1">{error}</p>
+          <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-8 rounded-2xl text-center shadow-sm max-w-md mx-auto my-12">
+            <ShieldAlert className="w-10 h-10 text-red-500 mx-auto mb-3" />
+            <h3 className="text-sm font-bold uppercase tracking-wide">Access Denied / Error</h3>
+            <p className="text-xs text-red-200/80 mt-2 leading-relaxed">{error}</p>
           </div>
         ) : loading ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+          <div className="flex-1 flex flex-col items-center justify-center text-foreground/40">
             <Loader2 className="w-10 h-10 animate-spin text-brand-500 mb-3" />
-            <span className="text-xs uppercase tracking-wider font-bold">Querying system log...</span>
+            <span className="text-xs uppercase tracking-wider font-black">Querying system log...</span>
           </div>
         ) : logs.length === 0 ? (
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl flex flex-col items-center justify-center p-12 text-center text-slate-400">
-            <Clock className="w-12 h-12 mb-3 text-slate-300" />
-            <h3 className="text-sm font-semibold text-slate-700">No Logs Found</h3>
-            <p className="text-xs text-slate-500 mt-1">No activity audit entries match the active criteria.</p>
+          <div className="flex-1 bg-surface border border-border-main rounded-2xl flex flex-col items-center justify-center p-12 text-center text-foreground/40 shadow-sm">
+            <Clock className="w-12 h-12 mb-3 text-foreground/20" />
+            <h3 className="text-sm font-semibold text-foreground/80">No Logs Found</h3>
+            <p className="text-xs text-foreground/50 mt-1">No activity audit entries match the active criteria.</p>
           </div>
         ) : (
-          <div className="flex-1 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+          <div className="flex-1 bg-surface border border-border-main rounded-2xl overflow-hidden shadow-sm flex flex-col">
             <div className="overflow-x-auto flex-1">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                    <th className="py-3 px-4">User</th>
-                    <th className="py-3 px-4">Action</th>
-                    <th className="py-3 px-4">Details</th>
-                    <th className="py-3 px-4">Timestamp</th>
+                  <tr className="bg-surface-soft/60 border-b border-border-main text-[10px] font-black uppercase tracking-wider text-foreground/50">
+                    <th className="py-4 px-6">User</th>
+                    <th className="py-4 px-6">Action</th>
+                    <th className="py-4 px-6">Details</th>
+                    <th className="py-4 px-6">Timestamp</th>
                   </tr>
                 </thead>
-                <tbody className="text-xs divide-y divide-slate-100 text-slate-700">
+                <tbody className="text-xs divide-y divide-border-main/40 text-foreground/90 font-medium">
                   {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-4 font-medium">{log.user_email}</td>
-                      <td className="py-3.5 px-4">
+                    <tr 
+                      key={log.id} 
+                      onClick={() => setSelectedLog(log)}
+                      className="hover:bg-surface-soft/50 transition-colors cursor-pointer border-b border-border-main/30"
+                    >
+                      <td className="py-4 px-6 font-bold text-foreground">{log.user_email ? log.user_email.split('@')[0] : "System"}</td>
+                      <td className="py-4 px-6">
                         <span className={cn(
-                          "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide",
-                          log.action === "login" && "bg-blue-50 text-blue-700 border border-blue-100",
-                          log.action === "register" && "bg-purple-50 text-purple-700 border border-purple-100",
-                          log.action.startsWith("generate") && "bg-emerald-50 text-emerald-700 border border-emerald-100",
-                          !["login", "register"].some(x => log.action.includes(x)) && "bg-slate-50 text-slate-700 border border-slate-100"
+                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wider border",
+                          log.action === "login" && "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                          log.action === "register" && "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                          log.action.startsWith("generate") && "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                          !["login", "register"].some(x => log.action.includes(x)) && "bg-brand-500/10 text-brand-400 border-brand-500/20"
                         )}>
+                          {log.action === "login" && <User className="w-2.5 h-2.5" />}
+                          {log.action === "register" && <Lock className="w-2.5 h-2.5" />}
+                          {log.action.startsWith("generate") && <Sparkles className="w-2.5 h-2.5" />}
+                          {!["login", "register"].some(x => log.action.includes(x)) && <Database className="w-2.5 h-2.5" />}
                           {log.action.replace("_", " ")}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 max-w-xs sm:max-w-md truncate font-mono text-[10px] text-slate-500" title={JSON.stringify(log.details)}>
-                        {JSON.stringify(log.details)}
+                      <td className="py-4 px-6 max-w-xs sm:max-w-md truncate text-foreground/80 font-medium">
+                        {formatLogDetails(log.action, log.details)}
                       </td>
-                      <td className="py-3.5 px-4 text-slate-400 font-mono text-[10px]">
+                      <td className="py-4 px-6 text-foreground/45 font-mono text-[10px]">
                         {new Date(log.timestamp).toLocaleString()}
                       </td>
                     </tr>
@@ -717,6 +809,61 @@ function AuditLogsView({ theme }: { theme: string }) {
           </div>
         )}
       </div>
+
+      {/* Audit Detail Inspector Drawer */}
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div onClick={() => setSelectedLog(null)} className="absolute inset-0"></div>
+          <div className="relative w-full max-w-lg bg-surface border-l border-border-main h-full shadow-2xl flex flex-col p-6 animate-in slide-in-from-right duration-300 overflow-y-auto">
+            <div className="flex justify-between items-center pb-4 border-b border-border-main mb-6">
+              <h3 className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-2">
+                <Clock className="w-4 h-4 text-brand-500" /> Event Detail Audit Inspector
+              </h3>
+              <button onClick={() => setSelectedLog(null)} className="p-1.5 hover:bg-surface-soft rounded-lg text-foreground/40 hover:text-foreground transition-colors cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-6 text-xs text-foreground/80">
+              <div className="grid grid-cols-3 gap-2 border-b border-border-main/40 pb-3">
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px]">Event ID</span>
+                <span className="col-span-2 font-mono text-foreground/70 break-all">{selectedLog.id}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b border-border-main/40 pb-3">
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px]">Username</span>
+                <span className="col-span-2 font-bold text-foreground">{selectedLog.user_email ? selectedLog.user_email.split('@')[0] : "System"}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b border-border-main/40 pb-3">
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px]">Action Type</span>
+                <span className="col-span-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-brand-500/10 text-brand-400 border border-brand-500/20 rounded font-black uppercase text-[9px] tracking-wider">
+                    {selectedLog.action.replace("_", " ")}
+                  </span>
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b border-border-main/40 pb-3">
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px]">Timestamp</span>
+                <span className="col-span-2 font-mono text-foreground/60">{new Date(selectedLog.timestamp).toLocaleString()}</span>
+              </div>
+              <div className="border-b border-border-main/40 pb-4">
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px] mb-1.5 block">Activity Summary</span>
+                <p className="text-sm font-semibold text-foreground leading-relaxed">
+                  {formatLogDetails(selectedLog.action, selectedLog.details)}
+                </p>
+              </div>
+              <div>
+                <span className="text-foreground/45 font-bold uppercase tracking-widest text-[9px] mb-2 block">Action Metadata (Raw Developer JSON)</span>
+                <div className="bg-slate-950 text-emerald-400 border border-border-main rounded-xl p-4 font-mono text-[10px] overflow-x-auto shadow-inner">
+                  {selectedLog.details && Object.keys(selectedLog.details).length > 0 ? (
+                    <pre className="whitespace-pre-wrap">{JSON.stringify(selectedLog.details, null, 2)}</pre>
+                  ) : (
+                    <span className="text-foreground/30 italic">No additional metadata payload available.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -742,9 +889,11 @@ export default function Home() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("teacher");
+  const [role, setRole] = useState("staff");
   const [authError, setAuthError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Responsive drawer/sidebar states
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState(true);
@@ -805,11 +954,7 @@ export default function Home() {
       if (res.ok) {
         const userData = await res.json();
         setUser(userData);
-        if (userData.role === "student") {
-          setCurrentPage("assessment");
-        } else if (userData.role === "teacher" || userData.role === "admin") {
-          setCurrentPage("studio");
-        }
+        setCurrentPage("studio");
       } else {
         localStorage.removeItem("eduquest_token");
         setToken(null);
@@ -827,7 +972,8 @@ export default function Home() {
     setAuthLoading(true);
     try {
       const formData = new URLSearchParams();
-      formData.append("username", email);
+      const emailValue = email.includes("@") ? email : `${email}@eduquest.com`;
+      formData.append("username", emailValue);
       formData.append("password", password);
 
       const res = await window.fetch(`${API_BASE}/api/auth/jwt/login`, {
@@ -837,7 +983,7 @@ export default function Home() {
       });
 
       if (!res.ok) {
-        throw new Error("Invalid email or password.");
+        throw new Error("Invalid username or password.");
       }
 
       const data = await res.json();
@@ -856,10 +1002,11 @@ export default function Home() {
     setAuthError(null);
     setAuthLoading(true);
     try {
+      const emailValue = email.includes("@") ? email : `${email}@eduquest.com`;
       const res = await window.fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, role })
+        body: JSON.stringify({ email: emailValue, password, role })
       });
 
       if (!res.ok) {
@@ -897,117 +1044,175 @@ export default function Home() {
   // ── RENDER AUTH OVERLAY ──
   if (!token && !authLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden font-outfit" data-theme={theme}>
-        {/* Animated background blobs */}
-        <div className="absolute top-[-10%] left-[-10%] w-[55%] aspect-square rounded-full bg-brand-500/10 blur-[130px] animate-pulse duration-10000"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[55%] aspect-square rounded-full bg-emerald-500/5 blur-[130px] animate-pulse duration-7000"></div>
+      <div className="min-h-screen bg-[#1a0505] flex items-center justify-center p-4 relative overflow-hidden font-outfit" data-theme={theme}>
+        {/* Ambient glowing background blobs in red tones */}
+        <div className="absolute top-[-20%] left-[-20%] w-[60%] aspect-square rounded-full bg-red-900/10 blur-[130px] animate-pulse duration-10000"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[60%] aspect-square rounded-full bg-rose-900/5 blur-[130px] animate-pulse duration-7000"></div>
 
-        <div className="w-full max-w-md bg-slate-900/40 border border-slate-800/80 backdrop-blur-2xl rounded-3xl p-8 relative z-10 shadow-2xl flex flex-col gap-6 animate-in fade-in zoom-in duration-500">
-          <div className="flex flex-col items-center text-center gap-2">
-            <div className="bg-brand-500/10 border border-brand-500/20 p-4 rounded-2xl backdrop-blur-md relative overflow-hidden mb-2">
-               <Database className="w-8 h-8 text-brand-500 relative z-10" />
-               <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
-            </div>
-            <h1 className="text-2xl font-black tracking-widest text-white leading-none">
-              EDUQUEST <span className="font-light opacity-60 italic text-brand-400">STUDIO</span>
-            </h1>
-            <p className="text-[10px] tracking-[0.3em] font-bold uppercase text-brand-500">
-              Enterprise Content Engine
+        {/* Card Container */}
+        <div className="w-full max-w-[480px] bg-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.6)] overflow-hidden border border-red-950/10 flex flex-col animate-in fade-in zoom-in duration-300">
+          
+          {/* Top Half: Night Sky Landscape in Crimson Red */}
+          <div className="relative h-[220px] flex flex-col items-center justify-center text-center p-6 text-white overflow-hidden bg-gradient-to-b from-[#2d0006] to-[#0d0002]">
+            {/* Lottie Waves Background Animation */}
+            <LoginWavesBackground />
+
+            {/* Typography over the night sky background */}
+            <h2 className="text-xl md:text-2xl font-black tracking-widest text-white uppercase relative z-10">
+              EDUQUEST AI STUDIO
+            </h2>
+            <div className="w-20 h-0.5 bg-white/40 my-3.5 relative z-10 mx-auto"></div>
+            <p className="text-[10px] md:text-xs text-rose-200/80 max-w-xs mx-auto leading-relaxed relative z-10 font-light px-4">
+              Curriculum-aligned exam papers, lesson notes, and schemes of work built dynamically with AI pedagogical intelligence.
             </p>
           </div>
 
-          <div className="flex bg-slate-800/40 p-1 rounded-xl border border-slate-800/80">
-            <button
-              onClick={() => { setAuthMode("login"); setAuthError(null); }}
-              className={cn(
-                "flex-1 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all",
-                authMode === "login" ? "bg-brand-800 text-white shadow-md" : "text-slate-400 hover:text-white"
-              )}
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => { setAuthMode("register"); setAuthError(null); }}
-              className={cn(
-                "flex-1 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition-all",
-                authMode === "register" ? "bg-brand-800 text-white shadow-md" : "text-slate-400 hover:text-white"
-              )}
-            >
-              Register
-            </button>
-          </div>
+          {/* Bottom Half: Input Forms */}
+          <div className="bg-white px-8 py-8 flex flex-col gap-6 relative">
+            
+            {/* Header label */}
+            <h3 className="text-center text-lg md:text-xl font-black tracking-widest text-[#800020] uppercase">
+              {authMode === "login" ? "USER LOGIN" : "USER REGISTRATION"}
+            </h3>
 
-          {authError && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-200 p-4 rounded-xl text-xs flex items-center gap-2.5">
-              <ShieldAlert className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {registerSuccess && authMode === "login" && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-200 p-4 rounded-xl text-xs flex items-center gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>Registration successful! Please log in below.</span>
-            </div>
-          )}
-
-          <form onSubmit={authMode === "login" ? handleLogin : handleRegister} className="flex flex-col gap-4">
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Email Address</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="teacher@eduquest.com"
-                className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
-              />
-            </div>
-
-            {authMode === "register" && (
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1.5 block">Account Role</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full text-sm border border-slate-800/80 rounded-xl p-3 bg-slate-900/60 text-white focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-all"
-                >
-                  <option value="teacher">Teacher (Generate Exams/Notes & Grade)</option>
-                  <option value="student">Student (Grade Assessments only)</option>
-                  <option value="admin">Administrator (Full Access & Activity Logs)</option>
-                </select>
+            {/* Error notifications */}
+            {authError && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-700 p-3.5 rounded-xl text-xs flex items-center gap-2.5 font-semibold">
+                <ShieldAlert className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <span>{authError}</span>
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full mt-4 bg-brand-800 text-white font-bold uppercase tracking-wider text-xs py-3.5 rounded-xl hover:bg-brand-700 transition-colors shadow-lg flex items-center justify-center gap-2"
-            >
-              {authLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </>
-              ) : authMode === "login" ? (
-                "Sign In"
-              ) : (
-                "Create Account"
+            {registerSuccess && authMode === "login" && (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 p-3.5 rounded-xl text-xs flex items-center gap-2.5 font-semibold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>Registration successful! Please log in below.</span>
+              </div>
+            )}
+
+            {/* Forms */}
+            <form onSubmit={authMode === "login" ? handleLogin : handleRegister} className="flex flex-col gap-5">
+              
+              {/* Username Input */}
+              <div className="flex h-12 rounded-[10px] overflow-hidden border border-[#800020]/30 bg-[#ef4444]/5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus-within:ring-2 focus-within:ring-[#800020] transition-all">
+                <div className="w-28 md:w-32 bg-[#800020] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center text-center px-2 select-none shrink-0">
+                  USER NAME
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="e.g., admin or staff_john"
+                  className="flex-grow bg-[#ef4444]/5 px-4 text-xs md:text-sm font-semibold text-red-950 focus:outline-none placeholder-red-900/40"
+                />
+              </div>
+
+              {/* Password Input */}
+              <div className="flex h-12 rounded-[10px] overflow-hidden border border-[#800020]/30 bg-[#ef4444]/5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus-within:ring-2 focus-within:ring-[#800020] transition-all relative">
+                <div className="w-28 md:w-32 bg-[#800020] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center text-center px-2 select-none shrink-0">
+                  PASSWORD
+                </div>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="flex-grow bg-[#ef4444]/5 pl-4 pr-12 text-xs md:text-sm font-semibold text-red-950 focus:outline-none placeholder-red-900/40 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#800020]/80 hover:text-[#800020] transition-colors p-1"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              {/* Register Role Select */}
+              {authMode === "register" && (
+                <div className="flex h-12 rounded-[10px] overflow-hidden border border-[#800020]/30 bg-[#ef4444]/5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.05)] focus-within:ring-2 focus-within:ring-[#800020] transition-all relative">
+                  <div className="w-28 md:w-32 bg-[#800020] text-white text-[10px] font-black uppercase tracking-widest flex items-center justify-center text-center px-2 select-none shrink-0">
+                    ROLE
+                  </div>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="flex-grow bg-[#ef4444]/5 pl-4 pr-10 text-xs md:text-sm font-semibold text-red-950 focus:outline-none cursor-pointer appearance-none"
+                  >
+                    <option value="staff">Staff (Generate & Grade)</option>
+                    <option value="admin">Administrator (Full Access)</option>
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-[#800020]">
+                    <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M5.516 7.548c0.436-0.446 1.043-0.481 1.576 0l3.908 3.747 3.908-3.747c0.533-0.481 1.141-0.446 1.576 0 0.436 0.445 0.408 1.197 0 1.615l-4.695 4.502c-0.218 0.209-0.507 0.313-0.789 0.313s-0.571-0.104-0.789-0.313l-4.695-4.502c-0.408-0.418-0.436-1.17 0-1.615z"/>
+                    </svg>
+                  </div>
+                </div>
               )}
-            </button>
-          </form>
+
+              {/* Remember Me and Toggle Auth Mode (instead of Forgot Password) */}
+              <div className="flex items-center justify-between mt-1 px-1">
+                {/* Remember Me circular toggle */}
+                <label className="flex items-center gap-2 text-[10px] md:text-xs font-bold uppercase tracking-wider text-[#800020]/70 cursor-pointer select-none hover:text-[#800020] transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <span className={cn(
+                    "w-4 h-4 rounded-full border-2 border-[#800020] flex items-center justify-center transition-all",
+                    rememberMe ? "bg-[#800020]" : "bg-transparent"
+                  )}>
+                    {rememberMe && <span className="w-1.5 h-1.5 rounded-full bg-white"></span>}
+                  </span>
+                  Remember
+                </label>
+
+                {/* Switch Login/Register */}
+                {authMode === "login" ? (
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode("register"); setAuthError(null); }}
+                    className="text-[10px] md:text-xs font-black uppercase tracking-wider text-[#800020] hover:text-[#b91c1c] transition-colors cursor-pointer border-b border-[#800020]/30 pb-0.5"
+                  >
+                    Register
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode("login"); setAuthError(null); }}
+                    className="text-[10px] md:text-xs font-black uppercase tracking-wider text-[#800020] hover:text-[#b91c1c] transition-colors cursor-pointer border-b border-[#800020]/30 pb-0.5"
+                  >
+                    Login
+                  </button>
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex justify-center mt-3">
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="px-12 py-3.5 bg-[#800020] text-white font-extrabold uppercase tracking-widest text-xs rounded-full hover:bg-[#b91c1c] transition-all hover:scale-105 active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {authLoading ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Processing...
+                    </>
+                  ) : authMode === "login" ? (
+                    "Login"
+                  ) : (
+                    "Register"
+                  )}
+                </button>
+              </div>
+
+            </form>
+          </div>
         </div>
       </div>
     );
@@ -1379,12 +1584,6 @@ function StudioView({
   }, [viewMode, previewHtml]);
 
 
-  useEffect(() => {
-    if (user?.role === "student" && activeTab !== "lib") {
-      setActiveTab("lib");
-    }
-  }, [user, activeTab]);
-
   return (
     <div className="flex flex-col flex-1 overflow-hidden relative w-full h-full">
       
@@ -1401,7 +1600,6 @@ function StudioView({
       )}>
         <div className="flex gap-1 bg-surface-soft p-1 rounded-xl">
            {(['gen', 'scenario', 'nursery', 'lib', 'insights', 'chat'] as const)
-             .filter(tab => user?.role !== "student" || tab === "lib")
              .map(tab => (
              <button 
                key={tab}

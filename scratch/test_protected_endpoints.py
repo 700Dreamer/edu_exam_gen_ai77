@@ -8,26 +8,26 @@ def test_protected():
     # Use a client with a 30-second timeout to avoid any quick timeouts during PDF generation
     with httpx.Client(timeout=30.0) as client:
         # 1. Login as the teacher we registered
-        print("1. Logging in as teacher...")
+        print("1. Logging in as staff...")
         res = client.post(f"{base_url}/api/auth/jwt/login", data={
-            "username": "teacher_test@eduquest.com",
+            "username": "staff_test@eduquest.com",
             "password": "SecurePassword123!"
         })
         if res.status_code != 200:
             print("Teacher login failed:", res.text)
             return
-        teacher_token = res.json()["access_token"]
-        print("Teacher logged in successfully. Token acquired.")
+        staff_token = res.json()["access_token"]
+        print("Staff logged in successfully. Token acquired.")
         
         # 2. Test teacher accessing admin audit logs (should be 403 Forbidden)
-        print("\n2. Querying admin audit-logs with teacher token...")
-        res = client.get(f"{base_url}/api/admin/audit-logs", headers={"Authorization": f"Bearer {teacher_token}"})
+        print("\n2. Querying admin audit-logs with staff token...")
+        res = client.get(f"{base_url}/api/admin/audit-logs", headers={"Authorization": f"Bearer {staff_token}"})
         print("Status Code (should be 403):", res.status_code)
         print("Detail:", res.json())
         assert res.status_code == 403
         
-        # 3. Call generate endpoint with teacher token (should succeed)
-        print("\n3. Testing exam generation with teacher token...")
+        # 3. Call generate endpoint with staff token (should succeed)
+        print("\n3. Testing exam generation with staff token...")
         payload = {
             "mode": "Exams",
             "subject": "Mathematics",
@@ -36,7 +36,7 @@ def test_protected():
             "question_count": 1,
             "content_override": json.dumps({"questions": [{"number": 1, "type": "multiple_choice", "instruction": "Solve 1+1", "content": {}}]})
         }
-        res = client.post(f"{base_url}/api/generate", json=payload, headers={"Authorization": f"Bearer {teacher_token}"})
+        res = client.post(f"{base_url}/api/generate", json=payload, headers={"Authorization": f"Bearer {staff_token}"})
         print("Status Code (should be 200):", res.status_code)
         print("Response keys:", list(res.json().keys()))
         assert res.status_code == 200
