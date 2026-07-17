@@ -37,7 +37,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN playwright install --with-deps chromium
 
 # Copy backend code
-COPY app.py server.py main.py build_vector_db.py extract_data.py start_railway.sh ./
+COPY server.py main.py build_vector_db.py extract_data.py start_railway.sh ./
 COPY core/ ./core/
 COPY ui/  ./ui/
 COPY config/ ./config/
