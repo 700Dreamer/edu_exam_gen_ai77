@@ -1,12 +1,12 @@
-# 🛠 EduQuest AI — DevOps & Deployment Guide
+# 🛠 Edulytics AI — DevOps & Deployment Guide
 
-Welcome! This guide is intended for developers working on the EduQuest AI project. It outlines the infrastructure, Docker setup, and deployment workflow to ensure the production environment remains stable.
+Welcome! This guide is intended for developers working on the Edulytics AI project. It outlines the infrastructure, Docker setup, and deployment workflow to ensure the production environment remains stable.
 
 ---
 
 ## 🏗 System Architecture
 
-EduQuest AI consists of two main services:
+Edulytics AI consists of two main services:
 1.  **Backend (FastAPI)**: Handles AI logic, vector search (ChromaDB), and data extraction.
 2.  **Frontend (Next.js)**: The user interface.
 

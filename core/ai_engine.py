@@ -3,6 +3,8 @@ import re
 import json, asyncio, uuid
 import base64
 from typing import Optional
+from dotenv import load_dotenv
+load_dotenv()
 from openai import OpenAI, AsyncOpenAI
 from google import genai
 from core.db_engine import retrieve_syllabus_context, retrieve_exam_rubric
@@ -104,7 +106,7 @@ async def generate_gemini_drawing(question_prompt, context_hint=""):
     try:
         # Use the global genai_client with async support
         response = await genai_client.aio.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-3.5-flash',
             contents=full_prompt
         )
         drawing_code = response.text.strip()
@@ -629,9 +631,13 @@ Output JSON structure:
             fallback = {"weeks": [{"week_number": "Error", "topic": "N/A", "objectives": "Failed to generate", "activities": "", "resources": ""}]}
             return fallback, json.dumps(fallback), "Error"
 
-    async def _generate_chunk(chunk_size: int, start_num: int, stagger_delay: float = 0.0):
-        # Extract the exact blueprint slice for this chunk
-        chunk_mapping = "\n".join([f"Q{i}: {exam_blueprint[f'Q{i}']}" for i in range(start_num, start_num + chunk_size) if f"Q{i}" in exam_blueprint])
+    async def _generate_chunk(chunk_size: int, start_num: int, stagger_delay: float = 0.0, target_level: str = None, target_syllabus_rows: str = None):
+        _level = target_level or level
+        _syllabus_rows = target_syllabus_rows or syllabus_rows
+        # Generate a perfectly aligned blueprint for this specific class level chunk
+        from core.exam_blueprint import generate_exam_blueprint
+        chunk_blueprint = generate_exam_blueprint(subject, _level, term, chunk_size, topic)
+        chunk_mapping = "\n".join([f"Q{start_num + i}: {chunk_blueprint.get(f'Q{i+1}', 'General Knowledge')}" for i in range(chunk_size)])
         
         if stagger_delay > 0:
             import asyncio
@@ -704,10 +710,10 @@ Output JSON structure:
 
         prompt = prompt_template.format(
             subject=subject.upper(),
-            level=level,
+            level=_level,
             term=term,
             topic=topic or 'Full Syllabus',
-            syllabus_rows=syllabus_rows,
+            syllabus_rows=_syllabus_rows,
             rubric_context=rubric_context,
             pkg_skills_str=pkg_skills_str,
             pkg_prereqs_str=pkg_prereqs_str,
@@ -772,13 +778,44 @@ Output JSON structure:
             print(f"Chunk generation error: {e}")
             return []
 
-    # ── 3. PARALLEL CHUNKING ──
+    # ── 3. PARALLEL CHUNKING WITH EDUMERC POLICY ──
     try:
-        chunk_size = 10
+        from core.syllabus_rules import get_edumerc_policy
+        from core.db_engine import retrieve_syllabus_context
+        
+        policy_ratios = get_edumerc_policy(level)
+        
+        class_allocations = {}
+        remaining_questions = num_questions
+        classes_list = list(policy_ratios.items())
+        
+        for idx, (cls, ratio) in enumerate(classes_list):
+            if idx == len(classes_list) - 1:
+                alloc = remaining_questions
+            else:
+                alloc = int(round(num_questions * ratio))
+                remaining_questions -= alloc
+            if alloc > 0:
+                class_allocations[cls] = alloc
+
         tasks = []
-        for idx, i in enumerate(range(0, num_questions, chunk_size)):
-            size = min(chunk_size, num_questions - i)
-            tasks.append(_generate_chunk(size, i + 1, stagger_delay=idx * 0.25))
+        current_q_num = 1
+        stagger = 0.0
+        
+        for cls, alloc in class_allocations.items():
+            cls_syllabus = retrieve_syllabus_context(subject, cls, term, topic)
+            chunk_size = 10
+            for i in range(0, alloc, chunk_size):
+                size = min(chunk_size, alloc - i)
+                tasks.append(_generate_chunk(
+                    chunk_size=size,
+                    start_num=current_q_num,
+                    stagger_delay=stagger * 0.25,
+                    target_level=cls,
+                    target_syllabus_rows=cls_syllabus
+                ))
+                current_q_num += size
+                stagger += 1
         
         chunk_results = await asyncio.gather(*tasks)
         

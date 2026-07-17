@@ -519,7 +519,7 @@ def build_nursery_html(exam_data: dict, images: dict = None) -> str:
     period_full = exam_data.get("period_full", "END OF TERM")
     term_roman = exam_data.get("term_roman", "I")
     year = exam_data.get("year", "2025")
-    school_name = exam_data.get("school_name", "EduQuest Academy")
+    school_name = exam_data.get("school_name", "Edulytics Academy")
     age_range = exam_data.get("age_range", "4 – 5")
     questions = exam_data.get("questions", [])
 

@@ -14,8 +14,8 @@ const comingSoon = Coming_Soon({
 });
 
 export const metadata: Metadata = {
-  title: "EduQuest AI Studio",
-  description: "Enterprise Grade Educational Content Generation",
+  title: "Edulytics",
+  description: "Enterprise Grade Educational Assessment & Analytics Dashboard",
 };
 
 import Script from "next/script";

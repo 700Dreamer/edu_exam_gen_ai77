@@ -1,6 +1,42 @@
+# Secrets
 .env
+.env*.local
+
+# Editor Configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Dependencies & Build Caches
+node_modules/
+.venv/
+venv/
+env/
 __pycache__/
-chroma_db/
 *.pyc
+*.pyo
+*.pyd
 .DS_Store
+Thumbs.db
+*.zip
+
+# Local 1.2 GB Source Syllabus Database
+Edulytics_Syllabus_Database/
+
+# Runtime Databases
+chroma_db/
 ingestion_staging.db
+edulytics_history.db
+eduquest_history.db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Static & Upload Assets
+static/
+frontend/public/generated/

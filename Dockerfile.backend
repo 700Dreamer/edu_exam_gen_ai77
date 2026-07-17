@@ -1,5 +1,5 @@
 # ⚠️ CAUTION: Before modifying, please read DEVOPS_GUIDE.md
-# ── EduQuest AI Engine — Backend (FastAPI + Python) ──────────────────────────
+# ── Edulytics AI Engine — Backend (FastAPI + Python) ──────────────────────────
 FROM python:3.11-slim
 
 # System deps needed by chromadb / flashrank

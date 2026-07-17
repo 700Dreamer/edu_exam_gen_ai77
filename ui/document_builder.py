@@ -11,6 +11,55 @@ if os.path.exists(templates_dir):
 else:
     jinja_env = None
 
+import re
+
+def convert_markdown_to_html(text: str) -> str:
+    if not text:
+        return ""
+    # Render headers
+    text = re.sub(r'(?:^|\n)###\s*(.*?)(?=\n|$)', r'<h3>\1</h3>', text)
+    text = re.sub(r'(?:^|\n)##\s*(.*?)(?=\n|$)', r'<h2>\1</h2>', text)
+    text = re.sub(r'(?:^|\n)#\s*(.*?)(?=\n|$)', r'<h1>\1</h1>', text)
+    
+    # Bold & Italic
+    text = re.sub(r'\*\*\*(.*?)\*\*\*', r'<strong><em>\1</em></strong>', text)
+    text = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', text)
+    text = re.sub(r'\*(.*?)\*', r'<em>\1</em>', text)
+    
+    lines = text.split("\n")
+    processed = []
+    in_list = False
+    for line in lines:
+        trimmed = line.strip()
+        if not trimmed:
+            if in_list:
+                processed.append("</ul>")
+                in_list = False
+            processed.append("<br/>")
+            continue
+            
+        is_li = trimmed.startswith("* ") or trimmed.startswith("- ")
+        if is_li:
+            if not in_list:
+                processed.append("<ul style='margin-top: 5px; margin-bottom: 5px; padding-left: 20px;'>")
+                in_list = True
+            item_text = trimmed[2:].strip()
+            processed.append(f"<li>{item_text}</li>")
+        else:
+            if in_list:
+                processed.append("</ul>")
+                in_list = False
+                
+            if trimmed.startswith("<h") or trimmed.startswith("</h") or trimmed.startswith("<ul") or trimmed.startswith("</ul") or trimmed.startswith("<li") or trimmed.startswith("</li"):
+                processed.append(trimmed)
+            else:
+                processed.append(f"<p style='margin: 4px 0;'>{trimmed}</p>")
+                
+    if in_list:
+        processed.append("</ul>")
+            
+    return "\n".join(processed)
+
 
 def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, duration, school_name, brand_name, question_count, content_raw, topic="", logo_b64=None, paper_style="uneb_standard", view_mode="scroll"):
     """
@@ -156,7 +205,7 @@ def build_full_html(mode, exam_type, level, subject, term_roman, exam_year, dura
                 
                 parsed_html += f"<div style='margin-bottom: 35px;'>"
                 parsed_html += f"  <h3 style='color: var(--p); border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 15px;'>{h}</h3>"
-                parsed_html += f"  <div style='font-size: 15.5px; line-height: 1.8; margin-bottom: 15px;'>{c}</div>"
+                parsed_html += f"  <div style='font-size: 15.5px; line-height: 1.8; margin-bottom: 15px;'>{convert_markdown_to_html(c)}</div>"
                 if tikz:
                     parsed_html += f"  <div style='text-align:center; padding: 15px;'>{tikz}</div>"
                 parsed_html += f"</div>"
@@ -364,7 +413,7 @@ body {{
   <div class="body-c" id="content-body" style="margin-top:20px;">
     {parsed_html}
   </div>
-  <div class="pgn">EduQuest Core | {document_title} Module</div>
+  <div class="pgn">Edulytics Core | {document_title} Module</div>
 </div>
 """
     else:
@@ -626,7 +675,7 @@ document.addEventListener("DOMContentLoaded", function() {{
   setTimeout(paginateContent, 1500); // Fallback for dynamic content
 
   // 📡 READY SIGNAL
-  window.parent.postMessage({{ type: 'EDUQUEST_READY' }}, '*');
+  window.parent.postMessage({{ type: 'EDULYTICS_READY' }}, '*');
 
   // ── UNIVERSAL IMAGE DRAG & RESIZE ──
   let activeDragImg = null;
@@ -716,7 +765,7 @@ window.addEventListener('message', (event) => {{
   const d = event.data;
 
   // ─ View mode toggle ─
-  if (d.type === 'EDUQUEST_VIEW_MODE') {{
+  if (d.type === 'EDULYTICS_VIEW_MODE') {{
     const mode = d.mode;
     const allPages = document.querySelectorAll('.page');
     const markingPage = document.getElementById('marking-guide-page');
@@ -1174,7 +1223,7 @@ document.addEventListener('DOMContentLoaded', () => {{
     }});
 
     // ── Signal parent that page is ready ──
-    window.parent.postMessage({{ type: 'EDUQUEST_READY' }}, '*');
+    window.parent.postMessage({{ type: 'EDULYTICS_READY' }}, '*');
 }});
 
 // 📡 FULL MESSAGE RELAY FROM REACT PARENT
@@ -1242,7 +1291,7 @@ window.addEventListener('message', (event) => {{
   }}
 
   // ─ View mode toggle ─
-  if (d.type === 'EDUQUEST_VIEW_MODE') {{
+  if (d.type === 'EDULYTICS_VIEW_MODE') {{
     const mode = d.mode;
     const allPages = document.querySelectorAll('.page');
     const markingEl = document.getElementById('ans-key-container');

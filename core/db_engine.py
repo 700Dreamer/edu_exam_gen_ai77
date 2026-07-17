@@ -39,8 +39,13 @@ def retrieve_syllabus_context(subject, level, term, topic, strategy="syllabus"):
         if level and level != "Unknown":
             conditions.append({"level": level})
         if term and term != "Unknown":
-            # Include exact term match AND year-round general content
-            conditions.append({"term": {"$in": [term, "Unknown"]}})
+            # EDUMERC Policy: Pull from current and previous terms
+            try:
+                from core.syllabus_rules import get_allowed_terms
+                allowed = get_allowed_terms(term)
+                conditions.append({"term": {"$in": allowed}})
+            except ImportError:
+                conditions.append({"term": {"$in": [term, "Unknown"]}})
             
         where_filter = None
         if len(conditions) > 1:

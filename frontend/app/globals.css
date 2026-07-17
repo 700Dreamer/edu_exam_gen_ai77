@@ -138,15 +138,14 @@ body {
 
 @layer components {
   .btn-primary {
-    @apply bg-brand-800 hover:bg-brand-900 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-md active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
-    box-shadow: 0 4px 14px 0 var(--glow-accent);
+    @apply bg-brand-800 hover:bg-brand-900 text-white font-bold py-2 px-6 rounded-none transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
   }
   .btn-secondary {
-    @apply bg-surface border border-border-main hover:border-brand-800 hover:text-brand-800 text-foreground font-bold py-2 px-6 rounded-lg transition-all active:scale-95;
+    @apply bg-surface border border-border-main hover:border-brand-800 hover:text-brand-800 text-foreground font-bold py-2 px-6 rounded-none transition-all active:scale-95;
     color: rgb(var(--foreground-rgb));
   }
   .card {
-    @apply bg-surface rounded-xl shadow-sm border border-border-main p-6 transition-all duration-300;
+    @apply bg-surface rounded-none border border-border-main p-6 transition-all duration-300;
   }
   .card-premium {
     @apply border border-border-main transition-all duration-300;
@@ -173,7 +172,7 @@ body {
     border: 1px solid var(--border-color);
   }
   .neon-glow {
-    box-shadow: 0 0 20px var(--glow-accent), inset 0 0 10px var(--glow-accent);
+    border: 1px solid var(--brand-500);
   }
   .bg-dot-pattern {
     background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
@@ -190,7 +189,6 @@ body {
 }
 ::-webkit-scrollbar-thumb {
   background: var(--brand-800);
-  border-radius: 10px;
   border: 2px solid rgb(var(--background-rgb));
 }
 ::-webkit-scrollbar-thumb:hover {

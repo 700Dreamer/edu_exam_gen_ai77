@@ -182,7 +182,7 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Warning: Could not read existing data. Starting fresh. ({e})")
     target_dirs = [
-        os.path.join(BASE_DIR, "EduQuest_Syllabus_Database", "1. Pre_Primary"),
+        os.path.join(BASE_DIR, "Edulytics_Syllabus_Database", "1. Pre_Primary"),
         os.path.join(BASE_DIR, "PRIMARY PAPERS")
     ]
     

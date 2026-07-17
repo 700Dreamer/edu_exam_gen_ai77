@@ -1,6 +1,6 @@
-# EduQuest AI Engine
+# Edulytics AI Engine
 
-This repository contains the backend and frontend for the EduQuest AI educational engine.
+This repository contains the backend and frontend for the Edulytics AI educational engine.
 
 ## 📁 Project Structure
 - `/` (Root): Backend logic (FastAPI), deployment scripts, and configuration.

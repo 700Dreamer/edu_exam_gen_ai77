@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    proxyTimeout: 300000, // 5 minutes
-  },
   async rewrites() {
     return [
       {
@@ -15,3 +12,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+

@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# EduQuest AI — Docker Compose
+# Edulytics AI — Docker Compose
 # ⚠️ CAUTION: Before modifying infrastructure, please read DEVOPS_GUIDE.md
 # ─────────────────────────────────────────────────────────────────────────────
 #
@@ -9,7 +9,7 @@
 #
 # Volumes
 #   chroma_data   persists the ChromaDB vector store between rebuilds
-#   db_data       persists SQLite databases (eduquest_history.db, etc.)
+#   db_data       persists SQLite databases (edulytics_history.db, etc.)
 #
 # Usage
 #   docker compose up --build          # first run (or after code changes)
@@ -25,7 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: eduquest_backend
+    container_name: edulytics_backend
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -37,7 +37,7 @@ services:
       - chroma_data:/app/chroma_db
       - db_data:/app/db
     networks:
-      - eduquest_net
+      - edulytics_net
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/syllabus/config')"]
       interval: 30s
@@ -55,7 +55,7 @@ services:
         # The browser also hits port 8000 directly (mapped to host), so
         # localhost:8000 works fine for client-side fetch calls.
         NEXT_PUBLIC_API_URL: http://localhost:8000
-    container_name: eduquest_frontend
+    container_name: edulytics_frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -63,7 +63,7 @@ services:
       backend:
         condition: service_healthy
     networks:
-      - eduquest_net
+      - edulytics_net
 
 # ── Named volumes ────────────────────────────────────────────────────────────
 volumes:
@@ -72,5 +72,5 @@ volumes:
 
 # ── Shared network ───────────────────────────────────────────────────────────
 networks:
-  eduquest_net:
+  edulytics_net:
     driver: bridge

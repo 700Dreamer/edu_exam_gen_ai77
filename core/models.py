@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite+aiosqlite:///{os.path.join(BASE_DIR, 'eduquest_history.db')}"
+DATABASE_URL = f"sqlite+aiosqlite:///{os.path.join(BASE_DIR, 'edulytics_history.db')}"
 
 engine = create_async_engine(DATABASE_URL, connect_args={"timeout": 30.0})
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -27,9 +27,60 @@ class AuditLog(Base):
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
+class Tenant(Base):
+    """Represents a School or Institution."""
+    __tablename__ = "tenant"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
+class AcademicGroup(Base):
+    """Represents a specific Class and Stream within a School (e.g., P.7 Blue)."""
+    __tablename__ = "academic_group"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id", ondelete="CASCADE"), nullable=False)
+    level: Mapped[str] = mapped_column(String(50), nullable=False) # e.g., P.1, P.2
+    stream: Mapped[str] = mapped_column(String(50), nullable=False) # e.g., Blue, North
+
+class Student(Base):
+    """Represents an individual student belonging to an Academic Group."""
+    __tablename__ = "student"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    academic_group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("academic_group.id", ondelete="CASCADE"), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    index_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+class AssessmentBatch(Base):
+    """Represents an asynchronous exam upload and grading session."""
+    __tablename__ = "assessment_batch"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    academic_group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("academic_group.id", ondelete="CASCADE"), nullable=False)
+    subject: Mapped[str] = mapped_column(String(100), nullable=False)
+    exam_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="Processing", nullable=False) # Processing, Completed, Needs Review
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    batch_insights: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
+class StudentResult(Base):
+    """Represents the graded exam results for a single student from a batch."""
+    __tablename__ = "student_result"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assessment_batch.id", ondelete="CASCADE"), nullable=False)
+    student_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("student.id", ondelete="SET NULL"), nullable=True)
+    total_score: Mapped[Optional[int]] = mapped_column(nullable=True)
+    ai_remarks: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    needs_manual_review: Mapped[bool] = mapped_column(default=False, nullable=False)
+    paper_images_urls: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    raw_extracted_html: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from sqlalchemy import text
+        try:
+            await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN batch_insights TEXT"))
+        except Exception:
+            pass
 
 async def get_async_session() -> AsyncSession:
     async with async_session_maker() as session:
