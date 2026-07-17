@@ -17,7 +17,7 @@ if [ -d "/app/data_volume" ]; then
     echo "💾 Persistent volume detected at $DATA_DIR"
 fi
 
-if [ ! -d "$DATA_DIR/chroma_db" ] || [ ! -f "$DATA_DIR/ingestion_staging.db" ]; then
+if [ ! -d "$DATA_DIR/chroma_db" ]; then
     echo "📦 Databases missing. Downloading from Cloud Storage..."
     wget -qO $DATA_DIR/data.zip "https://storage.googleapis.com/scholar-bucket-n/data.zip"
     
@@ -41,7 +41,6 @@ fi
 # Create symlinks if using a persistent volume so the Python code finds them in the root
 if [ "$DATA_DIR" != "/app" ]; then
     ln -sf $DATA_DIR/chroma_db /app/chroma_db
-    ln -sf $DATA_DIR/ingestion_staging.db /app/ingestion_staging.db
 fi
 # ─────────────────────────────────────────
 
