@@ -903,44 +903,74 @@ def trigger_scan(req: ScanRequest):
 @app.post("/api/v1/scanner/ocr-name")
 async def ocr_student_name(file: UploadFile = File(...)):
     """
-    Use Gemini-3.5-Flash to extract the student's name from a scanned exam page.
+    Use Gemini-3.5-Flash or GPT-4o-mini to extract the student's name from a scanned exam page.
     """
-    from google import genai
-    from google.genai import types
+    img_bytes = await file.read()
     
+    # 1. Try Gemini if GOOGLE_API_KEY is available
     google_key = os.environ.get("GOOGLE_API_KEY")
-    if not google_key:
-        return {"name": "Unknown", "message": "Google API key not configured"}
-        
+    if google_key:
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client(api_key=google_key)
+            part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
+            prompt = (
+                "Analyze this scanned exam page and extract the name of the student who took the exam. "
+                "Look for standard fields like 'Name:', 'Student Name:', 'Candidate Name:', or handwritten names "
+                "typically written at the top of the exam paper. "
+                "Return ONLY the extracted name (e.g., 'Bruce Wayne'). Do not include labels, punctuation, "
+                "or extra words. If you cannot find any student name, return 'Unknown'."
+            )
+            response = await client.aio.models.generate_content(
+                model='gemini-3.5-flash',
+                contents=[part, prompt]
+            )
+            name = response.text.strip() if response.text else "Unknown"
+            name = name.replace('"', '').replace("'", "").strip()
+            if name.endswith('.'):
+                name = name[:-1].strip()
+            if name.lower() != "unknown" and len(name) <= 50:
+                return {"name": name}
+        except Exception as e:
+            print(f"Gemini OCR name extraction failed: {e}")
+
+    # 2. Fallback to OpenAI Vision (gpt-4o-mini) using OPENAI_API_KEY
     try:
-        client = genai.Client(api_key=google_key)
-        img_bytes = await file.read()
-        part = types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")
-        
+        from core.ai_engine import get_async_openai_client
+        client = get_async_openai_client()
+        b64_img = base64.b64encode(img_bytes).decode("ascii")
         prompt = (
-            "Analyze this scanned exam page and extract the name of the student who took the exam. "
-            "Look for standard fields like 'Name:', 'Student Name:', 'Candidate Name:', or handwritten names "
-            "typically written at the top of the exam paper. "
+            "Analyze this scanned exam page image and extract the name of the student who took the exam. "
+            "Look for fields like 'Name:', 'Student Name:', 'Candidate Name:', or handwritten names at the top of the paper. "
             "Return ONLY the extracted name (e.g., 'Bruce Wayne'). Do not include labels, punctuation, "
             "or extra words. If you cannot find any student name, return 'Unknown'."
         )
-        
-        response = await client.aio.models.generate_content(
-            model='gemini-3.5-flash',
-            contents=[part, prompt]
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}
+                        }
+                    ]
+                }
+            ],
+            max_tokens=50
         )
-        
-        name = response.text.strip() if response.text else "Unknown"
+        name = response.choices[0].message.content.strip()
         name = name.replace('"', '').replace("'", "").strip()
         if name.endswith('.'):
             name = name[:-1].strip()
-            
         if name.lower() == "unknown" or len(name) > 50:
             name = "Unknown"
-            
         return {"name": name}
     except Exception as e:
-        print(f"Error during Gemini-3.5-Flash OCR for student name: {e}")
+        print(f"OpenAI Vision OCR name extraction error: {e}")
         return {"name": "Unknown", "error": str(e)}
 
 
@@ -980,3 +1010,8 @@ def compile_pdf(files: List[UploadFile] = File(...)):
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename=compiled_exam.pdf"}
     )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+

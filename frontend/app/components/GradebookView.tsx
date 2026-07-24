@@ -12,7 +12,7 @@ export default function GradebookView({ theme }: { theme: string }) {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [distribution, setDistribution] = useState<any | null>(null);
-  
+
   const [selectedResult, setSelectedResult] = useState<any | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<"report" | "paper">("report");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -51,7 +51,7 @@ export default function GradebookView({ theme }: { theme: string }) {
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, "text/html");
-      
+
       let title = "";
       let generalInsightHTML = "";
       let strengthsHTML = "";
@@ -87,12 +87,12 @@ export default function GradebookView({ theme }: { theme: string }) {
       } else {
         const headings = Array.from(doc.querySelectorAll("h1, h2, h3, h4, p strong"));
         let currentSection = "";
-        
+
         const children = Array.from(doc.body.children);
         children.forEach(el => {
           const text = el.textContent || "";
           const lowerText = text.toLowerCase();
-          
+
           if (el.tagName.match(/^H[1-4]$/) || (el.tagName === "P" && el.querySelector("strong") && text.length < 100)) {
             if (lowerText.includes("performance") || lowerText.includes("insight")) {
               currentSection = "insight";
@@ -157,7 +157,7 @@ export default function GradebookView({ theme }: { theme: string }) {
             const htmlContent = li.innerHTML;
             let titleText = `Recommendation ${idx + 1}`;
             let descText = htmlContent;
-            
+
             const strong = li.querySelector("strong");
             if (strong) {
               titleText = strong.textContent || titleText;
@@ -284,7 +284,7 @@ export default function GradebookView({ theme }: { theme: string }) {
       h3s.forEach(h => {
         h.className = "text-xs font-black uppercase tracking-widest text-foreground/60 mt-8 mb-4 border-b border-border-main/50 pb-2 flex items-center gap-2";
       });
-      
+
       const h2s = doc.querySelectorAll("h2");
       h2s.forEach(h => {
         h.className = "text-sm font-black uppercase tracking-widest text-foreground mt-8 mb-4 border-b border-border-main pb-2 flex items-center gap-2";
@@ -298,7 +298,7 @@ export default function GradebookView({ theme }: { theme: string }) {
         let studentName = "";
         let subject = "";
         let totalScore = "";
-        
+
         const parent = execHeader.parentElement;
         if (parent) {
           const listItems = parent.querySelectorAll("p, li");
@@ -307,7 +307,7 @@ export default function GradebookView({ theme }: { theme: string }) {
             if (txt.includes("Student Name:")) studentName = txt.replace("Student Name:", "").trim();
             else if (txt.includes("Subject:")) subject = txt.replace("Subject:", "").trim();
             else if (txt.includes("Total Score:")) totalScore = txt.replace("Total Score:", "").trim();
-            
+
             if (txt.includes("Student Name:") || txt.includes("Subject:") || txt.includes("Total Score:")) {
               item.remove();
             }
@@ -315,7 +315,7 @@ export default function GradebookView({ theme }: { theme: string }) {
 
           const gridDiv = doc.createElement("div");
           gridDiv.className = "grid grid-cols-1 sm:grid-cols-3 gap-4 my-6 font-outfit";
-          
+
           if (studentName) {
             gridDiv.innerHTML += `
               <div class="bg-surface border border-border-main p-4 space-y-1">
@@ -340,7 +340,7 @@ export default function GradebookView({ theme }: { theme: string }) {
               </div>
             `;
           }
-          
+
           execHeader.after(gridDiv);
         }
       }
@@ -356,18 +356,18 @@ export default function GradebookView({ theme }: { theme: string }) {
           siblingParagraphs.push(curr);
           curr = curr.nextElementSibling;
         }
-        
+
         if (siblingParagraphs.length > 0) {
           const feedbackCard = doc.createElement("div");
           feedbackCard.className = "bg-brand-500/5 border-l-4 border-brand-600 p-5 space-y-3 font-outfit text-xs text-foreground/80 leading-relaxed my-4";
-          
+
           siblingParagraphs.forEach(p => {
             const pCopy = doc.createElement("p");
             pCopy.textContent = p.textContent;
             feedbackCard.appendChild(pCopy);
             p.remove();
           });
-          
+
           feedbackHeader.after(feedbackCard);
         }
       }
@@ -385,7 +385,7 @@ export default function GradebookView({ theme }: { theme: string }) {
     authFetch("/api/v1/assessment/batches")
       .then(res => res.json())
       .then(data => setBatches(Array.isArray(data) ? data : []))
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const handleSelectBatch = async (batch: any) => {
@@ -400,14 +400,14 @@ export default function GradebookView({ theme }: { theme: string }) {
       ]);
       if (rRes.ok) setResults(await rRes.json());
       if (dRes.ok) setDistribution(await dRes.json());
-    } catch (e) {}
+    } catch (e) { }
     finally { setLoading(false); }
   };
 
   useEffect(() => {
     if (selectedBatch) {
       authFetch(`/api/v1/academic-group/${selectedBatch.academic_group_id}/students`)
-        .then(res => res.json()).then(data => setClassStudents(data)).catch(() => {});
+        .then(res => res.json()).then(data => setClassStudents(data)).catch(() => { });
     } else { setClassStudents([]); }
   }, [selectedBatch]);
 
@@ -437,7 +437,7 @@ export default function GradebookView({ theme }: { theme: string }) {
         setSelectedResult(updated || null);
         setResolutionStudentId("");
       } else { alert("Failed to resolve identity."); }
-    } catch(e) { alert("Network error."); }
+    } catch (e) { alert("Network error."); }
     finally { setIsResolving(false); }
   };
 
@@ -458,7 +458,7 @@ export default function GradebookView({ theme }: { theme: string }) {
         setSelectedResult(updated || null);
         setOverrideScore("");
       } else { alert("Failed to override score."); }
-    } catch(e) { alert("Network error."); }
+    } catch (e) { alert("Network error."); }
     finally { setIsOverriding(false); }
   };
 
@@ -557,7 +557,7 @@ export default function GradebookView({ theme }: { theme: string }) {
             <span className="text-xs text-foreground/50 italic">Generating general batch recommendations and learning insights...</span>
           </div>
         ) : insights ? (
-          <div 
+          <div
             className="w-full text-foreground"
             dangerouslySetInnerHTML={{ __html: formatBatchInsightsHtml(insights) }}
           />
@@ -571,7 +571,7 @@ export default function GradebookView({ theme }: { theme: string }) {
   return (
     <div className="flex-1 bg-surface-soft/30 text-foreground p-8 overflow-y-auto font-outfit relative">
       <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        
+
         {/* Header or back navigation */}
         <div className="flex justify-between items-center border-b border-border-main pb-4">
           <div className="flex items-center gap-3">
@@ -582,7 +582,7 @@ export default function GradebookView({ theme }: { theme: string }) {
             </div>
           </div>
           {selectedBatch && (
-            <button 
+            <button
               onClick={() => { setSelectedBatch(null); setResults([]); setSelectedResult(null); setIsSidebarCollapsed(false); }}
               className="px-4 py-2 text-xs font-bold bg-surface border border-border-main rounded-none hover:bg-surface-soft transition-colors cursor-pointer"
             >
@@ -625,7 +625,7 @@ export default function GradebookView({ theme }: { theme: string }) {
                           </span>
                         </td>
                         <td className="px-3 py-4">
-                          <button 
+                          <button
                             onClick={() => handleSelectBatch(batch)}
                             className="px-3 py-1.5 bg-foreground text-surface text-[10px] font-bold rounded-none hover:bg-foreground/90 transition-all cursor-pointer shadow-none"
                           >
@@ -660,266 +660,266 @@ export default function GradebookView({ theme }: { theme: string }) {
         ) : (
           /* Detailed Batch Results */
           <div className="space-y-6">
-          {/* Score Distribution Chart */}
-          {distribution && <ScoreChart dist={distribution} />}
+            {/* Score Distribution Chart */}
+            {distribution && <ScoreChart dist={distribution} />}
 
-          {/* General AI Recommendations & Insights */}
-          {selectedBatch && <BatchInsightsCard batchId={selectedBatch.id} />}
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={handleReGradeBatch}
-              disabled={isReGrading}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer shadow-none"
-            >
-              {isReGrading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Re-grading...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5" /> Re-Grade Batch
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => handleExportCSV(selectedBatch.id, selectedBatch.subject)}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer shadow-none"
-            >
-              <Download className="w-3.5 h-3.5" /> Export CSV
-            </button>
-          </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Student Results Table */}
-            <div className={cn(
-              "lg:col-span-1 bg-surface border border-border-main rounded-none shadow-none overflow-hidden self-start transition-all duration-300",
-              isSidebarCollapsed ? "hidden" : "block"
-            )}>
-              <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50">
-                <h3 className="text-sm font-bold text-foreground">{selectedBatch.tenant_name} — {selectedBatch.level} {selectedBatch.stream}</h3>
-                <p className="text-[10px] text-foreground/50 mt-1 font-semibold">{selectedBatch.subject} | {selectedBatch.exam_type}</p>
-              </div>
-              
-              {loading ? (
-                <div className="p-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></div>
-              ) : results.length === 0 ? (
-                <div className="p-8 text-center text-xs text-foreground/40 italic">No uploads processed in this batch.</div>
-              ) : (
-                <div className="divide-y divide-border-main/50 max-h-[500px] overflow-y-auto custom-scrollbar">
-                  {results.map(r => (
-                    <div 
-                      key={r.id} 
-                      onClick={() => { setSelectedResult(r); setResolutionStudentId(""); setActiveDetailTab("report"); }}
-                      className={cn(
-                        "p-4 cursor-pointer hover:bg-surface-soft/30 transition-all flex justify-between items-center",
-                        selectedResult?.id === r.id ? "bg-brand-50/40 border-l-4 border-brand-600 pl-3" : ""
-                      )}
-                    >
-                      <div>
-                        <h4 className="text-xs font-bold text-foreground">{r.student_name}</h4>
-                        <p className="text-[10px] text-foreground/40 font-mono mt-0.5">{r.index_number ? `Index: ${r.index_number}` : "No Index Linked"}</p>
-                      </div>
-                      <div className="text-right">
-                        {r.needs_manual_review ? (
-                          <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-none">Unresolved</span>
-                        ) : (
-                          <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2 py-0.5 rounded-none">{r.total_score !== null ? `${r.total_score}%` : "—"}</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* General AI Recommendations & Insights */}
+            {selectedBatch && <BatchInsightsCard batchId={selectedBatch.id} />}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={handleReGradeBatch}
+                disabled={isReGrading}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer shadow-none"
+              >
+                {isReGrading ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Re-grading...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" /> Re-Grade Batch
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => handleExportCSV(selectedBatch.id, selectedBatch.subject)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer shadow-none"
+              >
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </button>
             </div>
-
-            {/* Individual Result Details Panel */}
-            <div className={cn(
-              "bg-surface border border-border-main rounded-none shadow-none overflow-hidden min-h-[400px] flex flex-col transition-all duration-300",
-              isSidebarCollapsed ? "lg:col-span-3" : "lg:col-span-2"
-            )}>
-              {!selectedResult ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40 p-12">
-                  <FileCheck className="w-16 h-16 mb-4 text-foreground/40" />
-                  <h4 className="text-sm font-bold text-foreground">Select Student</h4>
-                  <p className="text-xs text-foreground/60 mt-1">Select a student from the list on the left to display their graded exam paper and AI feedback.</p>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Student Results Table */}
+              <div className={cn(
+                "lg:col-span-1 bg-surface border border-border-main rounded-none shadow-none overflow-hidden self-start transition-all duration-300",
+                isSidebarCollapsed ? "hidden" : "block"
+              )}>
+                <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50">
+                  <h3 className="text-sm font-bold text-foreground">{selectedBatch.tenant_name} — {selectedBatch.level} {selectedBatch.stream}</h3>
+                  <p className="text-[10px] text-foreground/50 mt-1 font-semibold">{selectedBatch.subject} | {selectedBatch.exam_type}</p>
                 </div>
-              ) : (
-                <div className="flex-1 flex flex-col h-[600px] overflow-hidden">
-                  {/* Top Panel Bar */}
-                  <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center shrink-0">
-                    <div className="flex items-center gap-3">
-                      <button 
-                        onClick={() => setIsSidebarCollapsed(prev => !prev)}
-                        className="p-1.5 text-foreground/50 hover:text-foreground hover:bg-surface-soft/80 border border-border-main transition-all cursor-pointer rounded-none flex items-center justify-center shrink-0"
-                        title={isSidebarCollapsed ? "Expand Roster" : "Collapse Roster"}
+
+                {loading ? (
+                  <div className="p-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></div>
+                ) : results.length === 0 ? (
+                  <div className="p-8 text-center text-xs text-foreground/40 italic">No uploads processed in this batch.</div>
+                ) : (
+                  <div className="divide-y divide-border-main/50 max-h-[500px] overflow-y-auto custom-scrollbar">
+                    {results.map(r => (
+                      <div
+                        key={r.id}
+                        onClick={() => { setSelectedResult(r); setResolutionStudentId(""); setActiveDetailTab("report"); }}
+                        className={cn(
+                          "p-4 cursor-pointer hover:bg-surface-soft/30 transition-all flex justify-between items-center",
+                          selectedResult?.id === r.id ? "bg-brand-50/40 border-l-4 border-brand-600 pl-3" : ""
+                        )}
                       >
-                        {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-                      </button>
-                      <div>
-                        <h4 className="text-sm font-bold text-foreground">{selectedResult.student_name}</h4>
-                        <p className="text-[10px] text-foreground/40 font-mono mt-0.5">Result ID: {selectedResult.id}</p>
+                        <div>
+                          <h4 className="text-xs font-bold text-foreground">{r.student_name}</h4>
+                          <p className="text-[10px] text-foreground/40 font-mono mt-0.5">{r.index_number ? `Index: ${r.index_number}` : "No Index Linked"}</p>
+                        </div>
+                        <div className="text-right">
+                          {r.needs_manual_review ? (
+                            <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-none">Unresolved</span>
+                          ) : (
+                            <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2 py-0.5 rounded-none">{r.total_score !== null ? `${r.total_score}%` : "—"}</span>
+                          )}
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Individual Result Details Panel */}
+              <div className={cn(
+                "bg-surface border border-border-main rounded-none shadow-none overflow-hidden min-h-[400px] flex flex-col transition-all duration-300",
+                isSidebarCollapsed ? "lg:col-span-3" : "lg:col-span-2"
+              )}>
+                {!selectedResult ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40 p-12">
+                    <FileCheck className="w-16 h-16 mb-4 text-foreground/40" />
+                    <h4 className="text-sm font-bold text-foreground">Select Student</h4>
+                    <p className="text-xs text-foreground/60 mt-1">Select a student from the list on the left to display their graded exam paper and AI feedback.</p>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col h-[600px] overflow-hidden">
+                    {/* Top Panel Bar */}
+                    <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center shrink-0">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setIsSidebarCollapsed(prev => !prev)}
+                          className="p-1.5 text-foreground/50 hover:text-foreground hover:bg-surface-soft/80 border border-border-main transition-all cursor-pointer rounded-none flex items-center justify-center shrink-0"
+                          title={isSidebarCollapsed ? "Expand Roster" : "Collapse Roster"}
+                        >
+                          {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                        </button>
+                        <div>
+                          <h4 className="text-sm font-bold text-foreground">{selectedResult.student_name}</h4>
+                          <p className="text-[10px] text-foreground/40 font-mono mt-0.5">Result ID: {selectedResult.id}</p>
+                        </div>
+                      </div>
+                      {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
+                        <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
+                          {selectedResult.total_score}%
+                        </div>
+                      )}
                     </div>
-                    {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
-                      <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
-                        {selectedResult.total_score}%
+
+                    {/* Toggle Tabs (only if not in manual review) */}
+                    {!selectedResult.needs_manual_review && (
+                      <div className="flex border-b border-border-main bg-surface-soft/20 px-6 shrink-0 font-outfit">
+                        <button
+                          onClick={() => setActiveDetailTab("report")}
+                          className={cn(
+                            "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4",
+                            activeDetailTab === "report"
+                              ? "border-brand-600 text-brand-600 font-extrabold"
+                              : "border-transparent text-foreground/50 hover:text-foreground"
+                          )}
+                        >
+                          Exam Report
+                        </button>
+                        <button
+                          onClick={() => setActiveDetailTab("paper")}
+                          className={cn(
+                            "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer",
+                            activeDetailTab === "paper"
+                              ? "border-brand-600 text-brand-600 font-extrabold"
+                              : "border-transparent text-foreground/50 hover:text-foreground"
+                          )}
+                        >
+                          Scanned Paper
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Identity Resolution Form vs Regular Output */}
+                    {selectedResult.needs_manual_review ? (
+                      <div className="flex-1 p-6 flex flex-col justify-center items-center bg-amber-500/5 overflow-y-auto custom-scrollbar">
+                        <div className="w-full max-w-md bg-surface border border-amber-500/30 rounded-none p-6 shadow-none space-y-4 font-outfit text-left">
+                          <div className="flex items-center gap-2 text-amber-600 mb-2">
+                            <AlertCircle className="w-5 h-5" />
+                            <h4 className="font-bold text-sm">Identity Resolution Center</h4>
+                          </div>
+                          <p className="text-xs text-foreground/75 leading-relaxed">
+                            The AI could not map this scan to a registered student. Remarks: <span className="font-mono bg-slate-50 px-1 py-0.5 border border-border-main rounded-none text-red-600">{selectedResult.ai_remarks}</span>
+                          </p>
+
+                          <div className="h-40 bg-surface-soft border border-border-main rounded-none overflow-hidden relative flex items-center justify-center">
+                            {selectedResult.paper_images_urls?.page1 ? (
+                              <img
+                                src={selectedResult.paper_images_urls.page1}
+                                alt="Scan Crop"
+                                className="max-h-full object-contain"
+                                onError={(e: any) => { e.target.src = "https://via.placeholder.com/600x200?text=Handwritten+Name+Header"; }}
+                              />
+                            ) : (
+                              <span className="text-xs text-foreground/40 italic">No image file found</span>
+                            )}
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-foreground/60 mb-2 block">Link to Student Record</label>
+                            <select
+                              value={resolutionStudentId}
+                              onChange={(e) => setResolutionStudentId(e.target.value)}
+                              className="w-full p-3 bg-surface border border-border-main rounded-none text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
+                            >
+                              <option value="">Select Student...</option>
+                              {classStudents.map((st: any) => (
+                                <option key={st.id} value={st.id}>{st.full_name} {st.index_number ? `(Index: ${st.index_number})` : ""}</option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <button
+                            onClick={handleResolveIdentity}
+                            disabled={!resolutionStudentId || isResolving}
+                            className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-none hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-none"
+                          >
+                            {isResolving && <Loader2 className="w-3 h-3 animate-spin" />}
+                            Confirm Match & Link Grade
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Display Graded scan & AI report based on active detail tab */
+                      <div className="flex-1 flex flex-col overflow-hidden">
+                        {activeDetailTab === "paper" ? (
+                          /* Graded scan Image (Full Width) */
+                          <div className="flex-1 bg-surface-soft overflow-y-auto p-6 flex flex-col gap-6 items-center custom-scrollbar">
+                            {(() => {
+                              const paper_images = selectedResult.paper_images_urls || {};
+                              const sortedEntries = Object.entries(paper_images).sort((a, b) =>
+                                a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' })
+                              );
+                              if (sortedEntries.length === 0) {
+                                return <div className="text-xs text-foreground/40 italic py-12">No image file found for this scan.</div>;
+                              }
+                              return sortedEntries.map(([key, url], idx) => (
+                                <div key={key} className="w-full max-w-2xl space-y-1.5 flex flex-col items-center">
+                                  <p className="text-[10px] text-foreground/50 font-bold uppercase tracking-wider self-start pl-2">
+                                    Page {idx + 1} of {sortedEntries.length}
+                                  </p>
+                                  <img
+                                    src={url as string}
+                                    alt={`Graded scan page ${idx + 1}`}
+                                    className="w-full rounded-none border border-border-main shadow-lg object-contain bg-white animate-in fade-in zoom-in-95 duration-300"
+                                    onError={(e: any) => { e.target.src = `https://via.placeholder.com/600x800?text=Page+${idx + 1}+Offline`; }}
+                                  />
+                                </div>
+                              ));
+                            })()}
+                          </div>
+                        ) : (
+                          /* AI Feedback Report (HTML Rendering) - Full Width with Premium Styling */
+                          <div className="flex-1 overflow-y-auto bg-surface custom-scrollbar text-left flex flex-col animate-in fade-in duration-300">
+                            <div className="flex-1 p-6">
+                              {selectedResult.raw_extracted_html ? (
+                                <div
+                                  className="prose prose-sm prose-slate max-w-none text-foreground"
+                                  dangerouslySetInnerHTML={{ __html: formatRawReportHtml(selectedResult.raw_extracted_html) }}
+                                />
+                              ) : (
+                                <div className="text-center py-12 text-xs text-foreground/40 italic">
+                                  {selectedResult.ai_remarks || "No grading report details generated yet."}
+                                </div>
+                              )}
+                            </div>
+                            {/* Score Override Form */}
+                            <div className="border-t border-border-main p-4 bg-surface-soft/50 shrink-0">
+                              <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 block mb-2">
+                                <Edit3 className="w-3 h-3 inline mr-1" />Override Score
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="0–100"
+                                  value={overrideScore}
+                                  onChange={e => setOverrideScore(e.target.value)}
+                                  className="w-20 text-xs border border-border-main rounded-none p-2 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
+                                />
+                                <button
+                                  onClick={handleOverrideScore}
+                                  disabled={!overrideScore || isOverriding}
+                                  className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-none"
+                                >
+                                  {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
+                                  Set Score
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-
-                  {/* Toggle Tabs (only if not in manual review) */}
-                  {!selectedResult.needs_manual_review && (
-                    <div className="flex border-b border-border-main bg-surface-soft/20 px-6 shrink-0 font-outfit">
-                      <button
-                        onClick={() => setActiveDetailTab("report")}
-                        className={cn(
-                          "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4",
-                          activeDetailTab === "report"
-                            ? "border-brand-600 text-brand-600 font-extrabold"
-                            : "border-transparent text-foreground/50 hover:text-foreground"
-                        )}
-                      >
-                        Exam Report
-                      </button>
-                      <button
-                        onClick={() => setActiveDetailTab("paper")}
-                        className={cn(
-                          "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer",
-                          activeDetailTab === "paper"
-                            ? "border-brand-600 text-brand-600 font-extrabold"
-                            : "border-transparent text-foreground/50 hover:text-foreground"
-                        )}
-                      >
-                        Scanned Paper
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Identity Resolution Form vs Regular Output */}
-                  {selectedResult.needs_manual_review ? (
-                    <div className="flex-1 p-6 flex flex-col justify-center items-center bg-amber-500/5 overflow-y-auto custom-scrollbar">
-                      <div className="w-full max-w-md bg-surface border border-amber-500/30 rounded-none p-6 shadow-none space-y-4 font-outfit text-left">
-                        <div className="flex items-center gap-2 text-amber-600 mb-2">
-                          <AlertCircle className="w-5 h-5" />
-                          <h4 className="font-bold text-sm">Identity Resolution Center</h4>
-                        </div>
-                        <p className="text-xs text-foreground/75 leading-relaxed">
-                          The AI could not map this scan to a registered student. Remarks: <span className="font-mono bg-slate-50 px-1 py-0.5 border border-border-main rounded-none text-red-600">{selectedResult.ai_remarks}</span>
-                        </p>
-                        
-                        <div className="h-40 bg-surface-soft border border-border-main rounded-none overflow-hidden relative flex items-center justify-center">
-                          {selectedResult.paper_images_urls?.page1 ? (
-                            <img 
-                              src={selectedResult.paper_images_urls.page1} 
-                              alt="Scan Crop" 
-                              className="max-h-full object-contain"
-                              onError={(e: any) => { e.target.src = "https://via.placeholder.com/600x200?text=Handwritten+Name+Header"; }} 
-                            />
-                          ) : (
-                            <span className="text-xs text-foreground/40 italic">No image file found</span>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-foreground/60 mb-2 block">Link to Student Record</label>
-                          <select 
-                            value={resolutionStudentId}
-                            onChange={(e) => setResolutionStudentId(e.target.value)}
-                            className="w-full p-3 bg-surface border border-border-main rounded-none text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
-                          >
-                            <option value="">Select Student...</option>
-                            {classStudents.map((st: any) => (
-                              <option key={st.id} value={st.id}>{st.full_name} {st.index_number ? `(Index: ${st.index_number})` : ""}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <button 
-                          onClick={handleResolveIdentity}
-                          disabled={!resolutionStudentId || isResolving}
-                          className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-none hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-none"
-                        >
-                          {isResolving && <Loader2 className="w-3 h-3 animate-spin" />}
-                          Confirm Match & Link Grade
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    /* Display Graded scan & AI report based on active detail tab */
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                      {activeDetailTab === "paper" ? (
-                        /* Graded scan Image (Full Width) */
-                        <div className="flex-1 bg-surface-soft overflow-y-auto p-6 flex flex-col gap-6 items-center custom-scrollbar">
-                          {(() => {
-                            const paper_images = selectedResult.paper_images_urls || {};
-                            const sortedEntries = Object.entries(paper_images).sort((a, b) => 
-                              a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' })
-                            );
-                            if (sortedEntries.length === 0) {
-                              return <div className="text-xs text-foreground/40 italic py-12">No image file found for this scan.</div>;
-                            }
-                            return sortedEntries.map(([key, url], idx) => (
-                              <div key={key} className="w-full max-w-2xl space-y-1.5 flex flex-col items-center">
-                                <p className="text-[10px] text-foreground/50 font-bold uppercase tracking-wider self-start pl-2">
-                                  Page {idx + 1} of {sortedEntries.length}
-                                </p>
-                                <img 
-                                  src={url as string} 
-                                  alt={`Graded scan page ${idx + 1}`} 
-                                  className="w-full rounded-none border border-border-main shadow-lg object-contain bg-white animate-in fade-in zoom-in-95 duration-300"
-                                  onError={(e: any) => { e.target.src = `https://via.placeholder.com/600x800?text=Page+${idx + 1}+Offline`; }} 
-                                />
-                              </div>
-                            ));
-                          })()}
-                        </div>
-                      ) : (
-                        /* AI Feedback Report (HTML Rendering) - Full Width with Premium Styling */
-                        <div className="flex-1 overflow-y-auto bg-surface custom-scrollbar text-left flex flex-col animate-in fade-in duration-300">
-                          <div className="flex-1 p-6">
-                            {selectedResult.raw_extracted_html ? (
-                              <div 
-                                className="prose prose-sm prose-slate max-w-none text-foreground"
-                                dangerouslySetInnerHTML={{ __html: formatRawReportHtml(selectedResult.raw_extracted_html) }}
-                              />
-                            ) : (
-                              <div className="text-center py-12 text-xs text-foreground/40 italic">
-                                {selectedResult.ai_remarks || "No grading report details generated yet."}
-                              </div>
-                            )}
-                          </div>
-                          {/* Score Override Form */}
-                          <div className="border-t border-border-main p-4 bg-surface-soft/50 shrink-0">
-                            <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 block mb-2">
-                              <Edit3 className="w-3 h-3 inline mr-1" />Override Score
-                            </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                placeholder="0–100"
-                                value={overrideScore}
-                                onChange={e => setOverrideScore(e.target.value)}
-                                className="w-20 text-xs border border-border-main rounded-none p-2 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
-                              />
-                              <button
-                                onClick={handleOverrideScore}
-                                disabled={!overrideScore || isOverriding}
-                                className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-none"
-                              >
-                                {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
-                                Set Score
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
           </div>
         )}
       </div>

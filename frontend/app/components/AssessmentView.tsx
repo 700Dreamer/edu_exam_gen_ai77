@@ -153,11 +153,11 @@ export default function AssessmentView({ theme }: { theme: string }) {
       if (data.device_id && data.device_id !== selectedScanner) {
         setSelectedScanner(data.device_id);
       }
-      // Convert base64 to File object and add to scannedPages
-      const binary = atob(data.image_base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const blob = new Blob([bytes], { type: "image/png" });
+      const imagesList = data.image_base64_list || (data.image_base64 ? [data.image_base64] : []);
+      if (imagesList.length === 0) {
+        alert("Scan completed but no images were returned.");
+        return;
+      }
 
       // Generate exam ID if this is the first page
       let eid = currentExamId;
@@ -166,26 +166,61 @@ export default function AssessmentView({ theme }: { theme: string }) {
         setCurrentExamId(eid);
       }
 
-      const pageNum = currentExamPageCount + 1;
-      let detectedName = "";
-      if (pageNum === 1 && !examLabel.trim()) {
-        detectedName = await runOcrForStudentName(blob);
-        if (detectedName) {
-          setExamLabel(detectedName);
+      let currentStudentName = examLabel.trim();
+      let currentStudentExamId = currentExamId || `exam_${Date.now()}`;
+      if (!currentExamId) setCurrentExamId(currentStudentExamId);
+
+      let startPageNum = currentExamPageCount;
+      let lastPreview = "";
+      
+      const newPages: {file: File, url: string}[] = [];
+
+      for (let index = 0; index < imagesList.length; index++) {
+        const b64 = imagesList[index];
+        if (!b64) continue;
+        
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: data.format === "jpeg" ? "image/jpeg" : "image/png" });
+
+        const isNewStudentExam = expectedPageCount && typeof expectedPageCount === "number"
+          ? (index % expectedPageCount === 0)
+          : (index === 0 && startPageNum === 0);
+
+        if (isNewStudentExam) {
+          if (index > 0) {
+            currentStudentExamId = `exam_${Date.now()}_${index}`;
+            currentStudentName = "";
+          }
+          const ocrResultName = await runOcrForStudentName(blob);
+          if (ocrResultName && ocrResultName !== "Unknown") {
+            currentStudentName = ocrResultName;
+            if (index === 0) setExamLabel(ocrResultName);
+          }
         }
+
+        const pageWithinExam = expectedPageCount && typeof expectedPageCount === "number"
+          ? (index % expectedPageCount) + 1
+          : startPageNum + index + 1;
+
+        const prefix = currentStudentName.trim()
+          ? `${currentStudentName.trim().replace(/[^a-zA-Z0-9]/g, "_")}_${currentStudentExamId}`
+          : currentStudentExamId;
+
+        const ext = data.format === "jpeg" ? "jpg" : "png";
+        const fileName = `${prefix}_page${pageWithinExam}.${ext}`;
+        const file = new File([blob], fileName, { type: data.format === "jpeg" ? "image/jpeg" : "image/png" });
+        const url = URL.createObjectURL(blob);
+
+        newPages.push({ file, url });
+        lastPreview = url;
       }
 
-      const prefix = detectedName.trim() || examLabel.trim() || eid;
-      const fileName = `${prefix}_page${pageNum}.png`;
-      const file = new File([blob], fileName, { type: "image/png" });
-      const url = URL.createObjectURL(blob);
-
-      setScannedPages(prev => [...prev, { file, url }]);
-      setCurrentExamPageCount(pageNum);
-      setLastScanPreview(url);
-
-      if (expectedPageCount && pageNum >= expectedPageCount) {
-        setShowNextExamPrompt(true);
+      if (newPages.length > 0) {
+        setScannedPages(prev => [...prev, ...newPages]);
+        setCurrentExamPageCount(startPageNum + newPages.length);
+        setLastScanPreview(lastPreview);
       }
     } catch (e: any) {
       clearInterval(progressInterval);

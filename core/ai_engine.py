@@ -447,12 +447,18 @@ def get_openai_client():
     """Retrieves API Key from environment to instantiate OpenAI client safely."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
+        load_dotenv(override=True)
+        api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
         raise ValueError("OPENAI_API_KEY is missing. Add it to the .env file in the root directory.")
     return OpenAI(api_key=api_key)
 
 def get_async_openai_client():
     """Retrieves API Key from environment to instantiate Async OpenAI client safely."""
     api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        load_dotenv(override=True)
+        api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY is missing. Add it to the .env file in the root directory.")
     import httpx
