@@ -224,15 +224,7 @@ export default function GradebookView({ theme }: { theme: string }) {
             ` : ""}
           </div>
 
-          ${recommendationsHTML ? `
-            <div class="space-y-4">
-              <h4 class="text-xs font-extrabold uppercase tracking-wider text-brand-700 flex items-center gap-1.5 border-b border-border-main/50 pb-2.5 text-left">
-                <span class="w-1.5 h-3 bg-brand-600 rounded-none inline-block"></span>
-                Actionable AI Recommendations
-              </h4>
-              <div>${formatRecs(recommendationsHTML)}</div>
-            </div>
-          ` : ""}
+
         </div>
       `;
 
