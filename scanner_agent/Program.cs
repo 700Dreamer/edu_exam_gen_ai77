@@ -34,6 +34,7 @@ class ScannerAgent
     const int WIA_DPS_DOCUMENT_HANDLING_CAPABILITIES = 3086;
     const int WIA_DPS_DOCUMENT_HANDLING_STATUS = 3087;
     const int WIA_DPS_DOCUMENT_HANDLING_SELECT = 3088;
+    const int WIA_DPS_PAGES = 3096;
     const int WIA_IPS_CUR_INTENT = 6146;
     const int WIA_IPS_XRES = 6147;
     const int WIA_IPS_YRES = 6148;
@@ -44,6 +45,8 @@ class ScannerAgent
     const int WIA_INTENT_GRAYSCALE = 2;
     const int WIA_INTENT_TEXT = 4;
     const string WIA_FORMAT_BMP = "{B96B3CAB-0728-11D3-9D7B-0000F81EF32E}";
+    const string WIA_FORMAT_JPEG = "{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}";
+    const string WIA_FORMAT_PNG = "{B96B3CAF-0728-11D3-9D7B-0000F81EF32E}";
     const uint WIA_ERROR_PAPER_EMPTY = 0x80210003;
 
     static HttpListener _listener;
@@ -266,23 +269,57 @@ class ScannerAgent
                 intent = WIA_INTENT_TEXT;
             SetDynProperty(item, WIA_IPS_CUR_INTENT, intent);
 
-            // ── TIGHT SCAN LOOP — This is where the speed comes from ──
-            // No processing inside the loop. Just transfer raw data as fast as hardware allows.
-            var rawPages = new List<byte[]>();
+            // ── DETERMINE TRANSFER FORMAT ──
+            // JPEG = ~300KB per page vs BMP = ~7.5MB per page.
+            // Less data to marshal across COM = scanner motor barely pauses between pages.
+            string transferFormat = WIA_FORMAT_BMP;
+            bool transferIsJpeg = false;
+            try
+            {
+                // Check if scanner supports JPEG transfer natively
+                dynamic formats = item.Formats;
+                int fmtCount = formats.Count;
+                for (int fi = 1; fi <= fmtCount; fi++)
+                {
+                    string fmt = (string)formats.Item(fi);
+                    if (fmt.Equals(WIA_FORMAT_JPEG, StringComparison.OrdinalIgnoreCase))
+                    {
+                        transferFormat = WIA_FORMAT_JPEG;
+                        transferIsJpeg = true;
+                        Console.WriteLine("  Using JPEG transfer (fast mode)");
+                        break;
+                    }
+                }
+                if (!transferIsJpeg)
+                    Console.WriteLine("  JPEG not supported, using BMP transfer");
+            }
+            catch
+            {
+                Console.WriteLine("  Could not query formats, using BMP transfer");
+            }
+
+            // ── TIGHT SCAN LOOP ──
+            // ONLY native COM calls inside this loop: Transfer() + SaveFile().
+            // NO managed memory marshalling, NO processing, NO Console output.
+            // The scanner motor fires the next page the instant SaveFile returns.
+            string tempDir = Path.Combine(Path.GetTempPath(), "edulytics_scan_" + DateTime.Now.Ticks);
+            Directory.CreateDirectory(tempDir);
+            var tempFiles = new List<string>();
             int pageNum = 0;
+            string ext = transferIsJpeg ? ".jpg" : ".bmp";
 
             while (true)
             {
                 pageNum++;
                 try
                 {
-                    Console.WriteLine("  Scanning page " + pageNum + "...");
-                    dynamic wiaImage = item.Transfer(WIA_FORMAT_BMP);
+                    dynamic wiaImage = item.Transfer(transferFormat);
                     if (wiaImage == null) break;
 
-                    // Grab raw bytes immediately — no processing, no disk I/O
-                    byte[] rawData = (byte[])wiaImage.FileData.BinaryData;
-                    rawPages.Add(rawData);
+                    // SaveFile = native COM write, no managed memory allocation
+                    string path = Path.Combine(tempDir, "p" + pageNum + ext);
+                    wiaImage.SaveFile(path);
+                    tempFiles.Add(path);
                 }
                 catch (COMException ex)
                 {
@@ -291,22 +328,32 @@ class ScannerAgent
                     if (hresult == WIA_ERROR_PAPER_EMPTY ||
                         msg.IndexOf("no documents left", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        // Normal end of paper — batch complete
                         if (pageNum == 1)
                         {
                             SendJson(res, 500, "{\"status\":\"error\",\"message\":\"No paper in the document feeder. Load paper and try again.\"}");
+                            CleanupDir(tempDir);
                             return;
                         }
                         break;
                     }
                     else if (pageNum == 1)
                     {
+                        // If JPEG format failed, retry with BMP
+                        if (transferIsJpeg)
+                        {
+                            Console.WriteLine("  JPEG transfer failed, retrying with BMP...");
+                            transferFormat = WIA_FORMAT_BMP;
+                            transferIsJpeg = false;
+                            ext = ".bmp";
+                            pageNum = 0;
+                            continue;
+                        }
                         SendJson(res, 500, "{\"status\":\"error\",\"message\":\"Scan failed: " + EscapeJson(msg) + "\"}");
+                        CleanupDir(tempDir);
                         return;
                     }
                     else
                     {
-                        // Got some pages, return what we have
                         break;
                     }
                 }
@@ -316,40 +363,56 @@ class ScannerAgent
                     break;
             }
 
-            Console.WriteLine("  Physical scan complete. " + rawPages.Count + " pages captured.");
+            Console.WriteLine("  Physical scan complete. " + tempFiles.Count + " pages captured.");
 
-            if (rawPages.Count == 0)
+            if (tempFiles.Count == 0)
             {
                 SendJson(res, 500, "{\"status\":\"error\",\"message\":\"No pages were scanned.\"}");
+                CleanupDir(tempDir);
                 return;
             }
 
-            // ── POST-SCAN PROCESSING — Convert BMP→JPEG and base64 encode ──
-            Console.WriteLine("  Compressing to JPEG...");
+            // ── POST-SCAN PROCESSING ──
             var b64Pages = new List<string>();
             long totalBytes = 0;
 
-            ImageCodecInfo jpegCodec = GetJpegEncoder();
-            var encoderParams = new EncoderParameters(1);
-            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
-
-            foreach (var raw in rawPages)
+            if (transferIsJpeg)
             {
-                using (var ms = new MemoryStream(raw))
-                using (var bmp = new Bitmap(ms))
-                using (var jpgStream = new MemoryStream())
+                // Data is already JPEG — just read and base64 encode, no conversion needed
+                Console.WriteLine("  Encoding " + tempFiles.Count + " JPEG pages...");
+                foreach (var file in tempFiles)
                 {
-                    if (jpegCodec != null)
-                        bmp.Save(jpgStream, jpegCodec, encoderParams);
-                    else
-                        bmp.Save(jpgStream, ImageFormat.Jpeg);
+                    byte[] bytes = File.ReadAllBytes(file);
+                    b64Pages.Add(Convert.ToBase64String(bytes));
+                    totalBytes += bytes.Length;
+                }
+            }
+            else
+            {
+                // BMP fallback — convert to JPEG
+                Console.WriteLine("  Converting " + tempFiles.Count + " BMP pages to JPEG...");
+                ImageCodecInfo jpegCodec = GetJpegEncoder();
+                var encoderParams = new EncoderParameters(1);
+                encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
 
-                    byte[] jpgBytes = jpgStream.ToArray();
-                    b64Pages.Add(Convert.ToBase64String(jpgBytes));
-                    totalBytes += jpgBytes.Length;
+                foreach (var file in tempFiles)
+                {
+                    using (var bmp = new Bitmap(file))
+                    using (var jpgStream = new MemoryStream())
+                    {
+                        if (jpegCodec != null)
+                            bmp.Save(jpgStream, jpegCodec, encoderParams);
+                        else
+                            bmp.Save(jpgStream, ImageFormat.Jpeg);
+
+                        byte[] jpgBytes = jpgStream.ToArray();
+                        b64Pages.Add(Convert.ToBase64String(jpgBytes));
+                        totalBytes += jpgBytes.Length;
+                    }
                 }
             }
 
+            CleanupDir(tempDir);
             Console.WriteLine("  Done. Sending " + b64Pages.Count + " pages (" + (totalBytes / 1024) + " KB) to browser.");
 
             // Build JSON response
@@ -376,6 +439,16 @@ class ScannerAgent
             Console.Error.WriteLine("Scan error: " + ex);
             SendJson(res, 500, "{\"status\":\"error\",\"message\":\"Scanner error: " + EscapeJson(ex.Message) + "\"}");
         }
+    }
+
+    static void CleanupDir(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, true);
+        }
+        catch { }
     }
 
     // ── WIA Helpers (late-bound COM — no interop DLL needed) ──
