@@ -1,16 +1,19 @@
 """
-Edulytics Scanner Service — SANE CLI Wrapper
+Edulytics Scanner Service — Cross-Platform Scanner Integration
 
-Detects flatbed scanners connected to the host machine and drives them
-via the `scanimage` command-line tool (part of sane-backends).
+Detects and drives scanners via platform-native APIs:
+    - macOS:   Native ImageCaptureCore (via compiled mac_scanner binary)
+    - Windows: Native WIA (Windows Image Acquisition) via pywin32
+    - Linux:   SANE CLI (scanimage command-line tool)
 
 Install prerequisites:
-    macOS:   brew install sane-backends
+    macOS:   brew install sane-backends (or use built-in ImageCapture)
+    Windows: pip install pywin32 (WIA is built into Windows)
     Ubuntu:  sudo apt-get install sane-utils
     Fedora:  sudo dnf install sane-backends
 
-The module degrades gracefully when SANE is not installed — it simply
-returns an empty device list and a descriptive error on scan attempts.
+The module degrades gracefully when scanner support is not available —
+it returns an empty device list and a descriptive error on scan attempts.
 """
 
 import subprocess
@@ -18,12 +21,26 @@ import shutil
 import re
 import tempfile
 import os
+import sys
 import time
 import threading
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 import base64
 import json
+
+# Windows WIA scanner support (imported conditionally)
+_IS_WINDOWS = sys.platform == "win32"
+if _IS_WINDOWS:
+    try:
+        from core import win_scanner as _win_scanner
+    except ImportError:
+        try:
+            import win_scanner as _win_scanner
+        except ImportError:
+            _win_scanner = None
+else:
+    _win_scanner = None
 
 
 @dataclass
@@ -40,7 +57,9 @@ class ScannerDevice:
 
 
 def get_mac_scanner_bin() -> Optional[str]:
-    """Return path to compiled mac_scanner binary if available."""
+    """Return path to compiled mac_scanner binary if available (macOS only)."""
+    if _IS_WINDOWS:
+        return None  # mac_scanner is a macOS Mach-O binary, skip on Windows
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     mac_bin = os.path.join(base_dir, "bin", "mac_scanner")
     if os.path.exists(mac_bin) and os.access(mac_bin, os.X_OK):
@@ -48,14 +67,26 @@ def get_mac_scanner_bin() -> Optional[str]:
     return None
 
 
+def is_wia_available() -> bool:
+    """Check whether Windows WIA scanner support is available."""
+    return _IS_WINDOWS and _win_scanner is not None and _win_scanner.is_wia_available()
+
+
 def is_sane_installed() -> bool:
-    """Check whether `scanimage` binary or native `mac_scanner` is available."""
-    return shutil.which("scanimage") is not None or get_mac_scanner_bin() is not None
+    """Check whether any scanner backend is available (SANE, mac_scanner, or WIA)."""
+    return (
+        shutil.which("scanimage") is not None
+        or get_mac_scanner_bin() is not None
+        or is_wia_available()
+    )
 
 
 def detect_scanners() -> List[ScannerDevice]:
     """
-    Detect connected scanners via native macOS ImageCapture helper or SANE `scanimage -L`.
+    Detect connected scanners via platform-native APIs:
+    1. macOS: Native ImageCapture helper (mac_scanner binary)
+    2. Windows: Native WIA (Windows Image Acquisition)
+    3. Fallback: SANE scanimage -L (Linux / macOS)
     """
     devices: List[ScannerDevice] = []
 
@@ -76,7 +107,23 @@ def detect_scanners() -> List[ScannerDevice]:
         except Exception as e:
             print(f"mac_scanner detection error: {e}")
 
-    # 2. Try SANE scanimage -L if installed
+    # 2. Try Windows WIA if on Windows
+    if _IS_WINDOWS and _win_scanner is not None and _win_scanner.is_wia_available():
+        try:
+            wia_devs = _win_scanner.detect_devices()
+            for d in wia_devs:
+                dev_id = d.get("device_id", "wia_scanner")
+                if not any(existing.device_id == dev_id for existing in devices):
+                    devices.append(ScannerDevice(
+                        device_id=dev_id,
+                        vendor=d.get("vendor", ""),
+                        model=d.get("model", "Scanner"),
+                        device_type=d.get("device_type", "Windows WIA Scanner"),
+                    ))
+        except Exception as e:
+            print(f"WIA detection error: {e}")
+
+    # 3. Try SANE scanimage -L if installed
     if shutil.which("scanimage"):
         try:
             result = subprocess.run(
@@ -167,7 +214,7 @@ def detect_scanners_cached(force_refresh: bool = False) -> List[ScannerDevice]:
 
 def scan_page(
     device_id: str,
-    dpi: int = 300,
+    dpi: int = 150,
     mode: str = "Color",
     format: str = "png",
 ) -> dict:
@@ -188,9 +235,13 @@ def scan_page(
             filename: suggested filename
     """
     if not is_sane_installed():
+        if _IS_WINDOWS:
+            install_msg = "Scanner support requires pywin32. Run: pip install pywin32"
+        else:
+            install_msg = "SANE is not installed. Run: brew install sane-backends"
         return {
             "status": "error",
-            "message": "SANE is not installed. Run: brew install sane-backends",
+            "message": install_msg,
         }
 
     # Auto-fallback to the only connected scanner if requested device is missing/offline
@@ -222,6 +273,22 @@ def scan_page(
     mac_bin = get_mac_scanner_bin()
     
     try:
+        # Check if Windows WIA should handle this scan
+        if _IS_WINDOWS and _win_scanner is not None and _win_scanner.is_wia_available():
+            cached = detect_scanners_cached()
+            is_wia_device = any(
+                d.device_id == active_device_id for d in cached
+                if d.device_type == "Windows WIA Scanner"
+            )
+            if is_wia_device or not shutil.which("scanimage"):
+                result = _win_scanner.scan_page(
+                    device_id=active_device_id,
+                    dpi=dpi,
+                    mode=sane_mode,
+                    format=format,
+                )
+                return result
+
         # Check if mac_scanner should handle this scan (use cached devices to avoid redundant 3s discovery)
         use_mac_scanner = False
         if mac_bin:

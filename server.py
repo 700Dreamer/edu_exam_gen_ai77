@@ -30,14 +30,15 @@ from sqlalchemy import select
 from contextlib import asynccontextmanager
 from core.models import create_db_and_tables, async_session_maker, Tenant, AcademicGroup, Student, AssessmentBatch, StudentResult
 from core.syllabus_master import ALL_SUBJECTS, ALL_LEVELS
-from core.scanner_service import detect_scanners, detect_scanners_cached, scan_page, is_sane_installed, ScannerDevice
+from core.scanner_service import detect_scanners, detect_scanners_cached, scan_page, is_sane_installed, is_wia_available, ScannerDevice
+import sys as _sys
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_db_and_tables()
     yield
 
-app = FastAPI(title="Edulytics AI Engine - Standalone", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Edulytics AI Engine - Cloud", version="1.0.0", lifespan=lifespan)
 
 # ── CORS — allow Next.js dev server ──
 app.add_middleware(
@@ -860,8 +861,21 @@ async def list_scanner_devices(refresh: bool = False):
     """
     sane_ok = is_sane_installed()
     devices = detect_scanners_cached(force_refresh=refresh) if sane_ok else []
+
+    # Determine platform for frontend messaging
+    if _sys.platform == "darwin":
+        platform = "macos"
+        install_msg = "SANE scanner drivers are required. Install with: brew install sane-backends"
+    elif _sys.platform == "win32":
+        platform = "windows"
+        install_msg = "Scanner support requires pywin32. Install with: pip install pywin32"
+    else:
+        platform = "linux"
+        install_msg = "SANE scanner drivers are required. Install with: sudo apt-get install sane-utils"
+
     return {
         "sane_installed": sane_ok,
+        "platform": platform,
         "devices": [
             {
                 "device_id": d.device_id,
@@ -874,14 +888,14 @@ async def list_scanner_devices(refresh: bool = False):
         ],
         "message": (
             None if sane_ok
-            else "SANE is not installed. Install it with: brew install sane-backends"
+            else install_msg
         ),
     }
 
 
 class ScanRequest(BaseModel):
     device_id: str
-    dpi: int = 300
+    dpi: int = 150
     mode: str = "Color"
 
 @app.post("/api/v1/scanner/scan")

@@ -52,8 +52,9 @@ export default function AssessmentView({ theme }: { theme: string }) {
   const [selectedScanner, setSelectedScanner] = useState<string>("");
   const [scannerLoading, setScannerLoading] = useState(false);
   const [scannerError, setScannerError] = useState<string>("");
+  const [scannerPlatform, setScannerPlatform] = useState<string>("");
   const [saneInstalled, setSaneInstalled] = useState<boolean | null>(null);
-  const [scanDpi, setScanDpi] = useState(300);
+  const [scanDpi, setScanDpi] = useState(150);
   const [scanMode, setScanMode] = useState("Color");
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
@@ -94,16 +95,22 @@ export default function AssessmentView({ theme }: { theme: string }) {
     setScannerLoading(true);
     setScannerError("");
     try {
-      const res = await authFetch(`/api/v1/scanner/devices${force ? "?refresh=true" : ""}`);
+      // In cloud-architecture, we ping the local scanner agent directly
+      const res = await fetch(`http://127.0.0.1:8181/devices`);
+      
+      if (!res.ok) throw new Error("Local agent not responding.");
+      
       const data = await res.json();
-      setSaneInstalled(data.sane_installed);
-      setScannerDevices(data.devices || []);
-      if (data.devices?.length > 0 && !selectedScanner) {
-        setSelectedScanner(data.devices[0].device_id);
+      setSaneInstalled(false);
+      setScannerDevices(data.devices || [{ device_id: "Agent_Scanner_001", model: "Local Hardware Scanner" }]);
+      setScannerPlatform("Windows");
+      if (!selectedScanner) {
+        setSelectedScanner("Agent_Scanner_001");
       }
-      if (data.message) setScannerError(data.message);
     } catch {
-      setScannerError("Could not connect to scanner service.");
+      // Fallback if the local agent isn't running
+      setScannerError("Local Scanner Agent is not running on 127.0.0.1:8181.");
+      setScannerDevices([{ device_id: "Agent_Scanner_001", model: "Local Hardware Scanner (Offline)" }]);
     } finally {
       setScannerLoading(false);
     }
@@ -131,7 +138,8 @@ export default function AssessmentView({ theme }: { theme: string }) {
     }, 120);
 
     try {
-      const res = await authFetch("/api/v1/scanner/scan", {
+      // Connect to the local C# Scanner Agent directly!
+      const res = await fetch("http://127.0.0.1:8181/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -785,10 +793,22 @@ export default function AssessmentView({ theme }: { theme: string }) {
                       <div className="bg-amber-500/5 border border-amber-500/30 p-4 flex items-start gap-3">
                         <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-bold text-amber-700">Scanner Drivers Not Installed</p>
+                          <p className="text-xs font-bold text-amber-700">Scanner Drivers Not Detected</p>
                           <p className="text-[11px] text-foreground/60 mt-1 leading-relaxed">
-                            SANE scanner drivers are required. Install with:<br />
-                            <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">brew install sane-backends</code>
+                            {scannerPlatform === "windows" ? (
+                              <>Windows scanner support requires pywin32. Install with:<br />
+                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">pip install pywin32</code>
+                              <br /><span className="text-[10px] text-foreground/40 mt-1 inline-block">Make sure your scanner is connected and powered on. Windows usually auto-installs scanner drivers.</span>
+                              </>
+                            ) : scannerPlatform === "linux" ? (
+                              <>SANE scanner drivers are required. Install with:<br />
+                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">sudo apt-get install sane-utils</code>
+                              </>
+                            ) : (
+                              <>SANE scanner drivers are required. Install with:<br />
+                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">brew install sane-backends</code>
+                              </>
+                            )}
                           </p>
                           <p className="text-[10px] text-foreground/40 mt-2">You can still use the file upload fallback below.</p>
                         </div>
