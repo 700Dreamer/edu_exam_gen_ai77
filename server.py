@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
     await create_db_and_tables()
     yield
 
-app = FastAPI(title="Edulytics AI Engine - Cloud", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Edulytics AI Engine - Standalone", version="1.0.0", lifespan=lifespan)
 
 # ── CORS — allow Next.js dev server ──
 app.add_middleware(

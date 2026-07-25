@@ -54,6 +54,7 @@ export default function AssessmentView({ theme }: { theme: string }) {
   const [scannerError, setScannerError] = useState<string>("");
   const [scannerPlatform, setScannerPlatform] = useState<string>("");
   const [saneInstalled, setSaneInstalled] = useState<boolean | null>(null);
+  const [scannerSource, setScannerSource] = useState<"local" | "remote">("remote");
   const [scanDpi, setScanDpi] = useState(150);
   const [scanMode, setScanMode] = useState("Color");
   const [isScanning, setIsScanning] = useState(false);
@@ -95,22 +96,40 @@ export default function AssessmentView({ theme }: { theme: string }) {
     setScannerLoading(true);
     setScannerError("");
     try {
-      // In cloud-architecture, we ping the local scanner agent directly
-      const res = await fetch(`http://127.0.0.1:8181/devices`);
-      
-      if (!res.ok) throw new Error("Local agent not responding.");
-      
-      const data = await res.json();
-      setSaneInstalled(false);
-      setScannerDevices(data.devices || [{ device_id: "Agent_Scanner_001", model: "Local Hardware Scanner" }]);
-      setScannerPlatform("Windows");
-      if (!selectedScanner) {
-        setSelectedScanner("Agent_Scanner_001");
+      // First try the local agent for high-speed scanning
+      try {
+        const localRes = await fetch("http://127.0.0.1:8181/devices");
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          setScannerSource("local");
+          setSaneInstalled(localData.sane_installed);
+          setScannerDevices(localData.devices || []);
+          if (localData.platform) setScannerPlatform(localData.platform);
+          if (localData.devices?.length > 0 && !selectedScanner) {
+            setSelectedScanner(localData.devices[0].device_id);
+          }
+          if (localData.message) setScannerError(localData.message);
+          setScannerLoading(false);
+          return; // Success, skip remote
+        }
+      } catch (e) {
+        // Local agent not running, silently fall back to remote
+        console.log("Local scanner agent not detected, falling back to remote...");
       }
+
+      // Fallback to remote backend
+      const res = await authFetch(`/api/v1/scanner/devices${force ? "?refresh=true" : ""}`);
+      const data = await res.json();
+      setScannerSource("remote");
+      setSaneInstalled(data.sane_installed);
+      setScannerDevices(data.devices || []);
+      if (data.platform) setScannerPlatform(data.platform);
+      if (data.devices?.length > 0 && !selectedScanner) {
+        setSelectedScanner(data.devices[0].device_id);
+      }
+      if (data.message) setScannerError(data.message);
     } catch {
-      // Fallback if the local agent isn't running
-      setScannerError("Local Scanner Agent is not running on 127.0.0.1:8181.");
-      setScannerDevices([{ device_id: "Agent_Scanner_001", model: "Local Hardware Scanner (Offline)" }]);
+      setScannerError("Could not connect to scanner service.");
     } finally {
       setScannerLoading(false);
     }
@@ -138,16 +157,28 @@ export default function AssessmentView({ theme }: { theme: string }) {
     }, 120);
 
     try {
-      // Connect to the local C# Scanner Agent directly!
-      const res = await fetch("http://127.0.0.1:8181/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          device_id: selectedScanner,
-          dpi: scanDpi,
-          mode: scanMode,
-        }),
-      });
+      let res;
+      if (scannerSource === "local") {
+        res = await fetch("http://127.0.0.1:8181/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: selectedScanner,
+            dpi: scanDpi,
+            mode: scanMode,
+          }),
+        });
+      } else {
+        res = await authFetch("/api/v1/scanner/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: selectedScanner,
+            dpi: scanDpi,
+            mode: scanMode,
+          }),
+        });
+      }
 
       clearInterval(progressInterval);
       setScanProgress(100);
@@ -811,6 +842,23 @@ export default function AssessmentView({ theme }: { theme: string }) {
                             )}
                           </p>
                           <p className="text-[10px] text-foreground/40 mt-2">You can still use the file upload fallback below.</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Fast scanning prompt */}
+                    {scannerSource === "remote" && scannerPlatform === "windows" && scannerDevices.length > 0 && (
+                      <div className="bg-brand-500/5 border border-brand-500/30 p-4 flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-brand-500 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-brand-700">Want Instant Scanning Speed?</p>
+                          <p className="text-[11px] text-foreground/70 mt-1 leading-relaxed">
+                            You are currently using the remote scanner fallback which can be slow. 
+                            Download the <b>Edulytics Scanner Agent</b> for instant, zero-delay ADF batch scanning.
+                          </p>
+                          <a href="/ScannerAgent.exe" download className="mt-2 inline-block px-3 py-1 bg-brand-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-none hover:bg-brand-700 transition-colors">
+                            Download Scanner Agent
+                          </a>
                         </div>
                       </div>
                     )}
