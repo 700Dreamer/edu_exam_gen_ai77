@@ -114,18 +114,27 @@ export default function AssessmentView({
   // Helper function to check if subject is appropriate for chosen level/class
   const isSubjectForLevel = (subjectName: string, levelStr: string) => {
     if (!levelStr) return true;
-    const lvl = levelStr.toLowerCase();
-    const sub = subjectName.toLowerCase();
+    const lvl = levelStr.toLowerCase().replace(/\s+/g, "");
+    const sub = subjectName.toLowerCase().trim();
 
-    const isPrimary = lvl.includes("primary") || /^p[1-7]/i.test(lvl.replace(/\s+/g, ""));
+    const isPrimary = lvl.includes("primary") || /^p[1-7]/i.test(lvl);
     const isNursery = lvl.includes("baby") || lvl.includes("middle") || lvl.includes("top") || lvl.includes("nursery");
-    const isSenior = lvl.includes("senior") || /^s[1-6]/i.test(lvl.replace(/\s+/g, ""));
+    const isSenior = lvl.includes("senior") || /^s[1-6]/i.test(lvl);
 
     if (isPrimary) {
-      // Primary classes should NOT have Biology, Chemistry, Physics, Commerce, Entrepreneurship
-      const secondaryOnly = ["biology", "chemistry", "physics", "commerce", "entrepreneurship", "sub-math", "general paper"];
-      if (secondaryOnly.some(sec => sub === sec)) return false;
-      const primarySubjects = ["mathematics", "integrated science", "english", "social studies with religious education", "social studies", "religious education", "reading", "luganda", "physical education", "art and craft"];
+      // Primary classes (P.1 - P.7): strictly exclude secondary subjects
+      const secondaryOnly = [
+        "biology", "chemistry", "physics", "commerce", "entrepreneurship", "sub-math", 
+        "sub math", "general paper", "geography", "history", "accounting", "economics", 
+        "agriculture", "computer studies", "literature"
+      ];
+      if (secondaryOnly.some(sec => sub === sec || sub.includes(sec))) return false;
+
+      const primarySubjects = [
+        "mathematics", "math", "integrated science", "science", "english", 
+        "social studies with religious education", "social studies", "sst", 
+        "religious education", "re", "reading", "luganda", "physical education", "art and craft"
+      ];
       return primarySubjects.some(ps => sub.includes(ps) || ps.includes(sub));
     }
 
@@ -135,23 +144,49 @@ export default function AssessmentView({
     }
 
     if (isSenior) {
-      // Senior classes should NOT have Integrated Science or Learning Area
-      if (sub.includes("integrated science") || sub.includes("learning area")) return false;
+      // Senior classes (S.1 - S.6): strictly exclude primary-only subjects
+      if (sub.includes("integrated science") || sub.includes("learning area") || sub === "sst" || sub.includes("social studies")) return false;
       return true;
     }
 
     return true;
   };
 
-  const rawSubjects = apiConfig.subjects || [];
+  // Default fallback lists if API config returns empty
+  const defaultPrimarySubjects = [
+    "Mathematics", "English", "Integrated Science", 
+    "Social Studies with Religious Education", "Luganda", "Art and Craft", "Physical Education"
+  ];
+  const defaultSecondarySubjects = [
+    "Mathematics", "English Language", "Biology", "Chemistry", "Physics", 
+    "Geography", "History", "Commerce", "Entrepreneurship Education", 
+    "Agriculture", "Computer Studies", "Sub-Math", "General Paper", "Luganda", "Literature in English"
+  ];
+  const defaultNurserySubjects = [
+    "Learning Area 1 (Language Development)", "Learning Area 2 (Mathematical Concepts)", 
+    "Learning Area 3 (Expressive Arts)", "Learning Area 4 (Environment)", "Learning Area 5 (Health & Physical)"
+  ];
+
+  const getFallbackSubjects = (levelStr: string) => {
+    if (!levelStr) return defaultSecondarySubjects;
+    const lvl = levelStr.toLowerCase().replace(/\s+/g, "");
+    if (lvl.includes("primary") || /^p[1-7]/i.test(lvl)) return defaultPrimarySubjects;
+    if (lvl.includes("baby") || lvl.includes("middle") || lvl.includes("top") || lvl.includes("nursery")) return defaultNurserySubjects;
+    return defaultSecondarySubjects;
+  };
+
+  const rawSubjects = apiConfig.subjects && apiConfig.subjects.length > 0 
+    ? apiConfig.subjects 
+    : getFallbackSubjects(selectedLevel);
+
   const subjects = rawSubjects.filter((s: string) => isSubjectForLevel(s, selectedLevel));
 
-  // Auto-adjust selected subject when class/level changes
+  // Auto-adjust selected subject when class/level changes if current subject is invalid for that class
   useEffect(() => {
     if (subjects.length > 0 && (!subject || !subjects.includes(subject))) {
       setSubject(subjects[0]);
     }
-  }, [selectedGroup, selectedLevel, apiConfig]);
+  }, [selectedGroup, selectedLevel, apiConfig, subjects]);
 
   // Detect scanners when scanner mode is selected
   const refreshScanners = async (force = false) => {
