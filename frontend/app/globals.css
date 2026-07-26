@@ -23,6 +23,17 @@
   }
 }
 
+/* ── Global Font Size Scaling Accessibility ── */
+html[data-font-size="small"], body[data-font-size="small"] {
+  font-size: 100%;
+}
+html[data-font-size="medium"], body[data-font-size="medium"] {
+  font-size: 118%;
+}
+html[data-font-size="large"], body[data-font-size="large"] {
+  font-size: 135%;
+}
+
 :root {
   --foreground-rgb: 15, 23, 42;
   --background-rgb: 248, 250, 252;

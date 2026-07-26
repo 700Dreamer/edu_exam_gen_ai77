@@ -9,14 +9,28 @@ import { cn, authFetch } from "../lib/utils";
 const API_BASE = "";
 
 
-export default function AssessmentView({ theme }: { theme: string }) {
+export default function AssessmentView({
+  theme,
+  globalTenantId,
+  globalGroupId,
+  globalSubject,
+  globalTerm,
+  globalYear
+}: {
+  theme: string;
+  globalTenantId?: string;
+  globalGroupId?: string;
+  globalSubject?: string;
+  globalTerm?: string;
+  globalYear?: number;
+}) {
   const [tenants, setTenants] = useState<any[]>([]);
-  const [selectedTenant, setSelectedTenant] = useState<string>("");
+  const [selectedTenant, setSelectedTenant] = useState<string>(globalTenantId || "");
   const [groups, setGroups] = useState<any[]>([]);
-  const [selectedGroup, setSelectedGroup] = useState<string>("");
+  const [selectedGroup, setSelectedGroup] = useState<string>(globalGroupId || "");
 
-  const [subject, setSubject] = useState("");
-  const [configLocked, setConfigLocked] = useState(false);
+  const [subject, setSubject] = useState(globalSubject || "Physics");
+  const [configLocked, setConfigLocked] = useState(true);
   const [dragActive, setDragActive] = useState(false);
   const [scannedPages, setScannedPages] = useState<{file: File, url: string}[]>([]);
   const [currentExamId, setCurrentExamId] = useState<string>("");
@@ -29,6 +43,10 @@ export default function AssessmentView({ theme }: { theme: string }) {
   const [batchStatus, setBatchStatus] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompilingPdf, setIsCompilingPdf] = useState(false);
+
+  // Scanned Thumbnail Full Preview Modal States
+  const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
+  const [previewModalTitle, setPreviewModalTitle] = useState<string>("");
   
   const [apiConfig, setApiConfig] = useState<any>({ subjects: [] });
 
@@ -134,6 +152,13 @@ export default function AssessmentView({ theme }: { theme: string }) {
       setScannerLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (globalTenantId) setSelectedTenant(globalTenantId);
+    if (globalGroupId) setSelectedGroup(globalGroupId);
+    if (globalSubject) setSubject(globalSubject);
+    if (globalTenantId && globalGroupId) setConfigLocked(true);
+  }, [globalTenantId, globalGroupId, globalSubject]);
 
   useEffect(() => {
     if (uploadMode === "scanner" && saneInstalled === null) {
@@ -269,9 +294,80 @@ export default function AssessmentView({ theme }: { theme: string }) {
     }
   };
 
+  const [liveLogs, setLiveLogs] = useState<Array<{ time: string; message: string; type?: 'info' | 'success' | 'warning' | 'error' }>>([]);
+  const [livePapers, setLivePapers] = useState<Record<number, any>>({});
+
   useEffect(() => {
     let interval: any;
+    let eventSource: EventSource | null = null;
+
     if (batchId && (batchStatus?.status === "Initiated" || batchStatus?.status === "Processing" || isProcessing)) {
+      // ── 1. SSE Real-Time Stream Connection ──
+      const sseUrl = `http://localhost:8000/api/v1/assessment/batch/${batchId}/stream`;
+      eventSource = new EventSource(sseUrl);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const timeStr = new Date().toLocaleTimeString();
+
+          if (data.type === "batch_started") {
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Batch initiated for ${data.total_papers} student papers.`, type: "info" }]);
+          } else if (data.type === "paper_start") {
+            setLivePapers((prev) => ({
+              ...prev,
+              [data.paper_idx]: {
+                paper_idx: data.paper_idx,
+                student_name: `Paper #${data.paper_idx}`,
+                phase: data.phase,
+                status: "extracting"
+              }
+            }));
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx}: Started Phase 1 (Parallel Page Extraction)...`, type: "info" }]);
+          } else if (data.type === "page_extraction_complete") {
+            setLivePapers((prev) => ({
+              ...prev,
+              [data.paper_idx]: {
+                ...prev[data.paper_idx],
+                student_name: data.student_name,
+                phase: data.phase,
+                questions_found: data.total_questions_extracted,
+                status: "grading"
+              }
+            }));
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx} (${data.student_name}): Extracted ${data.total_questions_extracted} questions. Starting Phase 2 (Micro-Batch Grading)...`, type: "info" }]);
+          } else if (data.type === "paper_completed") {
+            setLivePapers((prev) => ({
+              ...prev,
+              [data.paper_idx]: {
+                ...prev[data.paper_idx],
+                student_name: data.student_name,
+                phase: "Complete",
+                score: data.score,
+                max_score: data.max_score,
+                questions_count: data.questions_count,
+                status: "completed"
+              }
+            }));
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx} (${data.student_name}): Graded successfully (${data.score}/${data.max_score} pts, ${data.questions_count} questions).`, type: "success" }]);
+          } else if (data.type === "paper_error") {
+            setLivePapers((prev) => ({
+              ...prev,
+              [data.paper_idx]: {
+                ...prev[data.paper_idx],
+                phase: "Error",
+                status: "error"
+              }
+            }));
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx}: Error during processing: ${data.error}`, type: "error" }]);
+          } else if (data.type === "batch_complete") {
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Batch completed! All results persisted to Gradebook.`, type: "success" }]);
+            setIsProcessing(false);
+          }
+        } catch (e) {}
+      };
+
+      // ── 2. Fallback Polling ──
       interval = setInterval(async () => {
         try {
           const res = await authFetch(`/api/v1/assessment/batch/${batchId}/status`);
@@ -283,9 +379,13 @@ export default function AssessmentView({ theme }: { theme: string }) {
             }
           }
         } catch (e) {}
-      }, 3000);
+      }, 2500);
     }
-    return () => clearInterval(interval);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (eventSource) eventSource.close();
+    };
   }, [batchId, batchStatus, isProcessing]);
 
   // Clean up camera on change
@@ -1326,25 +1426,44 @@ export default function AssessmentView({ theme }: { theme: string }) {
                            {pages.map((page, idx) => {
                              const globalIndex = scannedPages.findIndex(x => x.file === page.file);
                              return (
-                               <div key={idx} className="relative min-w-[100px] h-32 bg-surface rounded-none border border-border-main overflow-hidden group">
-                                 <img src={page.url} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-all group-hover:scale-105" alt={`Page ${idx+1}`} />
-                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                 <div className="absolute bottom-2 left-2 text-white text-[9px] font-bold px-1.5 py-0.5 rounded bg-black/40 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
-                                   Page {idx+1}
+                               <div 
+                                 key={idx} 
+                                 className="relative min-w-[110px] h-36 bg-surface rounded-none border border-border-main overflow-hidden group cursor-pointer"
+                                 onClick={() => {
+                                   setPreviewModalUrl(page.url);
+                                   setPreviewModalTitle(`${groupName.replace(/_/g, " ")} - Page ${idx + 1}`);
+                                 }}
+                               >
+                                 <img 
+                                   src={page.url} 
+                                   className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-all group-hover:scale-105" 
+                                   alt={`Page ${idx + 1}`} 
+                                 />
+                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                                   <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                     <button 
+                                       onClick={() => rotatePage(globalIndex)} 
+                                       className="bg-brand-600 text-white p-1 rounded-none hover:bg-brand-700 transition-all shadow-none hover:scale-110 cursor-pointer"
+                                       title="Rotate 90° Clockwise"
+                                     >
+                                       <RotateCw className="w-3 h-3"/>
+                                     </button>
+                                     <button 
+                                       onClick={() => setScannedPages(prev => prev.filter((_, i) => i !== globalIndex))} 
+                                       className="bg-red-500 text-white p-1 rounded-none hover:bg-red-600 transition-all shadow-none hover:scale-110 cursor-pointer"
+                                       title="Delete Page"
+                                     >
+                                       <X className="w-3 h-3"/>
+                                     </button>
+                                   </div>
+
+                                   <div className="flex items-center justify-between text-white text-[10px] font-extrabold tracking-wider uppercase">
+                                     <span>Page {idx + 1}</span>
+                                     <span className="bg-brand-500/80 px-1.5 py-0.5 rounded-none text-[9px] flex items-center gap-1">
+                                       <Eye className="w-3 h-3" /> Preview
+                                     </span>
+                                   </div>
                                  </div>
-                                 <button 
-                                   onClick={() => rotatePage(globalIndex)} 
-                                   className="absolute top-1.5 right-8 bg-brand-600 text-white p-1 rounded-none hover:bg-brand-700 opacity-0 group-hover:opacity-100 transition-all shadow-none hover:scale-110 cursor-pointer"
-                                   title="Rotate 90° Clockwise"
-                                 >
-                                   <RotateCw className="w-3 h-3"/>
-                                 </button>
-                                 <button 
-                                   onClick={() => setScannedPages(prev => prev.filter((_, i) => i !== globalIndex))} 
-                                   className="absolute top-1.5 right-1.5 bg-red-500 text-white p-1 rounded-none hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-all shadow-none hover:scale-110 cursor-pointer"
-                                 >
-                                   <X className="w-3 h-3"/>
-                                 </button>
                                </div>
                              );
                            })}
@@ -1367,10 +1486,17 @@ export default function AssessmentView({ theme }: { theme: string }) {
           {(isProcessing || batchStatus) && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 font-outfit">
                <div className="bg-surface border border-border-main rounded-none p-8 shadow-none">
-                 <div className="flex justify-between items-start mb-8">
+                 <div className="flex justify-between items-start mb-6">
                    <div>
-                     <h3 className="text-xl font-black text-foreground mb-1">Batch Progress</h3>
-                     <p className="text-sm text-foreground/60">ID: <span className="font-mono">{batchId}</span></p>
+                     <h3 className="text-xl font-black text-foreground mb-1 flex items-center gap-2">
+                       Batch Progress Engine
+                       {batchStatus?.status === "Processing" && (
+                         <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase bg-brand-500/10 text-brand-600 border border-brand-500/30 animate-pulse">
+                           Live SSE Stream Active
+                         </span>
+                       )}
+                     </h3>
+                     <p className="text-sm text-foreground/60">Batch ID: <span className="font-mono text-xs">{batchId}</span></p>
                    </div>
                    <div className={cn(
                      "px-4 py-1.5 rounded-none text-xs font-black uppercase tracking-wider flex items-center gap-2",
@@ -1381,16 +1507,16 @@ export default function AssessmentView({ theme }: { theme: string }) {
                    </div>
                  </div>
 
-                 <div className="w-full h-3 bg-surface-soft rounded-none overflow-hidden mb-4 shadow-none">
+                 <div className="w-full h-3 bg-surface-soft rounded-none overflow-hidden mb-6 shadow-none">
                    <div 
-                     className="h-full bg-brand-500 transition-all duration-1000 ease-out" 
+                     className="h-full bg-brand-500 transition-all duration-700 ease-out" 
                      style={{ width: `${batchStatus?.total ? (batchStatus.processed / batchStatus.total) * 100 : 0}%` }}
                    >
                      <div className="w-full h-full bg-white/20 animate-[shimmer_2s_infinite]"></div>
                    </div>
                  </div>
                  
-                 <div className="grid grid-cols-3 gap-6 text-center mt-8">
+                 <div className="grid grid-cols-3 gap-6 text-center mb-8">
                    <div className="p-4 rounded-none bg-surface-soft border border-border-main">
                      <div className="text-3xl font-black text-foreground mb-1">{batchStatus?.processed || 0} / {batchStatus?.total || 0}</div>
                      <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Graded</div>
@@ -1404,6 +1530,64 @@ export default function AssessmentView({ theme }: { theme: string }) {
                      <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Confidence</div>
                    </div>
                  </div>
+
+                 {/* ── LIVE PER-PAPER PROGRESS CARDS ── */}
+                 {Object.keys(livePapers).length > 0 && (
+                   <div className="mt-8 pt-6 border-t border-border-main">
+                     <h4 className="text-xs font-black uppercase tracking-wider text-foreground/70 mb-4 flex items-center gap-2">
+                       <Layers className="w-4 h-4 text-brand-500" /> Live Paper Micro-Phases
+                     </h4>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                       {Object.values(livePapers).map((paper: any) => (
+                         <div key={paper.paper_idx} className="p-3 border border-border-main bg-surface-soft flex items-center justify-between font-outfit">
+                           <div>
+                             <div className="font-bold text-sm text-foreground flex items-center gap-2">
+                               {paper.student_name}
+                               {paper.status === "completed" && <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 font-black border border-emerald-500/20">DONE</span>}
+                               {paper.status === "grading" && <span className="text-[10px] bg-brand-500/10 text-brand-600 px-1.5 py-0.5 font-black border border-brand-500/20 animate-pulse">GRADING</span>}
+                               {paper.status === "extracting" && <span className="text-[10px] bg-sky-500/10 text-sky-600 px-1.5 py-0.5 font-black border border-sky-500/20 animate-pulse">OCR</span>}
+                             </div>
+                             <div className="text-xs text-foreground/60 mt-0.5 flex items-center gap-2">
+                               <span>{paper.phase}</span>
+                               {paper.questions_found && <span>• {paper.questions_found} Qs Extracted</span>}
+                             </div>
+                           </div>
+                           {paper.score !== undefined && (
+                             <div className="text-right">
+                               <div className="text-sm font-black text-brand-600">{paper.score} / {paper.max_score}</div>
+                               <div className="text-[10px] font-bold text-foreground/50">{paper.questions_count} Qs Graded</div>
+                             </div>
+                           )}
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+
+                 {/* ── LIVE STREAM TERMINAL LOG ── */}
+                 {liveLogs.length > 0 && (
+                   <div className="mt-6 pt-6 border-t border-border-main font-mono text-xs">
+                     <div className="flex justify-between items-center mb-2">
+                       <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 flex items-center gap-1.5">
+                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> Live Server Log Feed
+                       </span>
+                       <span className="text-[10px] text-foreground/40">{liveLogs.length} events</span>
+                     </div>
+                     <div className="bg-zinc-950 text-emerald-400 p-4 rounded-none h-40 overflow-y-auto space-y-1.5 shadow-inner">
+                       {liveLogs.map((log, idx) => (
+                         <div key={idx} className="flex gap-2">
+                           <span className="text-zinc-600 select-none">[{log.time}]</span>
+                           <span className={cn(
+                             log.type === "success" && "text-emerald-400 font-bold",
+                             log.type === "error" && "text-rose-400 font-bold",
+                             log.type === "warning" && "text-amber-300",
+                             log.type === "info" && "text-zinc-300"
+                           )}>{log.message}</span>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                 )}
                </div>
             </div>
           )}
@@ -1450,6 +1634,56 @@ export default function AssessmentView({ theme }: { theme: string }) {
               >
                 No, Review Pages
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── SCANNED PAGE FULL-SCREEN PREVIEW MODAL ── */}
+      {previewModalUrl && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit"
+          onClick={() => setPreviewModalUrl(null)}
+        >
+          <div 
+            className="bg-surface border border-border-main max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border-main bg-surface-soft">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-brand-500" />
+                <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">{previewModalTitle}</h3>
+              </div>
+              <button 
+                onClick={() => setPreviewModalUrl(null)}
+                className="p-1.5 hover:bg-foreground/10 text-foreground transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Image Display */}
+            <div className="flex-1 bg-zinc-950 p-6 flex items-center justify-center overflow-auto">
+              <img 
+                src={previewModalUrl} 
+                alt="Scanned Exam Page Preview" 
+                className="max-h-[75vh] w-auto object-contain border border-zinc-800 shadow-xl"
+              />
+            </div>
+
+            {/* Modal Footer Controls */}
+            <div className="flex items-center justify-between px-6 py-3 border-t border-border-main bg-surface-soft text-xs text-foreground/70 font-bold">
+              <span>Click outside or press X to return to Document Queue</span>
+              <a 
+                href={previewModalUrl} 
+                download="scanned_exam_page.jpg" 
+                target="_blank" 
+                rel="noreferrer"
+                className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-none uppercase text-[11px] font-black tracking-wider flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" /> Download High-Res Image
+              </a>
             </div>
           </div>
         </div>

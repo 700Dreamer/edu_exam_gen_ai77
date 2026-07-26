@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import {
-  BarChart3, Loader2, AlertCircle, Users, TrendingUp, Award, BookOpen, School
+  BarChart3, Loader2, AlertCircle, Users, TrendingUp, Award, BookOpen, School, Trophy
 } from "lucide-react";
 import { authFetch } from "../lib/utils";
 
@@ -11,17 +11,20 @@ export default function AnalyticsView({ theme }: { theme: string }) {
   const [tenants, setTenants] = useState<any[]>([]);
   const [selectedTenant, setSelectedTenant] = useState("");
   const [subjectPerf, setSubjectPerf] = useState<Record<string, any>>({});
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       authFetch("/api/v1/analytics/overview").then(r => r.json()),
-      authFetch("/api/v1/tenant/list").then(r => r.json())
-    ]).then(([ov, ten]) => {
+      authFetch("/api/v1/tenant/list").then(r => r.json()),
+      authFetch("/api/v1/analytics/school-leaderboard").then(r => r.json())
+    ]).then(([ov, ten, lb]) => {
       setOverview(ov);
       const tenList = Array.isArray(ten) ? ten : [];
       setTenants(tenList);
       if (tenList.length > 0) setSelectedTenant(tenList[0].id);
+      setLeaderboard(Array.isArray(lb) ? lb : []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -73,6 +76,79 @@ export default function AnalyticsView({ theme }: { theme: string }) {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* School Ranking Leaderboard */}
+        <div className="bg-surface border border-border-main shadow-none overflow-hidden font-outfit">
+          <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <div>
+                <h3 className="text-sm font-extrabold text-foreground uppercase tracking-wider">Institutional Academic Standings</h3>
+                <p className="text-[10px] text-foreground/50 font-medium mt-0.5">Comparative school rankings based on mean scores, pass rates, and script volume</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono text-foreground/50 uppercase font-extrabold bg-surface border border-border-main px-2 py-1">
+              {leaderboard.length} Institutions Evaluated
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse font-outfit">
+              <thead>
+                <tr className="border-b border-border-main/50 bg-surface-soft/30 text-foreground/50 font-bold uppercase tracking-wider">
+                  <th className="px-6 py-3.5 w-16">Rank</th>
+                  <th className="px-6 py-3.5">Institution / School Name</th>
+                  <th className="px-6 py-3.5">School Code</th>
+                  <th className="px-6 py-3.5">Evaluated Scripts</th>
+                  <th className="px-6 py-3.5">Pass Rate (&ge;50%)</th>
+                  <th className="px-6 py-3.5">Peak Score</th>
+                  <th className="px-6 py-3.5 text-right">Institutional Mean</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-main/50">
+                {leaderboard.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-8 text-center text-xs text-foreground/40 italic">
+                      No institutional data recorded yet. Complete an assessment batch in the Grading Hub to compute standings.
+                    </td>
+                  </tr>
+                ) : (
+                  leaderboard.map((item) => (
+                    <tr key={item.tenant_id} className="hover:bg-surface-soft/20 transition-colors group">
+                      <td className="px-6 py-4 font-black">
+                        {item.rank === 1 ? (
+                          <span className="bg-amber-500/20 text-amber-600 border border-amber-500/40 px-2 py-0.5 rounded-none text-[10px] font-black inline-flex items-center gap-1">
+                            <Trophy className="w-3 h-3 text-amber-500" /> Rank 1
+                          </span>
+                        ) : item.rank === 2 ? (
+                          <span className="bg-slate-300/30 text-slate-700 border border-slate-400/40 px-2 py-0.5 rounded-none text-[10px] font-black inline-flex items-center gap-1">
+                            <Award className="w-3 h-3 text-slate-500" /> Rank 2
+                          </span>
+                        ) : item.rank === 3 ? (
+                          <span className="bg-amber-700/20 text-amber-800 border border-amber-700/40 px-2 py-0.5 rounded-none text-[10px] font-black inline-flex items-center gap-1">
+                            <Award className="w-3 h-3 text-amber-700" /> Rank 3
+                          </span>
+                        ) : (
+                          <span className="text-foreground/50 font-mono">Rank #{item.rank}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-foreground">{item.school_name}</td>
+                      <td className="px-6 py-4 font-mono text-foreground/60">{item.school_code || "—"}</td>
+                      <td className="px-6 py-4 font-semibold text-foreground/80">{item.total_graded} scripts</td>
+                      <td className="px-6 py-4 font-bold text-emerald-600">{item.pass_rate}%</td>
+                      <td className="px-6 py-4 font-bold text-purple-600">{item.highest_score} pts</td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-sm font-black text-brand-600 bg-brand-500/10 px-2.5 py-1 border border-brand-500/20">
+                          {item.average_score}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Subject Performance Bar Chart */}

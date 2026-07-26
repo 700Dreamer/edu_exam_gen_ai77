@@ -22,7 +22,12 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const levels = ["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"];
+  const levels = [
+    "Baby Class", "Middle Class", "Top Class",
+    "P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7",
+    "S.1", "S.2", "S.3", "S.4", "S.5", "S.6",
+    "Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"
+  ];
 
   const updateRow = (idx: number, field: "name" | "index", value: string) => {
     const updated = [...studentRows];
@@ -190,9 +195,20 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                          <label className="text-xs font-bold text-foreground/60 mb-2 block">Level / Class</label>
-                         <select value={currentLevel} onChange={(e)=>setCurrentLevel(e.target.value)} className="w-full bg-surface border border-border-main p-3 rounded-none text-sm outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
-                           {levels.map(l => <option key={l} value={l}>{l}</option>)}
-                         </select>
+                          <select value={currentLevel} onChange={(e)=>setCurrentLevel(e.target.value)} className="w-full bg-surface border border-border-main p-3 rounded-none text-sm outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
+                            <optgroup label="Primary (P.1 - P.7)">
+                              {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"].map(l => <option key={l} value={l}>{l}</option>)}
+                            </optgroup>
+                            <optgroup label="Secondary (S.1 - S.6)">
+                              {["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => <option key={l} value={l}>{l} (Senior {l.replace('S.', '')})</option>)}
+                            </optgroup>
+                            <optgroup label="Secondary (Senior Format)">
+                              {["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => <option key={l} value={l}>{l}</option>)}
+                            </optgroup>
+                            <optgroup label="Nursery / Early Years">
+                              {["Baby Class", "Middle Class", "Top Class"].map(l => <option key={l} value={l}>{l}</option>)}
+                            </optgroup>
+                          </select>
                       </div>
                       <div>
                          <label className="text-xs font-bold text-foreground/60 mb-2 block">Stream (e.g. Blue, North)</label>
@@ -236,7 +252,7 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
                                    <tr className="border-b border-border-main bg-surface-soft/40 text-foreground/50 font-bold uppercase tracking-wider">
                                       <th className="px-4 py-2.5">No.</th>
                                       <th className="px-4 py-2.5">Full Name</th>
-                                      <th className="px-4 py-2.5">Index (Optional)</th>
+                                      <th className="px-4 py-2.5">System Index Number</th>
                                       <th className="px-4 py-2.5 text-center">Delete</th>
                                    </tr>
                                 </thead>
@@ -258,8 +274,8 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
                                                type="text"
                                                value={row.index}
                                                onChange={(e) => updateRow(idx, "index", e.target.value)}
-                                               placeholder="e.g. 001"
-                                               className="w-full bg-transparent border-0 px-2 py-1.5 text-xs text-foreground focus:ring-0 outline-none font-mono"
+                                               placeholder="Auto-Generated (e.g. STU-2026-0001)"
+                                               className="w-full bg-transparent border-0 px-2 py-1.5 text-xs text-foreground focus:ring-0 outline-none font-mono text-[11px]"
                                             />
                                          </td>
                                          <td className="px-4 py-2 text-center">

@@ -48,7 +48,7 @@ class Student(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     academic_group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("academic_group.id", ondelete="CASCADE"), nullable=False)
     full_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    index_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    index_number: Mapped[Optional[str]] = mapped_column(String(50), unique=True, nullable=True)
 
 class AssessmentBatch(Base):
     """Represents an asynchronous exam upload and grading session."""

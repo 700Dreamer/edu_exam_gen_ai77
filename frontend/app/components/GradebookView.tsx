@@ -22,16 +22,75 @@ export default function GradebookView({ theme }: { theme: string }) {
   const [overrideScore, setOverrideScore] = useState("");
   const [isOverriding, setIsOverriding] = useState(false);
   const [isReGrading, setIsReGrading] = useState(false);
+  const [isRegradingPaper, setIsRegradingPaper] = useState(false);
+  const [openedBatchIds, setOpenedBatchIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("edulytics-opened-batches");
+      if (saved) {
+        setOpenedBatchIds(new Set(JSON.parse(saved)));
+      }
+    } catch (e) {}
+    fetchBatches();
+  }, []);
+
+  const markBatchAsOpened = (batchId: string) => {
+    setOpenedBatchIds(prev => {
+      const next = new Set(prev);
+      next.add(batchId);
+      try {
+        localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const markBatchAsUnopened = (batchId: string) => {
+    setOpenedBatchIds(prev => {
+      const next = new Set(prev);
+      next.delete(batchId);
+      try {
+        localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleRegradeSingleResult = async () => {
+    if (!selectedResult) return;
+    setIsRegradingPaper(true);
+    try {
+      const res = await authFetch(`/api/v1/assessment/result/${selectedResult.id}/regrade`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newResults: any[] = await refreshResults() as any[];
+        const updated = newResults.find((x: any) => x.id === selectedResult.id);
+        setSelectedResult(updated || data);
+        alert(`Paper regraded successfully! Final Score: ${data.score}/${data.max_possible_score} pts.`);
+      } else {
+        alert("Failed to regrade paper.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error regrading paper.");
+    } finally {
+      setIsRegradingPaper(false);
+    }
+  };
 
   const handleReGradeBatch = async () => {
     if (!selectedBatch) return;
     setIsReGrading(true);
+    markBatchAsUnopened(selectedBatch.id);
     try {
       const res = await authFetch(`/api/v1/assessment/batch/${selectedBatch.id}/process`, {
         method: "POST"
       });
       if (res.ok) {
-        alert("Re-grading batch initiated successfully! All pages are being re-graded in the background. The page will auto-refresh. Please check back in a few moments.");
+        alert("Re-grading batch initiated successfully! Processing concurrently in background.");
         setSelectedBatch(null);
         setSelectedResult(null);
         fetchBatches();
@@ -385,6 +444,7 @@ export default function GradebookView({ theme }: { theme: string }) {
     setSelectedResult(null);
     setIsSidebarCollapsed(false);
     setLoading(true);
+    markBatchAsOpened(batch.id);
     try {
       const [rRes, dRes] = await Promise.all([
         authFetch(`/api/v1/assessment/batch/${batch.id}/results`),
@@ -433,6 +493,33 @@ export default function GradebookView({ theme }: { theme: string }) {
     finally { setIsResolving(false); }
   };
 
+  const handleReorderPages = async (fromIdx: number, toIdx: number) => {
+    if (!selectedResult || !selectedResult.paper_images_urls) return;
+    const sortedEntries = Object.entries(selectedResult.paper_images_urls).sort((a, b) =>
+      a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' })
+    );
+    if (toIdx < 0 || toIdx >= sortedEntries.length) return;
+
+    const urls = sortedEntries.map(([_, url]) => url as string);
+    const [moved] = urls.splice(fromIdx, 1);
+    urls.splice(toIdx, 0, moved);
+
+    try {
+      const res = await authFetch(`/api/v1/assessment/paper/${selectedResult.id}/reorder-pages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_urls: urls })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedResult((prev: any) => ({ ...prev, paper_images_urls: data.paper_images_urls }));
+        setResults((prev: any[]) => prev.map(r => r.id === selectedResult.id ? { ...r, paper_images_urls: data.paper_images_urls } : r));
+      }
+    } catch (e) {
+      alert("Failed to update page sequence.");
+    }
+  };
+
   const handleOverrideScore = async () => {
     if (!selectedResult || !overrideScore) return;
     const score = parseInt(overrideScore);
@@ -475,7 +562,17 @@ export default function GradebookView({ theme }: { theme: string }) {
     }
   };
 
-  // Mini bar chart renderer
+  const [selectedBucket, setSelectedBucket] = useState<string | null>(null);
+
+  const isScoreInBucket = (score: number | null, bucketLabel: string) => {
+    if (score === null || score === undefined) return false;
+    const [lowStr, highStr] = bucketLabel.split("-");
+    const low = parseInt(lowStr, 10);
+    const high = parseInt(highStr, 10);
+    return score >= low && score <= high;
+  };
+
+  // Mini bar chart renderer with interactive click-filtering
   const ScoreChart = ({ dist }: { dist: any }) => {
     if (!dist) return null;
     const buckets = dist.buckets as Record<string, number>;
@@ -484,29 +581,63 @@ export default function GradebookView({ theme }: { theme: string }) {
       "0-49": "bg-red-500", "50-59": "bg-orange-400", "60-69": "bg-yellow-400",
       "70-79": "bg-lime-400", "80-89": "bg-emerald-400", "90-100": "bg-brand-500"
     };
+
     return (
-      <div className="bg-surface border border-border-main p-5 space-y-4">
+      <div className="bg-surface border border-border-main p-5 space-y-4 font-outfit">
         <div className="flex justify-between items-center">
-          <h4 className="text-xs font-bold uppercase tracking-widest text-foreground/60">Score Distribution</h4>
-          <div className="flex gap-4 text-xs">
+          <div className="flex items-center gap-3">
+            <h4 className="text-xs font-bold uppercase tracking-widest text-foreground/60">Score Distribution</h4>
+            {selectedBucket && (
+              <button
+                onClick={() => setSelectedBucket(null)}
+                className="text-[10px] font-black uppercase text-brand-600 bg-brand-500/10 hover:bg-brand-500/20 px-2 py-0.5 border border-brand-500/30 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                Filtered: {selectedBucket}% range (Click to Clear)
+              </button>
+            )}
+          </div>
+          <div className="flex gap-4 text-xs font-bold">
             <span>Avg: <strong className="text-brand-600">{dist.average}%</strong></span>
             <span>High: <strong className="text-emerald-600">{dist.highest}%</strong></span>
             <span>Low: <strong className="text-red-500">{dist.lowest}%</strong></span>
           </div>
         </div>
-        <div className="flex items-end gap-2 h-20">
-          {Object.entries(buckets).map(([label, count]) => (
-            <div key={label} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-[9px] font-bold text-foreground/50">{count}</span>
+
+        <div className="flex items-end gap-2 h-24 pt-4">
+          {Object.entries(buckets).map(([label, count]) => {
+            const isSelected = selectedBucket === label;
+            return (
               <div
-                className={`w-full ${colors[label] || "bg-brand-500"} transition-all duration-500`}
-                style={{ height: `${Math.max((count / maxVal) * 64, count > 0 ? 6 : 0)}px` }}
-              />
-              <span className="text-[8px] font-mono text-foreground/40 rotate-0">{label}</span>
-            </div>
-          ))}
+                key={label}
+                onClick={() => setSelectedBucket(prev => prev === label ? null : label)}
+                className={cn(
+                  "flex-1 flex flex-col items-center gap-1 cursor-pointer group transition-all duration-200 p-1 rounded-none",
+                  isSelected ? "bg-brand-500/10 border border-brand-500/40" : "hover:bg-surface-soft"
+                )}
+                title={`Score range ${label}%: ${count} student(s) - Click to filter roster`}
+              >
+                <span className={cn("text-[9px] font-extrabold transition-transform group-hover:scale-110", isSelected ? "text-brand-600" : "text-foreground/50")}>
+                  {count}
+                </span>
+                <div
+                  className={cn(
+                    `w-full ${colors[label] || "bg-brand-500"} transition-all duration-300 group-hover:brightness-110`,
+                    isSelected ? "ring-2 ring-brand-500 ring-offset-1 ring-offset-surface scale-105" : "opacity-80 group-hover:opacity-100"
+                  )}
+                  style={{ height: `${Math.max((count / maxVal) * 64, count > 0 ? 8 : 2)}px` }}
+                />
+                <span className={cn("text-[9px] font-mono font-bold uppercase tracking-wider transition-colors", isSelected ? "text-brand-600 font-black" : "text-foreground/40")}>
+                  {label}
+                </span>
+              </div>
+            );
+          })}
         </div>
-        <p className="text-[10px] text-foreground/40">{dist.count} students graded</p>
+
+        <div className="flex justify-between items-center text-[10px] text-foreground/50 pt-1">
+          <span>Click any bar to filter student roster below by score range</span>
+          <span>{dist.count} students total</span>
+        </div>
       </div>
     );
   };
@@ -516,23 +647,30 @@ export default function GradebookView({ theme }: { theme: string }) {
     const [insights, setInsights] = useState<string>("");
     const [loadingInsights, setLoadingInsights] = useState<boolean>(false);
 
-    useEffect(() => {
+    const fetchInsights = (force: boolean = false) => {
       if (!batchId) return;
       setLoadingInsights(true);
-      setInsights("");
-      authFetch(`/api/v1/analytics/batch-insights/${batchId}`)
+      if (force) setInsights("");
+      const url = `/api/v1/analytics/batch-insights/${batchId}${force ? '?force_regenerate=true' : ''}`;
+      authFetch(url)
         .then(res => res.json())
         .then(data => {
           setInsights(data.insights || "");
         })
         .catch(err => {
           console.error("Failed to fetch batch insights:", err);
-          setInsights("<p class='text-xs text-red-500 italic'>Failed to load insights.</p>");
+          setInsights("<p class='text-xs text-red-500 italic'>Failed to load insights. Click Retry to attempt again.</p>");
         })
         .finally(() => {
           setLoadingInsights(false);
         });
+    };
+
+    useEffect(() => {
+      fetchInsights(false);
     }, [batchId]);
+
+    const isError = insights.includes("text-red-500") || insights.includes("Failed");
 
     return (
       <div className="bg-surface border border-border-main p-6 space-y-4 font-outfit relative">
@@ -541,6 +679,16 @@ export default function GradebookView({ theme }: { theme: string }) {
             <div className="w-2.5 h-2.5 bg-brand-600 rounded-full animate-pulse" />
             <h4 className="text-xs font-bold uppercase tracking-widest text-foreground/60">General AI Recommendation & Insights</h4>
           </div>
+          <button
+            type="button"
+            onClick={() => fetchInsights(true)}
+            disabled={loadingInsights}
+            className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50 cursor-pointer"
+            title="Retry / Regenerate Insights"
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", loadingInsights && "animate-spin")} />
+            <span>{loadingInsights ? "Generating..." : "Regenerate"}</span>
+          </button>
         </div>
 
         {loadingInsights ? (
@@ -549,12 +697,33 @@ export default function GradebookView({ theme }: { theme: string }) {
             <span className="text-xs text-foreground/50 italic">Generating general batch recommendations and learning insights...</span>
           </div>
         ) : insights ? (
-          <div
-            className="w-full text-foreground"
-            dangerouslySetInnerHTML={{ __html: formatBatchInsightsHtml(insights) }}
-          />
+          <div className="space-y-4">
+            <div
+              className="w-full text-foreground"
+              dangerouslySetInnerHTML={{ __html: formatBatchInsightsHtml(insights) }}
+            />
+            {isError && (
+              <button
+                type="button"
+                onClick={() => fetchInsights(true)}
+                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs transition-all cursor-pointer inline-flex items-center gap-2"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Retry Generating Insights</span>
+              </button>
+            )}
+          </div>
         ) : (
-          <p className="text-xs text-foreground/40 italic text-left">No insights generated for this batch.</p>
+          <div className="py-4 flex items-center justify-between">
+            <p className="text-xs text-foreground/40 italic text-left">No insights generated for this batch.</p>
+            <button
+              type="button"
+              onClick={() => fetchInsights(true)}
+              className="px-3 py-1.5 border border-brand-500 text-brand-600 text-xs font-bold hover:bg-brand-50 cursor-pointer"
+            >
+              Generate Insights
+            </button>
+          </div>
         )}
       </div>
     );
@@ -612,9 +781,16 @@ export default function GradebookView({ theme }: { theme: string }) {
                         <td className="px-6 py-4 font-semibold text-brand-700">{batch.subject}</td>
                         <td className="px-6 py-4 font-mono text-foreground/60">{new Date(batch.created_at).toLocaleString()}</td>
                         <td className="px-6 py-4">
-                          <span className={cn("px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider", getStatusColor(batch.status))}>
-                            {batch.status}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={cn("px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider", getStatusColor(batch.status))}>
+                              {batch.status}
+                            </span>
+                            {batch.status === "Completed" && !openedBatchIds.has(batch.id) && (
+                              <span className="px-2 py-0.5 rounded-none text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-600 border border-emerald-500/40 animate-pulse flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Newly Evaluated
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-4">
                           <button
@@ -697,7 +873,9 @@ export default function GradebookView({ theme }: { theme: string }) {
                   <div className="p-8 text-center text-xs text-foreground/40 italic">No uploads processed in this batch.</div>
                 ) : (
                   <div className="divide-y divide-border-main/50 max-h-[500px] overflow-y-auto custom-scrollbar">
-                    {results.map(r => (
+                    {results
+                      .filter(r => !selectedBucket || isScoreInBucket(r.total_score, selectedBucket))
+                      .map(r => (
                       <div
                         key={r.id}
                         onClick={() => { setSelectedResult(r); setResolutionStudentId(""); setActiveDetailTab("report"); }}
@@ -714,7 +892,7 @@ export default function GradebookView({ theme }: { theme: string }) {
                           {r.needs_manual_review ? (
                             <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-none">Unresolved</span>
                           ) : (
-                            <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2 py-0.5 rounded-none">{r.total_score !== null ? `${r.total_score}%` : "—"}</span>
+                            <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2 py-0.5 rounded-none">{r.total_score !== null ? `${Math.min(100, Math.max(0, Math.round(r.total_score)))}%` : "—"}</span>
                           )}
                         </div>
                       </div>
@@ -751,11 +929,21 @@ export default function GradebookView({ theme }: { theme: string }) {
                           <p className="text-[10px] text-foreground/40 font-mono mt-0.5">Result ID: {selectedResult.id}</p>
                         </div>
                       </div>
-                      {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
-                        <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
-                          {selectedResult.total_score}%
-                        </div>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={handleRegradeSingleResult}
+                          disabled={isRegradingPaper}
+                          className="px-3 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          {isRegradingPaper ? "Re-evaluating Script..." : "Re-evaluate Script"}
+                        </button>
+                        {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
+                          <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
+                            {Math.min(100, Math.max(0, Math.round(selectedResult.total_score)))}%
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Toggle Tabs (only if not in manual review) */}
@@ -843,17 +1031,42 @@ export default function GradebookView({ theme }: { theme: string }) {
                           <div className="flex-1 bg-surface-soft overflow-y-auto p-6 flex flex-col gap-6 items-center custom-scrollbar">
                             {(() => {
                               const paper_images = selectedResult.paper_images_urls || {};
-                              const sortedEntries = Object.entries(paper_images).sort((a, b) =>
-                                a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' })
-                              );
+                              const sortedEntries = Object.entries(paper_images).sort((a, b) => {
+                                const numA = parseInt(a[0].replace(/\D/g, "") || "0");
+                                const numB = parseInt(b[0].replace(/\D/g, "") || "0");
+                                if (numA !== numB) return numA - numB;
+                                return a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' });
+                              });
                               if (sortedEntries.length === 0) {
                                 return <div className="text-xs text-foreground/40 italic py-12">No image file found for this scan.</div>;
                               }
                               return sortedEntries.map(([key, url], idx) => (
-                                <div key={key} className="w-full max-w-2xl space-y-1.5 flex flex-col items-center">
-                                  <p className="text-[10px] text-foreground/50 font-bold uppercase tracking-wider self-start pl-2">
-                                    Page {idx + 1} of {sortedEntries.length}
-                                  </p>
+                                <div key={key} className="w-full max-w-2xl space-y-2 flex flex-col items-center">
+                                  <div className="w-full flex justify-between items-center px-1">
+                                    <p className="text-[10px] text-foreground/50 font-bold uppercase tracking-wider">
+                                      Page {idx + 1} of {sortedEntries.length}
+                                    </p>
+                                    {sortedEntries.length > 1 && (
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          onClick={() => handleReorderPages(idx, idx - 1)}
+                                          disabled={idx === 0}
+                                          className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-border-main hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
+                                          title="Move page earlier in sequence"
+                                        >
+                                          Move Up
+                                        </button>
+                                        <button
+                                          onClick={() => handleReorderPages(idx, idx + 1)}
+                                          disabled={idx === sortedEntries.length - 1}
+                                          className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-border-main hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
+                                          title="Move page later in sequence"
+                                        >
+                                          Move Down
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
                                   <img
                                     src={url as string}
                                     alt={`Graded scan page ${idx + 1}`}
