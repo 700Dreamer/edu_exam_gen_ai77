@@ -130,39 +130,42 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
 
   return (
     <div className="flex-1 bg-surface-soft/30 text-foreground overflow-y-auto py-12 px-4 flex flex-col items-center justify-center min-h-screen">
-      <div className="w-full max-w-4xl bg-surface border border-border-main rounded-none shadow-none overflow-hidden animate-in fade-in zoom-in-95 duration-500 font-outfit">
+      <div className={cn(
+        "w-full bg-surface border border-border-main rounded-none shadow-none overflow-hidden animate-in fade-in zoom-in-95 duration-500 font-outfit transition-all duration-500",
+        step === 2 ? "max-w-6xl" : "max-w-4xl"
+      )}>
         <div className="flex flex-col md:flex-row">
           
-          <div className="md:w-1/3 bg-brand-900 text-white p-10 flex flex-col justify-between relative overflow-hidden">
+          <div className="md:w-1/4 bg-brand-900 text-white p-8 flex flex-col justify-between relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-brand-600/20 to-transparent pointer-events-none" />
             <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-brand-500/20 rounded-none blur-3xl pointer-events-none" />
             
             <div className="relative z-10">
-               <div className="flex items-center gap-3 mb-12">
+               <div className="flex items-center gap-3 mb-10">
                  <div className="w-10 h-10 bg-white/10 rounded-none flex items-center justify-center backdrop-blur-md border border-white/20">
                    <Database className="w-5 h-5 text-brand-300" />
                  </div>
-                 <h2 className="text-xl font-bold tracking-tight text-white">Edulytics Setup</h2>
+                 <h2 className="text-lg font-bold tracking-tight text-white">Edulytics Setup</h2>
                </div>
                
                <div className="space-y-8">
                  <div className={cn("transition-all duration-300", step === 1 ? "opacity-100" : "opacity-40")}>
                    <div className="text-xs font-bold uppercase tracking-widest text-brand-300 mb-1">Step 1</div>
-                   <div className="text-lg font-semibold text-white">School Identity</div>
+                   <div className="text-base font-semibold text-white">School Identity</div>
                  </div>
                  <div className={cn("transition-all duration-300", step === 2 ? "opacity-100" : "opacity-40")}>
                    <div className="text-xs font-bold uppercase tracking-widest text-brand-300 mb-1">Step 2</div>
-                   <div className="text-lg font-semibold text-white">Academic Roster</div>
+                   <div className="text-base font-semibold text-white">Academic Roster</div>
                  </div>
                  <div className={cn("transition-all duration-300", step === 3 ? "opacity-100" : "opacity-40")}>
                    <div className="text-xs font-bold uppercase tracking-widest text-brand-300 mb-1">Step 3</div>
-                   <div className="text-lg font-semibold text-white">Final Review</div>
+                   <div className="text-base font-semibold text-white">Final Review</div>
                  </div>
                </div>
             </div>
           </div>
           
-          <div className="md:w-2/3 p-10 relative">
+          <div className="md:w-3/4 p-8 relative">
             {step === 1 && (
               <div className="animate-in slide-in-from-right-4 duration-500">
                  <h3 className="text-2xl font-black text-foreground mb-2">Welcome to Edulytics</h3>
@@ -234,208 +237,223 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
 
             {step === 2 && (
               <div className="animate-in slide-in-from-right-4 duration-500 flex flex-col">
-                 <h3 className="text-2xl font-black text-foreground mb-2">Academic Roster</h3>
-                 <p className="text-sm text-foreground/60 mb-6">Build your classes, streams, and inject the student index mapping for AI resolution.</p>
+                 <h3 className="text-xl font-black text-foreground mb-1">Academic Roster & Registration</h3>
+                 <p className="text-xs text-foreground/60 mb-6">Build your class streams and inject student roster mappings for AI grading resolution.</p>
                  
-                 <div className="bg-surface-soft border border-border-main p-5 rounded-none mb-6 shadow-none">
-                    <div className="flex gap-2 p-1 bg-surface border border-border-main mb-4">
-                      <button
-                        type="button"
-                        onClick={() => setSchoolCategory("Primary")}
-                        className={cn(
-                          "flex-1 py-2 text-xs font-bold transition-all cursor-pointer",
-                          schoolCategory === "Primary" ? "bg-brand-600 text-white" : "text-foreground/60 hover:bg-surface-soft"
-                        )}
-                      >
-                        Primary (P.1 - P.7 & Early Years)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSchoolCategory("Secondary")}
-                        className={cn(
-                          "flex-1 py-2 text-xs font-bold transition-all cursor-pointer",
-                          schoolCategory === "Secondary" ? "bg-brand-600 text-white" : "text-foreground/60 hover:bg-surface-soft"
-                        )}
-                      >
-                        Secondary (S.1 - S.6 / Senior 1 - 6)
-                      </button>
-                    </div>
+                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                    <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div>
-                         <label className="text-xs font-bold text-foreground/60 mb-2 block">Level / Class</label>
-                          <select value={currentLevel} onChange={(e)=>setCurrentLevel(e.target.value)} className="w-full bg-surface border border-border-main p-3 rounded-none text-sm outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
-                            {schoolCategory === "Primary" ? (
-                              <>
-                                <optgroup label="Primary (P.1 - P.7)">
-                                  {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"].map(l => <option key={l} value={l}>{l}</option>)}
-                                </optgroup>
-                                <optgroup label="Nursery / Early Years">
-                                  {["Baby Class", "Middle Class", "Top Class"].map(l => <option key={l} value={l}>{l}</option>)}
-                                </optgroup>
-                              </>
-                            ) : (
-                              <>
-                                <optgroup label="Secondary (S.1 - S.6)">
-                                  {["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => <option key={l} value={l}>{l} (Senior {l.replace('S.', '')})</option>)}
-                                </optgroup>
-                                <optgroup label="Secondary (Senior Format)">
-                                  {["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => <option key={l} value={l}>{l}</option>)}
-                                </optgroup>
-                              </>
-                            )}
-                          </select>
-                      </div>
-                      <div>
-                         <label className="text-xs font-bold text-foreground/60 mb-2 block">Stream (e.g. Blue, North)</label>
-                         <input type="text" value={currentStream} onChange={(e)=>setCurrentStream(e.target.value)} className="w-full bg-surface border border-border-main p-3 rounded-none text-sm outline-none focus:ring-2 focus:ring-brand-500" placeholder="Stream Name"/>
-                      </div>
-                    </div>
-                    {/* Input Mode Selector */}
-                    <div className="flex gap-2 p-1 bg-surface-soft border border-border-main rounded-none mb-3">
-                       <button
-                         type="button"
-                         onClick={() => setImportMode("manual")}
-                         className={cn(
-                           "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold transition-all cursor-pointer rounded-none",
-                           importMode === "manual"
-                             ? "bg-foreground text-surface"
-                             : "text-foreground/60 hover:bg-foreground/5"
-                         )}
-                       >
-                         <Keyboard className="w-3.5 h-3.5" /> Manual Entry Grid
-                       </button>
-                       <button
-                         type="button"
-                         onClick={() => setImportMode("csv")}
-                         className={cn(
-                           "flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold transition-all cursor-pointer rounded-none",
-                           importMode === "csv"
-                             ? "bg-foreground text-surface"
-                             : "text-foreground/60 hover:bg-foreground/5"
-                         )}
-                       >
-                         <FileSpreadsheet className="w-3.5 h-3.5" /> CSV File Import
-                       </button>
-                    </div>
-
-                    {importMode === "manual" ? (
-                       <div className="space-y-3">
-                          <label className="text-xs font-bold text-foreground/60 block">Roster Entry Table</label>
-                          <div className="border border-border-main overflow-hidden bg-surface max-h-60 overflow-y-auto custom-scrollbar">
-                             <table className="w-full text-left text-xs border-collapse">
-                                <thead>
-                                   <tr className="border-b border-border-main bg-surface-soft/40 text-foreground/50 font-bold uppercase tracking-wider">
-                                      <th className="px-4 py-2.5">No.</th>
-                                      <th className="px-4 py-2.5">Full Name</th>
-                                      <th className="px-4 py-2.5">System Index Number</th>
-                                      <th className="px-4 py-2.5 text-center">Delete</th>
-                                   </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border-main/50">
-                                   {studentRows.map((row, idx) => (
-                                      <tr key={idx} className="hover:bg-surface-soft/10 transition-colors">
-                                         <td className="px-4 py-2 font-mono text-foreground/40">{idx + 1}</td>
-                                         <td className="px-2 py-1">
-                                            <input
-                                               type="text"
-                                               value={row.name}
-                                               onChange={(e) => updateRow(idx, "name", e.target.value)}
-                                               placeholder="Student Full Name"
-                                               className="w-full bg-transparent border-0 px-2 py-1.5 text-xs text-foreground focus:ring-0 outline-none"
-                                            />
-                                         </td>
-                                         <td className="px-2 py-1">
-                                            <input
-                                               type="text"
-                                               value={row.index}
-                                               onChange={(e) => updateRow(idx, "index", e.target.value)}
-                                               placeholder="Auto-Generated (e.g. STU-2026-0001)"
-                                               className="w-full bg-transparent border-0 px-2 py-1.5 text-xs text-foreground focus:ring-0 outline-none font-mono text-[11px]"
-                                            />
-                                         </td>
-                                         <td className="px-4 py-2 text-center">
-                                            <button
-                                               type="button"
-                                               onClick={() => removeRow(idx)}
-                                               className="text-foreground/40 hover:text-red-500 transition-colors p-1 cursor-pointer"
-                                            >
-                                               <Trash2 className="w-3.5 h-3.5" />
-                                            </button>
-                                         </td>
-                                      </tr>
-                                   ))}
-                                </tbody>
-                             </table>
-                          </div>
-                          <button
-                             type="button"
-                             onClick={addRow}
-                             className="w-full py-2 border border-dashed border-border-main hover:border-foreground/30 hover:bg-surface-soft/20 text-xs font-bold text-foreground/60 hover:text-foreground transition-all cursor-pointer rounded-none flex items-center justify-center gap-1.5"
-                          >
-                             <Plus className="w-3.5 h-3.5" /> Add New Row
-                          </button>
-                       </div>
-                    ) : (
-                       <div className="border border-dashed border-border-main p-6 text-center bg-surface-soft/10 flex flex-col items-center justify-center gap-3">
-                          <div className="w-10 h-10 bg-brand-500/10 text-brand-600 rounded-none flex items-center justify-center">
-                             <Upload className="w-5 h-5" />
-                          </div>
-                          <div>
-                             <h4 className="text-xs font-bold text-foreground mb-1">Select CSV File</h4>
-                             <p className="text-[10px] text-foreground/50 max-w-[280px] mx-auto leading-relaxed">
-                                Upload a `.csv` where each line is formatted as `Student Name, Index Number` (e.g. `John Doe, 001`).
-                             </p>
-                          </div>
-                          <label className="px-4 py-2 bg-foreground text-surface hover:bg-foreground/90 transition-all text-xs font-bold cursor-pointer rounded-none">
-                             Browse Files
-                             <input
-                                type="file"
-                                accept=".csv"
-                                onChange={handleCsvUpload}
-                                className="hidden"
-                             />
-                          </label>
-                       </div>
-                    )}
-
-                    <button 
-                       onClick={handleAddGroup} 
-                       disabled={!currentStream || studentRows.filter(r => r.name.trim()).length === 0} 
-                       className="w-full mt-4 py-3 bg-foreground text-surface text-sm font-bold rounded-none flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:bg-foreground/90 cursor-pointer"
-                    >
-                       <Plus className="w-4 h-4" /> Add Academic Group
-                    </button>
-                 </div>
-
-                 <div className="max-h-40 overflow-y-auto custom-scrollbar space-y-3">
-                   {groups.length === 0 ? (
-                     <div className="text-center text-xs text-foreground/40 py-4 font-bold uppercase tracking-widest border border-dashed border-border-main rounded-none">No Groups Added</div>
-                   ) : groups.map((g, idx) => (
-                     <div key={idx} className="bg-surface border border-border-main p-4 rounded-none flex items-center justify-between group-item transition-all hover:border-brand-300">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-brand-500/10 text-brand-600 rounded-none flex items-center justify-center font-black text-sm">
-                            {g.level}
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-bold text-foreground">{g.stream} Stream</h4>
-                            <p className="text-xs text-foreground/60">{g.students.length} Student(s) Enrolled</p>
-                          </div>
-                        </div>
-                        <button onClick={()=>removeGroup(idx)} className="text-red-500/50 hover:text-red-500 transition-colors p-2 cursor-pointer"><X className="w-4 h-4"/></button>
+                   {/* ── COLUMN 1: Category & Class Stream Config ── */}
+                   <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-4">
+                     <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                       <Database className="w-4 h-4 text-brand-600" />
+                       <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">1. Stream Specifics</h4>
                      </div>
-                   ))}
-                 </div>
-                 
-                 <div className="mt-6 flex justify-between items-center pt-4 border-t border-border-main">
-                   <button onClick={() => setStep(1)} className="px-6 py-3 text-foreground/60 text-sm font-bold hover:text-foreground transition-colors cursor-pointer">Back</button>
-                   <button 
-                     onClick={() => setStep(3)} 
-                     disabled={groups.length === 0}
-                     className="px-8 py-3 bg-brand-600 text-white text-sm font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none cursor-pointer"
-                   >
-                     Review Settings
-                   </button>
+
+                     <div>
+                       <label className="text-xs font-bold text-foreground/60 mb-2 block">Institution Category</label>
+                       <div className="grid grid-cols-1 gap-2">
+                         <button
+                           type="button"
+                           onClick={() => setSchoolCategory("Primary")}
+                           className={cn(
+                             "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                             schoolCategory === "Primary" ? "border-brand-600 bg-brand-500/10 text-foreground font-bold" : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                           )}
+                         >
+                           <div className="text-xs font-bold">Primary / Early Years</div>
+                           <div className="text-[10px] text-foreground/50">P.1 - P.7 & Early Years</div>
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => setSchoolCategory("Secondary")}
+                           className={cn(
+                             "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                             schoolCategory === "Secondary" ? "border-brand-600 bg-brand-500/10 text-foreground font-bold" : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                           )}
+                         >
+                           <div className="text-xs font-bold">Secondary School</div>
+                           <div className="text-[10px] text-foreground/50">S.1 - S.6 (Senior 1 - 6)</div>
+                         </button>
+                       </div>
+                     </div>
+
+                     <div>
+                       <label className="text-xs font-bold text-foreground/60 mb-1.5 block">Level / Class</label>
+                       <select value={currentLevel} onChange={(e)=>setCurrentLevel(e.target.value)} className="w-full bg-surface border border-border-main p-2.5 rounded-none text-xs outline-none focus:ring-1 focus:ring-brand-500 cursor-pointer">
+                         {schoolCategory === "Primary" ? (
+                           <>
+                             <optgroup label="Primary (P.1 - P.7)">
+                               {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"].map(l => <option key={l} value={l}>{l}</option>)}
+                             </optgroup>
+                             <optgroup label="Nursery / Early Years">
+                               {["Baby Class", "Middle Class", "Top Class"].map(l => <option key={l} value={l}>{l}</option>)}
+                             </optgroup>
+                           </>
+                         ) : (
+                           <>
+                             <optgroup label="Secondary (S.1 - S.6)">
+                               {["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => <option key={l} value={l}>{l} (Senior {l.replace('S.', '')})</option>)}
+                             </optgroup>
+                             <optgroup label="Secondary (Senior Format)">
+                               {["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => <option key={l} value={l}>{l}</option>)}
+                             </optgroup>
+                           </>
+                         )}
+                       </select>
+                     </div>
+
+                     <div>
+                       <label className="text-xs font-bold text-foreground/60 mb-1.5 block">Stream Name</label>
+                       <input type="text" value={currentStream} onChange={(e)=>setCurrentStream(e.target.value)} className="w-full bg-surface border border-border-main p-2.5 rounded-none text-xs outline-none focus:ring-1 focus:ring-brand-500" placeholder="e.g. Blue, North, Science"/>
+                     </div>
+                   </div>
+
+                   {/* ── COLUMN 2: Roster Entry Data ── */}
+                   <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-4">
+                     <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                       <Keyboard className="w-4 h-4 text-brand-600" />
+                       <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">2. Student Roster</h4>
+                     </div>
+
+                     <div className="flex gap-1 p-1 bg-surface-soft border border-border-main rounded-none">
+                        <button
+                          type="button"
+                          onClick={() => setImportMode("manual")}
+                          className={cn(
+                            "flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold transition-all cursor-pointer rounded-none",
+                            importMode === "manual" ? "bg-foreground text-surface" : "text-foreground/60 hover:bg-foreground/5"
+                          )}
+                        >
+                          <Keyboard className="w-3 h-3" /> Grid
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImportMode("csv")}
+                          className={cn(
+                            "flex-1 flex items-center justify-center gap-1 py-1.5 text-[11px] font-bold transition-all cursor-pointer rounded-none",
+                            importMode === "csv" ? "bg-foreground text-surface" : "text-foreground/60 hover:bg-foreground/5"
+                          )}
+                        >
+                          <FileSpreadsheet className="w-3 h-3" /> CSV
+                        </button>
+                     </div>
+
+                     {importMode === "manual" ? (
+                        <div className="space-y-2">
+                           <div className="border border-border-main overflow-hidden bg-surface max-h-48 overflow-y-auto custom-scrollbar">
+                              <table className="w-full text-left text-[11px] border-collapse">
+                                 <thead>
+                                    <tr className="border-b border-border-main bg-surface-soft/40 text-foreground/50 font-bold uppercase tracking-wider">
+                                       <th className="px-2 py-1.5">No.</th>
+                                       <th className="px-2 py-1.5">Full Name</th>
+                                       <th className="px-2 py-1.5">Index No.</th>
+                                       <th className="px-2 py-1.5 text-center">Del</th>
+                                    </tr>
+                                 </thead>
+                                 <tbody className="divide-y divide-border-main/50">
+                                    {studentRows.map((row, idx) => (
+                                       <tr key={idx} className="hover:bg-surface-soft/10 transition-colors">
+                                          <td className="px-2 py-1 font-mono text-foreground/40 text-[10px]">{idx + 1}</td>
+                                          <td className="px-1 py-0.5">
+                                             <input
+                                                type="text"
+                                                value={row.name}
+                                                onChange={(e) => updateRow(idx, "name", e.target.value)}
+                                                placeholder="Student Name"
+                                                className="w-full bg-transparent border-0 px-1 py-1 text-xs text-foreground focus:ring-0 outline-none"
+                                             />
+                                          </td>
+                                          <td className="px-1 py-0.5">
+                                             <input
+                                                type="text"
+                                                value={row.index}
+                                                onChange={(e) => updateRow(idx, "index", e.target.value)}
+                                                placeholder="Index Number"
+                                                className="w-full bg-transparent border-0 px-1 py-1 text-[11px] text-foreground focus:ring-0 outline-none font-mono"
+                                             />
+                                          </td>
+                                          <td className="px-2 py-1 text-center">
+                                             <button
+                                                type="button"
+                                                onClick={() => removeRow(idx)}
+                                                className="text-foreground/40 hover:text-red-500 transition-colors p-1 cursor-pointer"
+                                             >
+                                                <Trash2 className="w-3 h-3" />
+                                             </button>
+                                          </td>
+                                       </tr>
+                                    ))}
+                                 </tbody>
+                              </table>
+                           </div>
+                           <button
+                              type="button"
+                              onClick={addRow}
+                              className="w-full py-1.5 border border-dashed border-border-main text-[11px] font-bold text-foreground/60 hover:text-foreground transition-all cursor-pointer rounded-none flex items-center justify-center gap-1"
+                           >
+                              <Plus className="w-3 h-3" /> Add Row
+                           </button>
+                        </div>
+                     ) : (
+                        <div className="border border-dashed border-border-main p-4 text-center bg-surface-soft/10 flex flex-col items-center justify-center gap-2">
+                           <Upload className="w-5 h-5 text-brand-600" />
+                           <p className="text-[10px] text-foreground/50 leading-tight">Upload `.csv` with `Student Name, Index Number` per line.</p>
+                           <label className="px-3 py-1.5 bg-foreground text-surface hover:bg-foreground/90 transition-all text-[11px] font-bold cursor-pointer rounded-none">
+                              Browse CSV
+                              <input type="file" accept=".csv" onChange={handleCsvUpload} className="hidden" />
+                           </label>
+                        </div>
+                     )}
+
+                     <button 
+                        onClick={handleAddGroup} 
+                        disabled={!currentStream || studentRows.filter(r => r.name.trim()).length === 0} 
+                        className="w-full py-2.5 bg-brand-600 text-white text-xs font-bold rounded-none flex items-center justify-center gap-2 disabled:opacity-50 transition-all hover:bg-brand-700 cursor-pointer uppercase tracking-wider"
+                     >
+                        <Plus className="w-3.5 h-3.5" /> Add Class Stream
+                     </button>
+                   </div>
+
+                   {/* ── COLUMN 3: Enrolled Class Streams & Navigation ── */}
+                   <div className="space-y-4 flex flex-col justify-between">
+                     <div className="space-y-3">
+                       <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                         <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">3. Enrolled Streams ({groups.length})</h4>
+                       </div>
+
+                       <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+                         {groups.length === 0 ? (
+                           <div className="text-center text-[11px] text-foreground/40 py-6 font-bold uppercase tracking-wider border border-dashed border-border-main rounded-none">No Streams Added Yet</div>
+                         ) : groups.map((g, idx) => (
+                           <div key={idx} className="bg-surface border border-border-main p-3 rounded-none flex items-center justify-between group transition-all hover:border-brand-500">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 bg-brand-500/10 text-brand-600 rounded-none flex items-center justify-center font-bold text-xs">
+                                  {g.level}
+                                </div>
+                                <div>
+                                  <h5 className="text-xs font-bold text-foreground">{g.stream} Stream</h5>
+                                  <p className="text-[10px] text-foreground/60">{g.students.length} Student(s)</p>
+                                </div>
+                              </div>
+                              <button onClick={()=>removeGroup(idx)} className="text-red-500/50 hover:text-red-500 transition-colors p-1 cursor-pointer"><X className="w-3.5 h-3.5"/></button>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                     
+                     <div className="flex justify-between items-center pt-3 border-t border-border-main">
+                       <button onClick={() => setStep(1)} className="px-4 py-2.5 text-foreground/60 text-xs font-bold hover:text-foreground transition-colors cursor-pointer">Back</button>
+                       <button 
+                         onClick={() => setStep(3)} 
+                         disabled={groups.length === 0}
+                         className="px-5 py-2.5 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer uppercase tracking-wider flex items-center gap-1.5"
+                       >
+                         Review & Provision <ArrowRight className="w-3.5 h-3.5" />
+                       </button>
+                     </div>
+                   </div>
+
                  </div>
               </div>
             )}
