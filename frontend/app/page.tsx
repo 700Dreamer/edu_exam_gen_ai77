@@ -58,11 +58,11 @@ const Header = ({
         {/* Task Hubs */}
         <div className="flex gap-1.5 border-l border-border-main pl-4 items-center">
           {([
-            { key: "assessment", label: "Grading Hub", Icon: Layers },
-            { key: "gradebook", label: "Gradebook & Review", Icon: CheckCircle2 },
-            { key: "analytics", label: "Insights Lab", Icon: BarChart3 },
-            { key: "roster", label: "Class Rosters", Icon: Users },
             { key: "onboarding", label: "Onboarding", Icon: Plus },
+            { key: "assessment", label: "Grading", Icon: Layers },
+            { key: "gradebook", label: "Results", Icon: CheckCircle2 },
+            { key: "analytics", label: "Insights", Icon: BarChart3 },
+            { key: "roster", label: "Class Rosters", Icon: Users },
             { key: "settings", label: "Settings", Icon: Settings },
           ] as const).map(({ key, label, Icon }) => (
             <button
