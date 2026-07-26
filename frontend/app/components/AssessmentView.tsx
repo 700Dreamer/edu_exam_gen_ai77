@@ -146,10 +146,18 @@ export default function AssessmentView({
   const rawSubjects = apiConfig.subjects || [];
   const subjects = rawSubjects.filter((s: string) => isSubjectForLevel(s, selectedLevel));
 
-  // Auto-adjust selected subject when class/level changes if current subject is invalid for that class
+  // Auto-adjust selected subject & batchMode when class/level changes
   useEffect(() => {
     if (subjects.length > 0 && (!subject || !subjects.includes(subject))) {
       setSubject(subjects[0]);
+    }
+    if (selectedLevel) {
+      const lvl = selectedLevel.toLowerCase().replace(/\s+/g, "");
+      const isSec = lvl.includes("senior") || /^s[1-6]/i.test(lvl);
+      if (!isSec) {
+        setBatchMode("worksheet");
+        setMasterQuestionFiles([]);
+      }
     }
   }, [selectedGroup, selectedLevel, apiConfig]);
 
@@ -933,7 +941,7 @@ export default function AssessmentView({
                     )}
                   </div>
 
-                  {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
+                  {(!selectedLevel || selectedLevel.toLowerCase().includes("senior") || /^s[1-6]/i.test(selectedLevel.replace(/\s+/g, ""))) && (batchMode === "answer_sheet" || batchMode === "hybrid") && (
                     <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-3">
                       <div className="flex justify-between items-center">
                         <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">Master Question Paper (1-Time Upload)</label>

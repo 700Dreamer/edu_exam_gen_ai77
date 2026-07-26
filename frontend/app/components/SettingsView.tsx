@@ -67,7 +67,7 @@ export default function SettingsView({
           </div>
 
           <p className="text-xs text-foreground/70 leading-relaxed font-medium">
-            Select your preferred font scaling. Changes take effect instantly across all Edulytics OS views and persist in your browser settings.
+            Select your preferred font scaling. Changes take effect instantly across all Edulytics views and persist in your browser settings.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
