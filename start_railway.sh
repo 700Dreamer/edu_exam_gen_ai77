@@ -41,6 +41,7 @@ fi
 # Create symlinks if using a persistent volume so the Python code finds them in the root
 if [ "$DATA_DIR" != "/app" ]; then
     ln -sf $DATA_DIR/chroma_db /app/chroma_db
+    [ -f "$DATA_DIR/edulytics_history.db" ] && ln -sf $DATA_DIR/edulytics_history.db /app/edulytics_history.db
 fi
 # ─────────────────────────────────────────
 
