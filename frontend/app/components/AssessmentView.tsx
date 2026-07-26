@@ -821,7 +821,7 @@ export default function AssessmentView({
 
   return (
     <div className={cn(
-      "flex-1 bg-surface-soft/30 text-foreground overflow-hidden relative flex transition-all duration-700 ease-in-out",
+      "flex-1 bg-surface-soft text-foreground overflow-hidden relative flex transition-all duration-700 ease-in-out",
       isSidebarMode ? "flex-col lg:flex-row" : "flex-col items-center overflow-y-auto py-12 lg:py-20"
     )}>
       <div className={cn(
@@ -830,7 +830,7 @@ export default function AssessmentView({
           ? "w-full lg:w-[340px] lg:min-w-[340px] border-r border-border-main h-full rounded-none" 
           : "w-full max-w-2xl border border-border-main rounded-none mb-8 flex-none"
       )}>
-         <div className={cn("p-6 border-b border-border-main bg-surface-soft/50", isSidebarMode ? "" : "rounded-none")}>
+         <div className={cn("p-6 border-b border-border-main bg-surface-soft", isSidebarMode ? "" : "rounded-none")}>
              <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
                 <Layers className="w-5 h-5 text-brand-600"/> Batch Assessment Engine
              </h2>
@@ -1018,7 +1018,7 @@ export default function AssessmentView({
               {uploadMode === "scanner" && (
                 <div className="bg-surface border border-border-main rounded-none shadow-none overflow-hidden">
                   {/* Scanner Header */}
-                  <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center">
+                  <div className="px-6 py-4 border-b border-border-main bg-surface-soft flex justify-between items-center">
                     <div className="flex items-center gap-2">
                       <ScanLine className="w-4 h-4 text-brand-600" />
                       <h3 className="text-sm font-bold text-foreground">Flatbed Scanner</h3>
@@ -1234,18 +1234,17 @@ export default function AssessmentView({
                                     <div className="h-8 w-full border border-zinc-200 rounded-sm flex items-center justify-center text-[6px] text-zinc-300">Signature</div>
                                   </div>
                                 </div>
-
-                                {/* Laser Scan Line */}
-                                <div 
-                                  className="absolute left-0 right-0 h-0.5 bg-green-400 shadow-[0_0_10px_#4ade80,_0_0_20px_#22c55e] transition-all duration-100 ease-out z-10 animate-pulse"
-                                  style={{
-                                    top: `${scanProgress}%`
-                                  }}
-                                />
                               </div>
 
-                              {/* Progress bar info overlay */}
-                              <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center bg-black/80 backdrop-blur-md px-2 py-1 text-[8px] font-mono text-green-400 z-20 border border-green-500/20">
+                              {/* Laser Scan Line */}
+                              <div 
+                                className="absolute left-0 right-0 h-0.5 bg-green-400 shadow-[0_0_10px_#4ade80,_0_0_20px_#22c55e] transition-all duration-100 ease-out z-10 animate-pulse"
+                                style={{
+                                  top: `${scanProgress}%`
+                                }}
+                              />
+                                   {/* Progress bar info overlay */}
+                              <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center bg-zinc-950 border border-zinc-800 px-2 py-1 text-[8px] font-mono text-green-400 z-20">
                                 <span>SCANNING...</span>
                                 <span>{Math.round(scanProgress)}%</span>
                               </div>
@@ -1272,7 +1271,7 @@ export default function AssessmentView({
                                 return (
                                   <div key={idx} className="relative min-w-[80px] h-24 bg-surface rounded-none border border-border-main overflow-hidden group">
                                     <img src={page.url} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all" alt={`Page ${idx + 1}`} />
-                                    <div className="absolute bottom-1 left-1 text-white text-[8px] font-bold px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm">
+                                    <div className="absolute bottom-1 left-1 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-none bg-zinc-900 border border-zinc-800">
                                       Page {idx + 1}
                                     </div>
                                     <button
@@ -1446,7 +1445,7 @@ export default function AssessmentView({
                               return (
                                 <div key={idx} className="relative min-w-[80px] h-24 bg-surface rounded-none border border-border-main overflow-hidden group">
                                   <img src={page.url} className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all" alt={`Page ${idx + 1}`} />
-                                  <div className="absolute bottom-1 left-1 text-white text-[8px] font-bold px-1.5 py-0.5 rounded bg-black/50 backdrop-blur-sm">
+                                  <div className="absolute bottom-1 left-1 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-none bg-zinc-900 border border-zinc-800">
                                     Page {idx + 1}
                                   </div>
                                   <button
@@ -1719,7 +1718,7 @@ export default function AssessmentView({
 
       {/* Multi-Page Completion Prompt Modal */}
       {showNextExamPrompt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-surface border border-border-main p-6 max-w-sm w-full space-y-5 animate-in fade-in zoom-in-95 duration-200 text-center font-outfit shadow-2xl">
             <div className="w-12 h-12 rounded-none bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mx-auto">
               <CheckCircle2 className="w-6 h-6 text-brand-600" />
@@ -1757,7 +1756,7 @@ export default function AssessmentView({
       {/* ── SCANNED PAGE FULL-SCREEN PREVIEW MODAL ── */}
       {previewModalUrl && (
         <div 
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit"
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit"
           onClick={() => setPreviewModalUrl(null)}
         >
           <div 
