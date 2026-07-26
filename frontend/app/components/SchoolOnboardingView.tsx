@@ -10,6 +10,7 @@ import { cn, authFetch } from "../lib/utils";
 export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: string, setActiveTab: any }) {
   const [step, setStep] = useState(1);
   const [schoolName, setSchoolName] = useState("");
+  const [schoolCategory, setSchoolCategory] = useState<"Primary" | "Secondary">("Primary");
   const [groups, setGroups] = useState<{level: string, stream: string, students: {full_name: string, index_number: string}[]}[]>([]);
   
   const [currentLevel, setCurrentLevel] = useState("P.1");
@@ -22,12 +23,18 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const levels = [
-    "Baby Class", "Middle Class", "Top Class",
-    "P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7",
-    "S.1", "S.2", "S.3", "S.4", "S.5", "S.6",
-    "Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"
-  ];
+  const primaryLevels = ["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7", "Baby Class", "Middle Class", "Top Class"];
+  const secondaryLevels = ["S.1", "S.2", "S.3", "S.4", "S.5", "S.6", "Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"];
+
+  const activeLevels = schoolCategory === "Primary" ? primaryLevels : secondaryLevels;
+
+  useEffect(() => {
+    if (schoolCategory === "Primary" && !primaryLevels.includes(currentLevel)) {
+      setCurrentLevel("P.1");
+    } else if (schoolCategory === "Secondary" && !secondaryLevels.includes(currentLevel)) {
+      setCurrentLevel("S.1");
+    }
+  }, [schoolCategory]);
 
   const updateRow = (idx: number, field: "name" | "index", value: string) => {
     const updated = [...studentRows];
@@ -161,29 +168,68 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
                  <h3 className="text-2xl font-black text-foreground mb-2">Welcome to Edulytics</h3>
                  <p className="text-sm text-foreground/60 mb-8">Let's set up your institution's central intelligence hub. Enter your school name to begin.</p>
                  
-                 <div className="space-y-6">
-                   <div>
-                     <label className="text-xs font-bold uppercase tracking-widest text-foreground/60 mb-3 block">Registered School Name</label>
-                     <input 
-                       type="text" 
-                       value={schoolName}
-                       onChange={(e) => setSchoolName(e.target.value)}
-                       placeholder="e.g. Greenhill Academy"
-                       className="w-full bg-surface-soft border border-border-main rounded-none p-4 text-foreground focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-none text-lg font-medium"
-                     />
-                   </div>
-                 </div>
-                 
-                 <div className="mt-12 flex justify-end">
-                   <button 
-                     onClick={() => setStep(2)} 
-                     disabled={!schoolName.trim()}
-                     className="px-8 py-4 bg-brand-600 text-white text-sm font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center gap-2 group shadow-none cursor-pointer"
-                   >
-                     Next Step <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                   </button>
-                 </div>
-              </div>
+                  <div className="space-y-6">
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-widest text-foreground/60 mb-3 block">Registered School Name</label>
+                      <input 
+                        type="text" 
+                        value={schoolName}
+                        onChange={(e) => setSchoolName(e.target.value)}
+                        placeholder="e.g. Greenhill Academy"
+                        className="w-full bg-surface-soft border border-border-main rounded-none p-4 text-foreground focus:ring-2 focus:ring-brand-500 outline-none transition-all shadow-none text-lg font-medium"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-widest text-foreground/60 mb-3 block">Institution Level / Category</label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSchoolCategory("Primary");
+                            setCurrentLevel("P.1");
+                          }}
+                          className={cn(
+                            "p-4 border text-left rounded-none transition-all cursor-pointer",
+                            schoolCategory === "Primary"
+                              ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                              : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                          )}
+                        >
+                          <div className="text-sm font-bold">Primary / Early Years</div>
+                          <div className="text-[11px] text-foreground/50 mt-1">Baby Class, Top Class, P.1 to P.7</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSchoolCategory("Secondary");
+                            setCurrentLevel("S.1");
+                          }}
+                          className={cn(
+                            "p-4 border text-left rounded-none transition-all cursor-pointer",
+                            schoolCategory === "Secondary"
+                              ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                              : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                          )}
+                        >
+                          <div className="text-sm font-bold">Secondary School</div>
+                          <div className="text-[11px] text-foreground/50 mt-1">S.1 to S.6 (Senior 1 to Senior 6)</div>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-12 flex justify-end">
+                    <button 
+                      onClick={() => setStep(2)} 
+                      disabled={!schoolName.trim()}
+                      className="px-8 py-4 bg-brand-600 text-white text-sm font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center gap-2 group shadow-none cursor-pointer"
+                    >
+                      Next Step <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
+               </div>
             )}
 
             {step === 2 && (
@@ -192,22 +238,52 @@ export default function SchoolOnboardingView({ theme, setActiveTab }: { theme: s
                  <p className="text-sm text-foreground/60 mb-6">Build your classes, streams, and inject the student index mapping for AI resolution.</p>
                  
                  <div className="bg-surface-soft border border-border-main p-5 rounded-none mb-6 shadow-none">
+                    <div className="flex gap-2 p-1 bg-surface border border-border-main mb-4">
+                      <button
+                        type="button"
+                        onClick={() => setSchoolCategory("Primary")}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold transition-all cursor-pointer",
+                          schoolCategory === "Primary" ? "bg-brand-600 text-white" : "text-foreground/60 hover:bg-surface-soft"
+                        )}
+                      >
+                        Primary (P.1 - P.7 & Early Years)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSchoolCategory("Secondary")}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold transition-all cursor-pointer",
+                          schoolCategory === "Secondary" ? "bg-brand-600 text-white" : "text-foreground/60 hover:bg-surface-soft"
+                        )}
+                      >
+                        Secondary (S.1 - S.6 / Senior 1 - 6)
+                      </button>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                          <label className="text-xs font-bold text-foreground/60 mb-2 block">Level / Class</label>
                           <select value={currentLevel} onChange={(e)=>setCurrentLevel(e.target.value)} className="w-full bg-surface border border-border-main p-3 rounded-none text-sm outline-none focus:ring-2 focus:ring-brand-500 cursor-pointer">
-                            <optgroup label="Primary (P.1 - P.7)">
-                              {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"].map(l => <option key={l} value={l}>{l}</option>)}
-                            </optgroup>
-                            <optgroup label="Secondary (S.1 - S.6)">
-                              {["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => <option key={l} value={l}>{l} (Senior {l.replace('S.', '')})</option>)}
-                            </optgroup>
-                            <optgroup label="Secondary (Senior Format)">
-                              {["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => <option key={l} value={l}>{l}</option>)}
-                            </optgroup>
-                            <optgroup label="Nursery / Early Years">
-                              {["Baby Class", "Middle Class", "Top Class"].map(l => <option key={l} value={l}>{l}</option>)}
-                            </optgroup>
+                            {schoolCategory === "Primary" ? (
+                              <>
+                                <optgroup label="Primary (P.1 - P.7)">
+                                  {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7"].map(l => <option key={l} value={l}>{l}</option>)}
+                                </optgroup>
+                                <optgroup label="Nursery / Early Years">
+                                  {["Baby Class", "Middle Class", "Top Class"].map(l => <option key={l} value={l}>{l}</option>)}
+                                </optgroup>
+                              </>
+                            ) : (
+                              <>
+                                <optgroup label="Secondary (S.1 - S.6)">
+                                  {["S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => <option key={l} value={l}>{l} (Senior {l.replace('S.', '')})</option>)}
+                                </optgroup>
+                                <optgroup label="Secondary (Senior Format)">
+                                  {["Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => <option key={l} value={l}>{l}</option>)}
+                                </optgroup>
+                              </>
+                            )}
                           </select>
                       </div>
                       <div>

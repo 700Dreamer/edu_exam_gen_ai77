@@ -18,6 +18,7 @@ export default function RosterView({ theme }: { theme: string }) {
   const [newGroupStream, setNewGroupStream] = useState("");
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [category, setCategory] = useState<"Primary" | "Secondary">("Primary");
 
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,15 +163,44 @@ export default function RosterView({ theme }: { theme: string }) {
             {showAddGroupModal ? (
               <form onSubmit={handleAddGroup} className="space-y-3 pt-1 border-t border-border-main">
                 <div>
+                  <label className="text-[10px] uppercase font-bold text-foreground/50 block mb-1">Academic Category</label>
+                  <div className="flex gap-1 p-0.5 bg-surface-soft border border-border-main mb-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategory("Primary");
+                        setNewGroupLevel("P.1");
+                      }}
+                      className={cn("flex-1 py-1 text-[10px] font-bold cursor-pointer", category === "Primary" ? "bg-brand-600 text-white" : "text-foreground/60")}
+                    >
+                      Primary (P.1 - P.7)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCategory("Secondary");
+                        setNewGroupLevel("S.1");
+                      }}
+                      className={cn("flex-1 py-1 text-[10px] font-bold cursor-pointer", category === "Secondary" ? "bg-brand-600 text-white" : "text-foreground/60")}
+                    >
+                      Secondary (S.1 - S.6)
+                    </button>
+                  </div>
                   <label className="text-[10px] uppercase font-bold text-foreground/50 block mb-1">Academic Level</label>
                   <select
                     value={newGroupLevel}
                     onChange={(e) => setNewGroupLevel(e.target.value)}
                     className="w-full text-xs border border-border-main p-2 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
                   >
-                    {["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7", "S.1", "S.2", "S.3", "S.4", "S.5", "S.6"].map(l => (
-                      <option key={l} value={l}>{l}</option>
-                    ))}
+                    {category === "Primary" ? (
+                      ["P.1", "P.2", "P.3", "P.4", "P.5", "P.6", "P.7", "Baby Class", "Middle Class", "Top Class"].map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))
+                    ) : (
+                      ["S.1", "S.2", "S.3", "S.4", "S.5", "S.6", "Senior 1", "Senior 2", "Senior 3", "Senior 4", "Senior 5", "Senior 6"].map(l => (
+                        <option key={l} value={l}>{l}</option>
+                      ))
+                    )}
                   </select>
                 </div>
                 <div>
