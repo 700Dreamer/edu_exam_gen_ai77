@@ -38,9 +38,13 @@ else
     echo "✅ Databases already present in $DATA_DIR."
 fi
 
-# Create symlinks if using a persistent volume so the Python code finds them in the root
+# Create symlinks & initialize persistent volume from committed repo database if missing
 if [ "$DATA_DIR" != "/app" ]; then
     ln -sf $DATA_DIR/chroma_db /app/chroma_db
+    if [ ! -f "$DATA_DIR/edulytics_history.db" ] && [ -f "/app/edulytics_history.db" ]; then
+        echo "💾 Initializing persistent volume with committed edulytics_history.db..."
+        cp /app/edulytics_history.db "$DATA_DIR/edulytics_history.db"
+    fi
     [ -f "$DATA_DIR/edulytics_history.db" ] && ln -sf $DATA_DIR/edulytics_history.db /app/edulytics_history.db
 fi
 # ─────────────────────────────────────────
