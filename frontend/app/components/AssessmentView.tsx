@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  FileText, Download, Loader2, Camera, Archive, Eye, X, FileCheck, Plus, ArrowRight, Layers, CheckCircle2, ScanLine, AlertTriangle, RefreshCw, RotateCw
+  FileText, Download, Loader2, Camera, Archive, Eye, X, FileCheck, Plus, ArrowRight, Layers, CheckCircle2, ScanLine, AlertTriangle, RefreshCw, RotateCw, Building2, ShieldCheck
 } from "lucide-react";
 import { cn, authFetch, API_BASE } from "../lib/utils";
 
@@ -863,7 +863,7 @@ export default function AssessmentView({
         "bg-surface z-20 flex flex-col transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
         isSidebarMode 
           ? "w-full lg:w-[340px] lg:min-w-[340px] border-r border-border-main h-full rounded-none" 
-          : "w-full max-w-2xl border border-border-main rounded-none mb-8 flex-none"
+          : "w-full max-w-5xl border border-border-main rounded-none mb-8 flex-none"
       )}>
          <div className={cn("p-6 border-b border-border-main bg-surface-soft", isSidebarMode ? "" : "rounded-none")}>
              <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -873,132 +873,167 @@ export default function AssessmentView({
          </div>
          
          <div className={cn("p-6 flex-1", isSidebarMode ? "space-y-6 overflow-y-auto" : "")}>
-             <div className={cn("transition-all duration-500 overflow-hidden", configLocked ? "max-h-0 opacity-0 mb-0" : "max-h-[800px] opacity-100")}>
-               <div className="grid grid-cols-1 gap-6">
-                 <div>
-                   <label className="text-xs font-medium text-foreground/60 mb-2 block">School / Tenant</label>
-                   <select 
-                     value={selectedTenant} 
-                     onChange={(e) => setSelectedTenant(e.target.value)}
-                     className="w-full text-sm border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all shadow-none cursor-pointer"
-                   >
-                     <option value="" disabled>Select School...</option>
-                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                   </select>
-                 </div>
+             <div className={cn("transition-all duration-500 overflow-hidden", configLocked ? "max-h-0 opacity-0 mb-0" : "max-h-[1000px] opacity-100")}>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                  
-                 <div>
-                   <label className="text-xs font-medium text-foreground/60 mb-2 block">Academic Class & Stream</label>
-                   <select 
-                     value={selectedGroup} 
-                     onChange={(e) => setSelectedGroup(e.target.value)}
-                     className="w-full text-sm border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all shadow-none cursor-pointer"
-                     disabled={groups.length === 0}
-                   >
-                     <option value="" disabled>Select Class Stream...</option>
-                     {groups.map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
-                   </select>
-                 </div>
-
-                 <div>
-                   <label className="text-xs font-medium text-foreground/60 mb-2 block">Subject</label>
-                   <select 
-                     value={subject} 
-                     onChange={(e) => setSubject(e.target.value)}
-                     className="w-full text-sm border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all shadow-none cursor-pointer"
-                   >
-                     <option value="" disabled>Select Subject...</option>
-                     {subjects.map((s: string) => <option key={s} value={s}>{s}</option>)}
-                   </select>
-                 </div>
+                 {/* ── COLUMN 1: Paper Specifics ── */}
+                 <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
+                   <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                     <Building2 className="w-4 h-4 text-brand-600" />
+                     <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">1. Paper Specifics</h3>
+                   </div>
+                   
+                   <div>
+                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">School / Tenant</label>
+                     <select 
+                       value={selectedTenant} 
+                       onChange={(e) => setSelectedTenant(e.target.value)}
+                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                     >
+                       <option value="" disabled>Select School...</option>
+                       {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                     </select>
+                   </div>
+                   
+                   <div>
+                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Academic Class & Stream</label>
+                     <select 
+                       value={selectedGroup} 
+                       onChange={(e) => setSelectedGroup(e.target.value)}
+                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                       disabled={groups.length === 0}
+                     >
+                       <option value="" disabled>Select Class Stream...</option>
+                       {groups.map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
+                     </select>
+                   </div>
 
                    <div>
-                    <label className="text-xs font-medium text-foreground/60 mb-2 block">Exam Layout & Marking Format</label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {/* Option 1: Hybrid Format */}
-                      <button
-                        type="button"
-                        onClick={() => setBatchMode("hybrid")}
-                        className={cn(
-                          "p-3 border text-left rounded-none transition-all cursor-pointer",
-                          batchMode === "hybrid"
-                            ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                            : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                        )}
-                      >
-                        <div className="text-xs font-bold text-brand-600">Hybrid Format (Section A Worksheet + Section B Answer Sheet)</div>
-                        <div className="text-[10px] text-foreground/50 mt-0.5">Section A questions on paper + Section B/C written on separate answer sheets</div>
-                      </button>
+                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Subject</label>
+                     <select 
+                       value={subject} 
+                       onChange={(e) => setSubject(e.target.value)}
+                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                     >
+                       <option value="" disabled>Select Subject...</option>
+                       {subjects.map((s: string) => <option key={s} value={s}>{s}</option>)}
+                     </select>
+                   </div>
+                 </div>
 
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* Option 2: Answer Sheet Only */}
-                        <button
-                          type="button"
-                          onClick={() => setBatchMode("answer_sheet")}
-                          className={cn(
-                            "p-3 border text-left rounded-none transition-all cursor-pointer",
-                            batchMode === "answer_sheet"
-                              ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                              : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                          )}
-                        >
-                          <div className="text-xs font-bold">Answer Sheet Only</div>
-                          <div className="text-[10px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
-                        </button>
+                 {/* ── COLUMN 2: Exam Layout & Marking Format ── */}
+                 <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
+                   <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                     <FileText className="w-4 h-4 text-brand-600" />
+                     <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">2. Exam Layout</h3>
+                   </div>
 
-                        {/* Option 3: Worksheet Format */}
-                        <button
-                          type="button"
-                          onClick={() => setBatchMode("worksheet")}
-                          className={cn(
-                            "p-3 border text-left rounded-none transition-all cursor-pointer",
-                            batchMode === "worksheet"
-                              ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                              : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                          )}
-                        >
-                          <div className="text-xs font-bold">Worksheet Format</div>
-                          <div className="text-[10px] text-foreground/50 mt-0.5">Questions & answers printed together on paper</div>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                   <div>
+                     <label className="text-xs font-medium text-foreground/60 mb-2 block">Marking Format</label>
+                     <div className="grid grid-cols-1 gap-2">
+                       <button
+                         type="button"
+                         onClick={() => setBatchMode("hybrid")}
+                         className={cn(
+                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                           batchMode === "hybrid"
+                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                         )}
+                       >
+                         <div className="text-xs font-bold text-brand-600">Hybrid Format</div>
+                         <div className="text-[10px] text-foreground/50 mt-0.5">Section A Worksheet + Section B/C Answer Sheet</div>
+                       </button>
 
-                  {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
-                    <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-3">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">
-                          Master Question Paper {batchMode === "hybrid" ? "(Optional for Hybrid Mode)" : "(1-Time Upload)"}
-                        </label>
-                        {masterQuestionFiles.length > 0 ? (
-                          <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s) attached</span>
-                        ) : batchMode === "hybrid" ? (
-                          <span className="text-[10px] font-medium text-foreground/40 italic">Optional</span>
-                        ) : null}
-                      </div>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*,.pdf"
-                        onChange={(e) => {
-                          if (e.target.files) {
-                            setMasterQuestionFiles(Array.from(e.target.files));
-                          }
-                        }}
-                        className="w-full text-xs text-foreground file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
-                      />
-                      <p className="text-[10px] text-foreground/50">
-                        {batchMode === "hybrid" 
-                          ? "Optional: Upload universal Master Question Paper images/PDF for Section B/C questions. If omitted, AI evaluates directly from student pages."
-                          : "Upload the universal Master Question Paper images/PDF. AI will index questions once for Section B/C answer sheets."}
-                      </p>
-                    </div>
-                  )}
+                       <button
+                         type="button"
+                         onClick={() => setBatchMode("answer_sheet")}
+                         className={cn(
+                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                           batchMode === "answer_sheet"
+                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                         )}
+                       >
+                         <div className="text-xs font-bold">Answer Sheet Only</div>
+                         <div className="text-[10px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
+                       </button>
+
+                       <button
+                         type="button"
+                         onClick={() => setBatchMode("worksheet")}
+                         className={cn(
+                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                           batchMode === "worksheet"
+                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                         )}
+                       >
+                         <div className="text-xs font-bold">Worksheet Format</div>
+                         <div className="text-[10px] text-foreground/50 mt-0.5">Questions & answers printed together</div>
+                       </button>
+                     </div>
+                   </div>
+
+                   {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
+                     <div className="p-3 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-2">
+                       <div className="flex justify-between items-center">
+                         <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider block">
+                           Master Paper {batchMode === "hybrid" ? "(Optional)" : "(1-Time)"}
+                         </label>
+                         {masterQuestionFiles.length > 0 && (
+                           <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s)</span>
+                         )}
+                       </div>
+                       <input
+                         type="file"
+                         multiple
+                         accept="image/*,.pdf"
+                         onChange={(e) => {
+                           if (e.target.files) {
+                             setMasterQuestionFiles(Array.from(e.target.files));
+                           }
+                         }}
+                         className="w-full text-xs text-foreground file:mr-2 file:py-1 file:px-2 file:border-0 file:text-[11px] file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
+                       />
+                     </div>
+                   )}
+                 </div>
+
+                 {/* ── COLUMN 3: Lock & Proceed ── */}
+                 <div className="space-y-4 flex flex-col justify-between">
+                   <div className="space-y-3">
+                     <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                       <ShieldCheck className="w-4 h-4 text-brand-600" />
+                       <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">3. Lock & Proceed</h3>
+                     </div>
+
+                     <div className="p-3 bg-surface-soft border border-border-main space-y-2 text-xs">
+                       <div className="flex justify-between text-foreground/60">
+                         <span>Class:</span>
+                         <span className="font-bold text-foreground">{groups.find(g => g.id === selectedGroup)?.level || "Not set"}</span>
+                       </div>
+                       <div className="flex justify-between text-foreground/60">
+                         <span>Subject:</span>
+                         <span className="font-bold text-foreground">{subject || "Not set"}</span>
+                       </div>
+                       <div className="flex justify-between text-foreground/60">
+                         <span>Format:</span>
+                         <span className="font-bold text-brand-600 uppercase text-[10px]">{batchMode}</span>
+                       </div>
+                     </div>
+                   </div>
+
+                   <button 
+                     onClick={() => setConfigLocked(true)} 
+                     disabled={!subject || !selectedGroup} 
+                     className="w-full bg-brand-600 text-white text-xs font-bold py-3.5 rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none hover:shadow-none active:scale-[0.98] cursor-pointer uppercase tracking-wider flex items-center justify-center gap-2"
+                   >
+                     Lock Configuration & Proceed <ArrowRight className="w-4 h-4" />
+                   </button>
+                 </div>
+
                </div>
-
-               <button onClick={()=>setConfigLocked(true)} disabled={!subject || !selectedGroup} className="w-full mt-8 bg-brand-600 text-white text-sm font-bold py-3.5 rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none hover:shadow-none active:scale-[0.98] cursor-pointer">
-                 Lock Configuration & Proceed
-               </button>
              </div>
              
              {configLocked && (
