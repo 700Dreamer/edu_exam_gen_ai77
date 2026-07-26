@@ -117,6 +117,11 @@ export default function RosterView({ theme }: { theme: string }) {
     }
   };
 
+  const handleExportRosterCSV = () => {
+    if (!selectedGroup) return;
+    window.open(`/api/v1/academic-group/${selectedGroup}/export-roster-csv`, "_blank");
+  };
+
   return (
     <div className="flex-1 bg-surface-soft/30 text-foreground p-8 overflow-y-auto font-outfit">
       <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
