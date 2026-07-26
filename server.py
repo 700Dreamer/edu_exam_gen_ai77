@@ -834,32 +834,59 @@ async def process_batch_background(batch_id: str):
                 if not b64s:
                     return
 
+                master_b64s = []
+                master_struct_str = ""
+                if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
+                    if batch_obj.master_question_urls:
+                        for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
+                            m_url = batch_obj.master_question_urls[m_key]
+                            m_filename = m_url.split("/")[-1]
+                            m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id / "master" / m_filename
+                            if m_path.exists():
+                                with open(m_path, "rb") as mf:
+                                    master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
+                    if batch_obj.master_exam_structure:
+                        master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
+
                 # ── PHASE 1: Multi-Page Unified Vision Document OCR & Context Preservation ──
                 system_prompt = f"""
                 You are a master academic OCR and exam vision engine.
-                You are evaluating a complete {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
+                You are evaluating a {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
 
-                CRITICAL MULTI-PAGE DOCUMENT CONTEXT RULES:
-                1. MULTI-PAGE CONTINUITY: Reading passages, tables, diagrams, or instructions printed on earlier pages (e.g. Page 1) apply to questions on subsequent pages (e.g. Page 2, Page 3). Read all pages together as one continuous exam script!
-                2. QUESTION NUMBERING: Extract every single question in strict sequential order as printed on the exam paper (e.g. 1, 2, 3, 4a, 4b, 5...). Do NOT reset or duplicate question numbers across page breaks!
-                3. STUDENT NAME: Extract the student's full name from the header/name field on Page 1.
+                CRITICAL SECONDARY MARKING RULES:
+                1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
+                2. QUESTION ALIGNMENT: Match each handwritten answer on the student's answer sheet (e.g. "1(a)", "No 2", "Qn 3b") to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
+                3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
+                4. STUDENT NAME: Extract the student's full name from the cover or page header.
+
+                {f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
 
                 Return JSON format:
                 {{
                   "student_name": "Extracted Student Name or empty string",
                   "questions": [
                     {{
-                      "q_number": "1",
-                      "question_text": "Extracted question text...",
+                      "q_number": "1(a)",
+                      "question_text": "Full question statement from Master Question Paper",
                       "student_answer": "Student written answer..."
                     }}
                   ]
                 }}
                 """
 
-                content_payload = [{"type": "text", "text": system_prompt}]
+                content_payload = []
+                if master_b64s:
+                    content_payload.append({
+                        "type": "text",
+                        "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_b64s)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
+                    })
+                    for m_i, m_b64 in enumerate(master_b64s):
+                        content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_b64s)} ---"})
+                        content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m_b64}"}})
+
+                content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(b64s)} PAGES) ===\n{system_prompt}"})
                 for p_i, b64_img in enumerate(b64s):
-                    content_payload.append({"type": "text", "text": f"\n--- SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
+                    content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
                     content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
 
                 try:
@@ -918,7 +945,10 @@ async def process_batch_background(batch_id: str):
                 async def grade_chunk(c_idx: int, q_chunk: list):
                     chunk_prompt = f"""
                     You are an expert academic examiner grading chunk {c_idx + 1} of a {subject} exam.
-                    Grade the following extracted questions accurately against standard academic rubrics:
+                    
+                    {f"REFER TO MASTER QUESTION PAPER & MARKING RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
+
+                    Grade the following extracted student answers accurately against the Master Question Paper & Rubric:
                     {json.dumps(q_chunk)}
 
                     Return JSON format:
@@ -1549,32 +1579,59 @@ async def regrade_single_result(result_id: str):
     if not b64s:
         raise HTTPException(400, "Image files missing on disk")
         
+    master_b64s = []
+    master_struct_str = ""
+    if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
+        if batch_obj.master_question_urls:
+            for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
+                m_url = batch_obj.master_question_urls[m_key]
+                m_filename = m_url.split("/")[-1]
+                m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id_str / "master" / m_filename
+                if m_path.exists():
+                    with open(m_path, "rb") as mf:
+                        master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
+        if batch_obj.master_exam_structure:
+            master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
+
     # Phase 1: Multi-Page Unified Vision Document OCR & Context Preservation
     system_prompt = f"""
     You are a master academic OCR and exam vision engine.
-    You are evaluating a complete {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
+    You are evaluating a {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
 
-    CRITICAL MULTI-PAGE DOCUMENT CONTEXT RULES:
-    1. MULTI-PAGE CONTINUITY: Reading passages, tables, diagrams, or instructions printed on earlier pages (e.g. Page 1) apply to questions on subsequent pages (e.g. Page 2, Page 3). Read all pages together as one continuous exam script!
-    2. QUESTION NUMBERING: Extract every single question in strict sequential order as printed on the exam paper (e.g. 1, 2, 3, 4a, 4b, 5...). Do NOT reset or duplicate question numbers across page breaks!
-    3. STUDENT NAME: Extract the student's full name from the header/name field on Page 1.
+    CRITICAL SECONDARY MARKING RULES:
+    1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
+    2. QUESTION ALIGNMENT: Match each handwritten answer on the student's answer sheet (e.g. "1(a)", "No 2", "Qn 3b") to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
+    3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
+    4. STUDENT NAME: Extract the student's full name from the cover or page header.
+
+    {f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
 
     Return JSON format:
     {{
       "student_name": "Extracted Student Name or empty string",
       "questions": [
         {{
-          "q_number": "1",
-          "question_text": "Extracted question text...",
+          "q_number": "1(a)",
+          "question_text": "Full question statement from Master Question Paper",
           "student_answer": "Student written answer..."
         }}
       ]
     }}
     """
 
-    content_payload = [{"type": "text", "text": system_prompt}]
+    content_payload = []
+    if master_b64s:
+        content_payload.append({
+            "type": "text",
+            "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_b64s)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
+        })
+        for m_i, m_b64 in enumerate(master_b64s):
+            content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_b64s)} ---"})
+            content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m_b64}"}})
+
+    content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(b64s)} PAGES) ===\n{system_prompt}"})
     for p_i, b64_img in enumerate(b64s):
-        content_payload.append({"type": "text", "text": f"\n--- SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
+        content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
         content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
 
     try:
