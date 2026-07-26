@@ -105,7 +105,50 @@ export default function AssessmentView({
     }
   }, [selectedTenant]);
 
-  const subjects = apiConfig.subjects || [];
+  const selectedGroupObj = groups.find((g: any) => g.id === selectedGroup);
+  const selectedLevel = selectedGroupObj ? (selectedGroupObj.level || selectedGroupObj.name || "") : "";
+
+  // Helper function to check if subject is appropriate for chosen level/class
+  const isSubjectForLevel = (subjectName: string, levelStr: string) => {
+    if (!levelStr) return true;
+    const lvl = levelStr.toLowerCase();
+    const sub = subjectName.toLowerCase();
+
+    const isPrimary = lvl.includes("primary") || /^p[1-7]/i.test(lvl.replace(/\s+/g, ""));
+    const isNursery = lvl.includes("baby") || lvl.includes("middle") || lvl.includes("top") || lvl.includes("nursery");
+    const isSenior = lvl.includes("senior") || /^s[1-6]/i.test(lvl.replace(/\s+/g, ""));
+
+    if (isPrimary) {
+      // Primary classes should NOT have Biology, Chemistry, Physics, Commerce, Entrepreneurship
+      const secondaryOnly = ["biology", "chemistry", "physics", "commerce", "entrepreneurship", "sub-math", "general paper"];
+      if (secondaryOnly.some(sec => sub === sec)) return false;
+      const primarySubjects = ["mathematics", "integrated science", "english", "social studies with religious education", "social studies", "religious education", "reading", "luganda", "physical education", "art and craft"];
+      return primarySubjects.some(ps => sub.includes(ps) || ps.includes(sub));
+    }
+
+    if (isNursery) {
+      const nurserySubjects = ["learning area", "reading", "mathematical concepts", "language development"];
+      return nurserySubjects.some(ns => sub.includes(ns));
+    }
+
+    if (isSenior) {
+      // Senior classes should NOT have Integrated Science or Learning Area
+      if (sub.includes("integrated science") || sub.includes("learning area")) return false;
+      return true;
+    }
+
+    return true;
+  };
+
+  const rawSubjects = apiConfig.subjects || [];
+  const subjects = rawSubjects.filter((s: string) => isSubjectForLevel(s, selectedLevel));
+
+  // Auto-adjust selected subject when class/level changes if current subject is invalid for that class
+  useEffect(() => {
+    if (subjects.length > 0 && (!subject || !subjects.includes(subject))) {
+      setSubject(subjects[0]);
+    }
+  }, [selectedGroup, selectedLevel, apiConfig]);
 
   // Detect scanners when scanner mode is selected
   const refreshScanners = async (force = false) => {

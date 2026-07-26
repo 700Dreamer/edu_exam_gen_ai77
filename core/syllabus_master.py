@@ -233,6 +233,65 @@ MASTER_SYLLABUS = {
 ALL_SUBJECTS = sorted(list(MASTER_SYLLABUS.keys()))
 ALL_LEVELS = ["Baby Class", "Middle Class", "Top Class"] + [f"Primary {i}" for i in range(1, 8)] + [f"Senior {i}" for i in range(1, 7)]
 
+def get_subjects_for_level(level: str) -> list:
+    """Returns the filtered list of subjects appropriate for a given level (e.g. Primary vs Senior)."""
+    if not level:
+        return ALL_SUBJECTS
+    
+    norm_level = normalize_level(level)
+    level_lower = norm_level.lower()
+    
+    matching_subjects = []
+    for subject, level_dict in MASTER_SYLLABUS.items():
+        if norm_level in level_dict or any(norm_level.lower() in str(k).lower() for k in level_dict.keys()):
+            matching_subjects.append(subject)
+            
+    if matching_subjects:
+        return sorted(list(set(matching_subjects)))
+        
+    if "primary" in level_lower or any(f"p{i}" in level_lower for i in range(1, 8)):
+        return [
+            "Mathematics",
+            "Integrated Science",
+            "English",
+            "Social Studies with Religious Education",
+            "Social Studies",
+            "Religious Education",
+            "Reading",
+            "Luganda",
+            "Physical Education",
+            "Art and Craft"
+        ]
+    elif "baby" in level_lower or "middle" in level_lower or "top" in level_lower or "nursery" in level_lower:
+        return [
+            "Learning Area 1: Relating with Others",
+            "Learning Area 2: Interacting with Environment",
+            "Learning Area 3: Taking Care of Myself",
+            "Learning Area 4: Mathematical Concepts",
+            "Learning Area 5: Language Development"
+        ]
+    elif "senior" in level_lower or any(f"s{i}" in level_lower for i in range(1, 7)):
+        return [
+            "Mathematics",
+            "English",
+            "Biology",
+            "Chemistry",
+            "Physics",
+            "Geography",
+            "History",
+            "Commerce",
+            "Entrepreneurship",
+            "Agriculture",
+            "Computer Studies",
+            "ICT",
+            "Literature in English",
+            "General Paper",
+            "Sub-Math",
+            "Fine Art"
+        ]
+        
+    return ALL_SUBJECTS
+
 def get_master_topics(subject: str, level: str):
     return MASTER_SYLLABUS.get(subject, {}).get(level, [])
 

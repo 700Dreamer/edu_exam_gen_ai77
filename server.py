@@ -1042,10 +1042,12 @@ async def assign_student_to_result(result_id: str, req: AssignStudentRequest):
         return {"status": "success"}
 
 @app.get("/api/syllabus/config")
-def get_config():
-    from core.syllabus_master import MASTER_SYLLABUS
+def get_config(level: Optional[str] = None):
+    from core.syllabus_master import MASTER_SYLLABUS, get_subjects_for_level
+    subjects = get_subjects_for_level(level) if level else ALL_SUBJECTS
     return {
-        "subjects": ALL_SUBJECTS,
+        "subjects": subjects,
+        "all_subjects": ALL_SUBJECTS,
         "levels": ALL_LEVELS,
         "syllabus": MASTER_SYLLABUS
     }
