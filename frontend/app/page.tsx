@@ -62,7 +62,7 @@ const Header = ({
             { key: "gradebook", label: "Gradebook & Review", Icon: CheckCircle2 },
             { key: "analytics", label: "Insights Lab", Icon: BarChart3 },
             { key: "roster", label: "Class Rosters", Icon: Users },
-            { key: "onboarding", label: "School Studio", Icon: Plus },
+            { key: "onboarding", label: "Onboarding", Icon: Plus },
             { key: "settings", label: "Settings", Icon: Settings },
           ] as const).map(({ key, label, Icon }) => (
             <button
