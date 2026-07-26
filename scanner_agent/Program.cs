@@ -63,16 +63,68 @@ class ScannerAgent
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine("Failed to start HTTP listener: " + ex.Message);
-            Console.Error.WriteLine("Try running as Administrator, or check if port " + PORT + " is in use.");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine("  [ERROR] Failed to start: " + ex.Message);
+            Console.Error.WriteLine("  Try running as Administrator, or check if port " + PORT + " is in use.");
+            Console.ResetColor();
             return;
         }
 
-        Console.WriteLine("Edulytics Scanner Agent started on http://127.0.0.1:" + PORT + "/");
-        Console.WriteLine("Waiting for scan requests from browser...");
-        Console.WriteLine("Press Ctrl+C to stop.");
+        // ── Branded splash ──
+        Console.Clear();
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine();
+        Console.WriteLine(@"   ___  ____  __    ____  _  _  ____     ___  ___  ____  ____  ");
+        Console.WriteLine(@"  / _ \|  _ \| |  |_  _|| \| |/ ___)   / __>/ _ \|  _ \|  _ \ ");
+        Console.WriteLine(@" ( (_) )    /| |_  _)(_  )  ( \___ \  ( (__( (_) )    /)(   / ");
+        Console.WriteLine(@"  \___/|_|\_\|___||____||_|\_|(____/   \___>\___/|_|\_\ |_|\_\ ");
+        Console.ResetColor();
 
-        Console.CancelKeyPress += delegate { _running = false; _listener.Stop(); };
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("  ----------------------------------------------------------------");
+        Console.ResetColor();
+
+        Console.ForegroundColor = ConsoleColor.White;
+        Console.WriteLine("    Scanner Agent  |  v1.0  |  WIA  |  Windows Native");
+        Console.ResetColor();
+
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("  ----------------------------------------------------------------");
+        Console.ResetColor();
+
+        Console.WriteLine();
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.Write("  [OK] ");
+        Console.ResetColor();
+        Console.WriteLine("Listening on  http://127.0.0.1:" + PORT + "/");
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.Write("  [OK] ");
+        Console.ResetColor();
+        Console.WriteLine("Serving       https://edulytics.net");
+
+        Console.WriteLine();
+        Console.ForegroundColor = ConsoleColor.DarkGray;
+        Console.WriteLine("  Endpoints:");
+        Console.WriteLine("    GET  /ping     health check");
+        Console.WriteLine("    GET  /devices  list WIA scanners");
+        Console.WriteLine("    POST /scan     batch-scan all ADF pages");
+        Console.WriteLine();
+        Console.WriteLine("  Press Ctrl+C to stop.");
+        Console.ResetColor();
+
+        Console.ForegroundColor = ConsoleColor.DarkCyan;
+        Console.WriteLine("  ----------------------------------------------------------------");
+        Console.ResetColor();
+        Console.WriteLine();
+
+        Console.CancelKeyPress += delegate {
+            _running = false;
+            _listener.Stop();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n  [STOPPED] Scanner Agent shut down cleanly.");
+            Console.ResetColor();
+        };
 
         while (_running)
         {
