@@ -449,19 +449,37 @@ export default function AssessmentView({
         } catch (e) {}
       };
 
-      // ── 2. Fallback Polling ──
+      // ── 2. Fallback Polling (Syncs state even if production reverse proxies buffer SSE) ──
       interval = setInterval(async () => {
         try {
           const res = await authFetch(`/api/v1/assessment/batch/${batchId}/status`);
           if (res.ok) {
             const data = await res.json();
             setBatchStatus(data);
+            if (data.papers && Array.isArray(data.papers)) {
+              setLivePapers((prev) => {
+                const nextState = { ...prev };
+                for (const p of data.papers) {
+                  if (!nextState[p.paper_idx] || p.status === "completed") {
+                    nextState[p.paper_idx] = {
+                      paper_idx: p.paper_idx,
+                      student_name: p.student_name,
+                      phase: p.status === "completed" ? "Complete" : (p.status === "grading" ? "Grading" : "Processing"),
+                      score: p.score,
+                      max_score: p.max_score,
+                      status: p.status
+                    };
+                  }
+                }
+                return nextState;
+              });
+            }
             if (data.status === "Completed") {
               setIsProcessing(false);
             }
           }
         } catch (e) {}
-      }, 2500);
+      }, 2000);
     }
 
     return () => {

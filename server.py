@@ -1108,12 +1108,22 @@ async def stream_batch_events(batch_id: str):
                 if not batch_subscribers[batch_id]:
                     del batch_subscribers[batch_id]
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Content-Type": "text/event-stream"
+        }
+    )
 
 
 @app.post("/api/v1/assessment/batch/{batch_id}/process")
 async def trigger_batch_process(batch_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(process_batch_background, batch_id)
+
 @app.get("/api/v1/assessment/batch/{batch_id}/status")
 async def get_batch_status(batch_id: str):
     async with async_session_maker() as session:
@@ -1127,12 +1137,30 @@ async def get_batch_status(batch_id: str):
         total = len(results)
         needs_review = sum(1 for r in results if r.needs_manual_review)
         processed = sum(1 for r in results if r.raw_extracted_html is not None or r.ai_remarks is not None)
+
+        paper_summaries = []
+        for idx, r in enumerate(results):
+            student_name = r.ocr_student_name or f"Paper #{idx + 1}"
+            if r.student_id:
+                st = await session.get(Student, r.student_id)
+                if st:
+                    student_name = f"{st.first_name} {st.last_name}".strip()
+            paper_summaries.append({
+                "paper_idx": idx + 1,
+                "result_id": str(r.id),
+                "student_name": student_name,
+                "score": r.total_score,
+                "max_score": r.max_score,
+                "status": "completed" if r.total_score is not None else ("grading" if r.raw_extracted_html else "pending"),
+                "needs_review": r.needs_manual_review
+            })
         
         return {
             "status": batch_obj.status,
             "total": total,
             "processed": processed,
-            "needs_review": needs_review
+            "needs_review": needs_review,
+            "papers": paper_summaries
         }
 
 @app.patch("/api/v1/assessment/result/{result_id}/assign-student")
