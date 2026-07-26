@@ -31,7 +31,6 @@ Edulytics_Syllabus_Database/
 # Runtime Databases
 chroma_db/
 ingestion_staging.db
-!edulytics_history.db
 eduquest_history.db
 *.db
 *.db-journal
