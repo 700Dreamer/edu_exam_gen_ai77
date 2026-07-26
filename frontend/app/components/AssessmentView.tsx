@@ -932,10 +932,14 @@ export default function AssessmentView({
                   {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
                     <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-3">
                       <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">Master Question Paper (1-Time Upload)</label>
-                        {masterQuestionFiles.length > 0 && (
+                        <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">
+                          Master Question Paper {batchMode === "hybrid" ? "(Optional for Hybrid Mode)" : "(1-Time Upload)"}
+                        </label>
+                        {masterQuestionFiles.length > 0 ? (
                           <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s) attached</span>
-                        )}
+                        ) : batchMode === "hybrid" ? (
+                          <span className="text-[10px] font-medium text-foreground/40 italic">Optional</span>
+                        ) : null}
                       </div>
                       <input
                         type="file"
@@ -948,7 +952,11 @@ export default function AssessmentView({
                         }}
                         className="w-full text-xs text-foreground file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
                       />
-                      <p className="text-[10px] text-foreground/50">Upload the universal Master Question Paper images/PDF. AI will index questions once for Section B/C answer sheets.</p>
+                      <p className="text-[10px] text-foreground/50">
+                        {batchMode === "hybrid" 
+                          ? "Optional: Upload universal Master Question Paper images/PDF for Section B/C questions. If omitted, AI evaluates directly from student pages."
+                          : "Upload the universal Master Question Paper images/PDF. AI will index questions once for Section B/C answer sheets."}
+                      </p>
                     </div>
                   )}
                </div>
