@@ -123,8 +123,8 @@ import json
 from datetime import datetime
 
 def get_db_connection():
-    """Establishes connection to the local lightweight database."""
-    conn = sqlite3.connect(os.path.join(BASE_DIR, 'eduquest_history.db'), timeout=30.0, check_same_thread=False)
+    """Establishes connection to the single unified SQLite database."""
+    conn = sqlite3.connect(os.path.join(BASE_DIR, 'edulytics_history.db'), timeout=30.0, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
