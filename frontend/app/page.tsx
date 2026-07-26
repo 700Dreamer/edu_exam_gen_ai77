@@ -113,7 +113,7 @@ export default function Home() {
     // Fetch initial tenants and groups
     const loadGlobalContext = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/v1/tenant/list");
+        const res = await authFetch("/api/v1/tenant/list");
         if (res.ok) {
           const data = await res.json();
           setTenants(data);
@@ -122,7 +122,7 @@ export default function Home() {
             setActiveTenantId(firstT);
             
             // Load groups for first tenant
-            const gRes = await fetch(`http://localhost:8000/api/v1/tenant/${firstT}/groups`);
+            const gRes = await authFetch(`/api/v1/tenant/${firstT}/groups`);
             if (gRes.ok) {
               const gData = await gRes.json();
               setGroups(gData);
@@ -154,7 +154,7 @@ export default function Home() {
     if (!activeTenantId) return;
     const fetchGroups = async () => {
       try {
-        const gRes = await fetch(`http://localhost:8000/api/v1/tenant/${activeTenantId}/groups`);
+        const gRes = await authFetch(`/api/v1/tenant/${activeTenantId}/groups`);
         if (gRes.ok) {
           const gData = await gRes.json();
           setGroups(gData);

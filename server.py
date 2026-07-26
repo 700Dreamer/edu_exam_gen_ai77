@@ -34,26 +34,38 @@ from core.scanner_service import detect_scanners, detect_scanners_cached, scan_p
 import sys as _sys
 
 async def fix_existing_scores():
-    """Recalculates any legacy StudentResult.total_score that stored raw points > 100 as percentages."""
+    """Recalculates any legacy StudentResult.total_score and normalizes hardcoded localhost URLs to relative URLs."""
     async with async_session_maker() as session:
-        query = select(StudentResult).where(StudentResult.total_score > 100)
+        query = select(StudentResult)
         res = await session.execute(query)
-        legacy_results = res.scalars().all()
-        if not legacy_results:
-            return
-            
-        for r in legacy_results:
-            html = r.raw_extracted_html or ""
-            # Search for TOTAL SCORE XX / YY in HTML
-            match = re.search(r'(\d+)\s*/\s*(\d+)', html)
-            if match:
-                pts = float(match.group(1))
-                max_pts = float(match.group(2))
-                if max_pts > 0:
-                    r.total_score = min(100, max(0, round((pts / max_pts) * 100)))
-            else:
-                r.total_score = 100
-                
+        all_results = res.scalars().all()
+        
+        for r in all_results:
+            # 1. Normalize hardcoded http://localhost:8000 image URLs to relative URLs
+            if r.paper_images_urls:
+                updated_urls = {}
+                changed = False
+                for k, u in dict(r.paper_images_urls).items():
+                    if isinstance(u, str) and u.startswith("http://localhost:8000"):
+                        updated_urls[k] = u.replace("http://localhost:8000", "")
+                        changed = True
+                    else:
+                        updated_urls[k] = u
+                if changed:
+                    r.paper_images_urls = updated_urls
+
+            # 2. Recalculate any legacy total_score > 100
+            if r.total_score is not None and r.total_score > 100:
+                html = r.raw_extracted_html or ""
+                match = re.search(r'(\d+)\s*/\s*(\d+)', html)
+                if match:
+                    pts = float(match.group(1))
+                    max_pts = float(match.group(2))
+                    if max_pts > 0:
+                        r.total_score = min(100, max(0, round((pts / max_pts) * 100)))
+                else:
+                    r.total_score = 100
+
         await session.commit()
 
 @asynccontextmanager
@@ -383,7 +395,7 @@ async def upload_batch_files(batch_id: str, files: List[UploadFile] = File(...))
         with open(file_path, "wb") as f:
             f.write(file_bytes)
             
-        url = f"http://localhost:8000/static/uploads/{batch_id}/{unique_name}"
+        url = f"/static/uploads/{batch_id}/{unique_name}"
         if prefix not in groups:
             groups[prefix] = []
         groups[prefix].append(url)
@@ -440,7 +452,7 @@ async def upload_batch_zip(batch_id: str, file: UploadFile = File(...)):
                 with open(file_path, "wb") as f:
                     f.write(file_data)
                 
-                url = f"http://localhost:8000/static/uploads/{batch_id}/{safe_filename}"
+                url = f"/static/uploads/{batch_id}/{safe_filename}"
                 
                 if group_name not in groups:
                     groups[group_name] = []

@@ -4,9 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import {
   FileText, Download, Loader2, Camera, Archive, Eye, X, FileCheck, Plus, ArrowRight, Layers, CheckCircle2, ScanLine, AlertTriangle, RefreshCw, RotateCw
 } from "lucide-react";
-import { cn, authFetch } from "../lib/utils";
-
-const API_BASE = "";
+import { cn, authFetch, API_BASE } from "../lib/utils";
 
 
 export default function AssessmentView({
@@ -303,7 +301,7 @@ export default function AssessmentView({
 
     if (batchId && (batchStatus?.status === "Initiated" || batchStatus?.status === "Processing" || isProcessing)) {
       // ── 1. SSE Real-Time Stream Connection ──
-      const sseUrl = `http://localhost:8000/api/v1/assessment/batch/${batchId}/stream`;
+      const sseUrl = API_BASE ? `${API_BASE}/api/v1/assessment/batch/${batchId}/stream` : `/api/v1/assessment/batch/${batchId}/stream`;
       eventSource = new EventSource(sseUrl);
 
       eventSource.onmessage = (event) => {
