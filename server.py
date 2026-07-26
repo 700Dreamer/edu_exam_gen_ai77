@@ -836,6 +836,7 @@ async def process_batch_background(batch_id: str):
 
                 master_b64s = []
                 master_struct_str = ""
+                master_rubric_block = ""
                 if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
                     if batch_obj.master_question_urls:
                         for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
@@ -847,6 +848,7 @@ async def process_batch_background(batch_id: str):
                                     master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
                     if batch_obj.master_exam_structure:
                         master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
+                        master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
 
                 # ── PHASE 1: Multi-Page Unified Vision Document OCR & Context Preservation ──
                 system_prompt = f"""
@@ -859,7 +861,7 @@ async def process_batch_background(batch_id: str):
                 3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
                 4. STUDENT NAME: Extract the student's full name from the cover or page header.
 
-                {f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
+                {master_rubric_block}
 
                 Return JSON format:
                 {{
@@ -943,10 +945,11 @@ async def process_batch_background(batch_id: str):
                 ]
 
                 async def grade_chunk(c_idx: int, q_chunk: list):
+                    rubric_ref = f"REFER TO MASTER QUESTION PAPER & MARKING RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""
                     chunk_prompt = f"""
                     You are an expert academic examiner grading chunk {c_idx + 1} of a {subject} exam.
                     
-                    {f"REFER TO MASTER QUESTION PAPER & MARKING RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
+                    {rubric_ref}
 
                     Grade the following extracted student answers accurately against the Master Question Paper & Rubric:
                     {json.dumps(q_chunk)}
@@ -1581,6 +1584,7 @@ async def regrade_single_result(result_id: str):
         
     master_b64s = []
     master_struct_str = ""
+    master_rubric_block = ""
     if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
         if batch_obj.master_question_urls:
             for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
@@ -1592,6 +1596,7 @@ async def regrade_single_result(result_id: str):
                         master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
         if batch_obj.master_exam_structure:
             master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
+            master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
 
     # Phase 1: Multi-Page Unified Vision Document OCR & Context Preservation
     system_prompt = f"""
@@ -1604,7 +1609,7 @@ async def regrade_single_result(result_id: str):
     3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
     4. STUDENT NAME: Extract the student's full name from the cover or page header.
 
-    {f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n" if master_struct_str else ""}
+    {master_rubric_block}
 
     Return JSON format:
     {{
