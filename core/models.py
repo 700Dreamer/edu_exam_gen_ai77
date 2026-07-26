@@ -70,9 +70,12 @@ class AssessmentBatch(Base):
     academic_group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("academic_group.id", ondelete="CASCADE"), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
     exam_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    mode: Mapped[Optional[str]] = mapped_column(String(50), default="worksheet", nullable=True) # worksheet (primary) vs answer_sheet (secondary)
     status: Mapped[str] = mapped_column(String(50), default="Processing", nullable=False) # Processing, Completed, Needs Review
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     batch_insights: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    master_question_urls: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    master_exam_structure: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 class StudentResult(Base):
     """Represents the graded exam results for a single student from a batch."""
@@ -92,6 +95,18 @@ async def create_db_and_tables():
         from sqlalchemy import text
         try:
             await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN batch_insights TEXT"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN mode TEXT DEFAULT 'worksheet'"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN master_question_urls JSON"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN master_exam_structure JSON"))
         except Exception:
             pass
 

@@ -125,6 +125,7 @@ class BatchCreateRequest(BaseModel):
     academic_group_id: str
     subject: str
     exam_type: str
+    mode: Optional[str] = "worksheet"
 
 class AssignStudentRequest(BaseModel):
     student_id: str
@@ -357,12 +358,83 @@ async def create_batch(req: BatchCreateRequest):
             academic_group_id=uuid.UUID(req.academic_group_id),
             subject=req.subject,
             exam_type=req.exam_type,
+            mode=req.mode or "worksheet",
             status="Initiated"
         )
         session.add(batch)
         await session.commit()
         await session.refresh(batch)
         return {"batch_id": str(batch.id)}
+
+@app.post("/api/v1/assessment/batch/{batch_id}/upload-master-question")
+async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = File(...)):
+    out_dir = Path(BASE_DIR) / "static" / "uploads" / batch_id / "master"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    sorted_files = sorted(files, key=lambda f: natural_sort_filename_key(f.filename or ""))
+    master_urls = {}
+    b64s = []
+    
+    for idx, file in enumerate(sorted_files):
+        file_bytes = await file.read()
+        ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
+        if ext[1:] not in ["jpg", "jpeg", "png", "webp"]:
+            ext = ".jpg"
+            
+        unique_name = f"master_p{idx+1}_{uuid.uuid4().hex[:6]}{ext}"
+        file_path = out_dir / unique_name
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+            
+        url = f"/static/uploads/{batch_id}/master/{unique_name}"
+        master_urls[f"page{idx+1}"] = url
+        b64s.append(base64.b64encode(file_bytes).decode('utf-8'))
+
+    # Extract Question Paper & Marking Guide Structure using Vision AI
+    structure = {"questions": []}
+    if b64s:
+        system_prompt = """
+        You are a master examination question paper indexer.
+        Extract all questions, sub-questions, question statements, and max mark allocations from this master exam paper.
+        
+        Return JSON format:
+        {
+          "exam_title": "Extracted Exam Title",
+          "total_marks": 100,
+          "questions": [
+            {
+              "number": "1(a)",
+              "question_text": "Full text of question 1a",
+              "max_marks": 5
+            }
+          ]
+        }
+        """
+        payload = [{"type": "text", "text": system_prompt}]
+        for p_i, b64_img in enumerate(b64s):
+            payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {p_i+1} OF {len(b64s)} ---"})
+            payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
+            
+        try:
+            resp = await client.chat.completions.create(
+                model="gpt-4o",
+                response_format={"type": "json_object"},
+                messages=[{"role": "user", "content": payload}],
+                max_tokens=4096
+            )
+            structure = json.loads(resp.choices[0].message.content)
+        except Exception as e:
+            print(f"Master Question Paper AI Ingestion error: {e}")
+
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, uuid.UUID(batch_id))
+        if batch:
+            batch.mode = "answer_sheet"
+            batch.master_question_urls = master_urls
+            batch.master_exam_structure = structure
+            await session.commit()
+            
+    return {"status": "success", "master_urls": master_urls, "structure": structure}
 
 import re
 
