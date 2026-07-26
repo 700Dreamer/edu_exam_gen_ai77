@@ -112,25 +112,29 @@ export default function AssessmentView({
     setScannerLoading(true);
     setScannerError("");
     try {
-      // First try the local agent for high-speed scanning
-      try {
-        const localRes = await fetch("http://127.0.0.1:8181/devices");
-        if (localRes.ok) {
-          const localData = await localRes.json();
-          setScannerSource("local");
-          setSaneInstalled(localData.sane_installed);
-          setScannerDevices(localData.devices || []);
-          if (localData.platform) setScannerPlatform(localData.platform);
-          if (localData.devices?.length > 0 && !selectedScanner) {
-            setSelectedScanner(localData.devices[0].device_id);
+      // First try the local agent for high-speed scanning if on HTTP
+      if (typeof window !== "undefined" && window.location.protocol === "http:") {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 1000);
+          const localRes = await fetch("http://127.0.0.1:8181/devices", { signal: controller.signal });
+          clearTimeout(timer);
+          if (localRes.ok) {
+            const localData = await localRes.json();
+            setScannerSource("local");
+            setSaneInstalled(localData.sane_installed);
+            setScannerDevices(localData.devices || []);
+            if (localData.platform) setScannerPlatform(localData.platform);
+            if (localData.devices?.length > 0 && !selectedScanner) {
+              setSelectedScanner(localData.devices[0].device_id);
+            }
+            if (localData.message) setScannerError(localData.message);
+            setScannerLoading(false);
+            return; // Success, skip remote
           }
-          if (localData.message) setScannerError(localData.message);
-          setScannerLoading(false);
-          return; // Success, skip remote
+        } catch (e) {
+          // Local agent not running, silently fall back to remote
         }
-      } catch (e) {
-        // Local agent not running, silently fall back to remote
-        console.log("Local scanner agent not detected, falling back to remote...");
       }
 
       // Fallback to remote backend

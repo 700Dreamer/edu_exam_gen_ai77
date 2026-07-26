@@ -76,10 +76,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Edulytics AI Engine - Standalone", version="1.0.0", lifespan=lifespan)
 
-# ── CORS — allow Next.js dev server & edulytics.net production origin ──
+# ── CORS — allow production domains (edumerc.net, edulytics.net) & dev server ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://edumerc.net",
+        "https://www.edumerc.net",
+        "http://edumerc.net",
+        "http://www.edumerc.net",
+        "https://edulytics.net",
+        "https://www.edulytics.net",
+        "http://edulytics.net",
+        "http://www.edulytics.net",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8000"
+    ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

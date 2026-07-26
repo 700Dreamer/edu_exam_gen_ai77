@@ -8,9 +8,22 @@ from datetime import datetime
 from typing import Optional
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite+aiosqlite:///{os.path.join(BASE_DIR, 'edulytics_history.db')}"
 
-engine = create_async_engine(DATABASE_URL, connect_args={"timeout": 30.0})
+# ── Dynamic Database URL Configuration (PostgreSQL / SQLite) ──
+raw_db_url = os.getenv("DATABASE_URL")
+if raw_db_url:
+    if raw_db_url.startswith("postgres://"):
+        raw_db_url = raw_db_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif raw_db_url.startswith("postgresql://"):
+        raw_db_url = raw_db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif raw_db_url.startswith("sqlite://") and not raw_db_url.startswith("sqlite+aiosqlite://"):
+        raw_db_url = raw_db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    DATABASE_URL = raw_db_url
+else:
+    DATABASE_URL = f"sqlite+aiosqlite:///{os.path.join(BASE_DIR, 'edulytics_history.db')}"
+
+connect_args = {"timeout": 30.0} if "sqlite" in DATABASE_URL else {}
+engine = create_async_engine(DATABASE_URL, connect_args=connect_args)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
