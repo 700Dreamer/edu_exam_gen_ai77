@@ -858,8 +858,9 @@ async def process_batch_background(batch_id: str):
                 CRITICAL SECONDARY MARKING RULES:
                 1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
                 2. QUESTION ALIGNMENT: Match each handwritten answer on the student's answer sheet (e.g. "1(a)", "No 2", "Qn 3b") to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
-                3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
-                4. STUDENT NAME: Extract the student's full name from the cover or page header.
+                3. HYBRID FORMAT SUPPORT: For Hybrid exams (Section A Worksheet + Section B Answer Sheet), evaluate Section A questions & student answers printed on front pages, and evaluate Section B/C extended answers on trailing pages by referencing the Master Question Paper.
+                4. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
+                5. STUDENT NAME: Extract the student's full name from the cover or page header.
 
                 {master_rubric_block}
 

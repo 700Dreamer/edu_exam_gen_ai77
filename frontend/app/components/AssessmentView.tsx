@@ -42,7 +42,7 @@ export default function AssessmentView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompilingPdf, setIsCompilingPdf] = useState(false);
 
-  const [batchMode, setBatchMode] = useState<"worksheet" | "answer_sheet">("worksheet");
+  const [batchMode, setBatchMode] = useState<"worksheet" | "answer_sheet" | "hybrid">("hybrid");
   const [masterQuestionFiles, setMasterQuestionFiles] = useState<File[]>([]);
 
   // Scanned Thumbnail Full Preview Modal States
@@ -877,61 +877,84 @@ export default function AssessmentView({
                    </select>
                  </div>
 
-                 <div>
-                   <label className="text-xs font-medium text-foreground/60 mb-2 block">Exam Layout & Marking Format</label>
-                   <div className="grid grid-cols-2 gap-2">
-                     <button
-                       type="button"
-                       onClick={() => setBatchMode("worksheet")}
-                       className={cn(
-                         "p-3 border text-left rounded-none transition-all cursor-pointer",
-                         batchMode === "worksheet"
-                           ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                           : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                       )}
-                     >
-                       <div className="text-xs font-bold">Worksheet (Primary)</div>
-                       <div className="text-[10px] text-foreground/50 mt-0.5">Questions & answers on student paper</div>
-                     </button>
+                   <div>
+                    <label className="text-xs font-medium text-foreground/60 mb-2 block">Exam Layout & Marking Format</label>
+                    {(!selectedLevel || selectedLevel.toLowerCase().includes("senior") || /^s[1-6]/i.test(selectedLevel.replace(/\s+/g, ""))) ? (
+                      <div className="grid grid-cols-1 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setBatchMode("hybrid")}
+                          className={cn(
+                            "p-3 border text-left rounded-none transition-all cursor-pointer",
+                            batchMode === "hybrid"
+                              ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                              : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                          )}
+                        >
+                          <div className="text-xs font-bold text-brand-600">Hybrid Format (Section A Worksheet + Section B Answer Sheet)</div>
+                          <div className="text-[10px] text-foreground/50 mt-0.5">Section A questions on paper + Section B/C written on answer sheets</div>
+                        </button>
 
-                     <button
-                       type="button"
-                       onClick={() => setBatchMode("answer_sheet")}
-                       className={cn(
-                         "p-3 border text-left rounded-none transition-all cursor-pointer",
-                         batchMode === "answer_sheet"
-                           ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                           : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                       )}
-                     >
-                       <div className="text-xs font-bold">Answer Sheet (Secondary)</div>
-                       <div className="text-[10px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
-                     </button>
-                   </div>
-                 </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setBatchMode("answer_sheet")}
+                            className={cn(
+                              "p-3 border text-left rounded-none transition-all cursor-pointer",
+                              batchMode === "answer_sheet"
+                                ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                                : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                            )}
+                          >
+                            <div className="text-xs font-bold">Answer Sheet Only</div>
+                            <div className="text-[10px] text-foreground/50 mt-0.5">All answers written in separate answer booklet</div>
+                          </button>
 
-                 {batchMode === "answer_sheet" && (
-                   <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-3">
-                     <div className="flex justify-between items-center">
-                       <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">Master Question Paper (1-Time Upload)</label>
-                       {masterQuestionFiles.length > 0 && (
-                         <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s) attached</span>
-                       )}
-                     </div>
-                     <input
-                       type="file"
-                       multiple
-                       accept="image/*,.pdf"
-                       onChange={(e) => {
-                         if (e.target.files) {
-                           setMasterQuestionFiles(Array.from(e.target.files));
-                         }
-                       }}
-                       className="w-full text-xs text-foreground file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
-                     />
-                     <p className="text-[10px] text-foreground/50">Upload the universal Master Question Paper images/PDF. AI will index questions once for all student answer sheets.</p>
-                   </div>
-                 )}
+                          <button
+                            type="button"
+                            onClick={() => setBatchMode("worksheet")}
+                            className={cn(
+                              "p-3 border text-left rounded-none transition-all cursor-pointer",
+                              batchMode === "worksheet"
+                                ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                                : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                            )}
+                          >
+                            <div className="text-xs font-bold">Worksheet Format</div>
+                            <div className="text-[10px] text-foreground/50 mt-0.5">All questions & answers printed on same script</div>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 border border-brand-600 bg-brand-500/10 text-foreground rounded-none">
+                        <div className="text-xs font-bold text-brand-600">Worksheet Format (Primary)</div>
+                        <div className="text-[10px] text-foreground/60 mt-0.5">Primary exams evaluate questions & answers printed directly on student papers.</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
+                    <div className="p-4 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-brand-600 uppercase tracking-wider block">Master Question Paper (1-Time Upload)</label>
+                        {masterQuestionFiles.length > 0 && (
+                          <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s) attached</span>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/*,.pdf"
+                        onChange={(e) => {
+                          if (e.target.files) {
+                            setMasterQuestionFiles(Array.from(e.target.files));
+                          }
+                        }}
+                        className="w-full text-xs text-foreground file:mr-3 file:py-1.5 file:px-3 file:border-0 file:text-xs file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
+                      />
+                      <p className="text-[10px] text-foreground/50">Upload the universal Master Question Paper images/PDF. AI will index questions once for Section B/C answer sheets.</p>
+                    </div>
+                  )}
                </div>
 
                <button onClick={()=>setConfigLocked(true)} disabled={!subject || !selectedGroup} className="w-full mt-8 bg-brand-600 text-white text-sm font-bold py-3.5 rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none hover:shadow-none active:scale-[0.98] cursor-pointer">
