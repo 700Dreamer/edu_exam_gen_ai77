@@ -449,6 +449,13 @@ export default function AssessmentView({
         } catch (e) {}
       };
 
+      eventSource.onerror = () => {
+        // Silently handle HTTP/3 QUIC protocol disconnects while status polling keeps UI live
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+          console.warn("SSE connection closed; background status polling maintaining live progress.");
+        }
+      };
+
       // ── 2. Fallback Polling (Syncs state even if production reverse proxies buffer SSE) ──
       interval = setInterval(async () => {
         try {

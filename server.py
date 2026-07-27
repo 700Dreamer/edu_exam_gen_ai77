@@ -1058,7 +1058,7 @@ async def process_batch_background(batch_id: str):
                 })
 
     # Execute all papers in parallel pool
-    await asyncio.gather(*[grade_single_paper_disintegrated(r_id, idx) for idx, r_id in enumerate(result_ids)])
+    await asyncio.gather(*[grade_single_paper_disintegrated(r_id, idx) for idx, r_id in enumerate(result_ids)], return_exceptions=True)
                     
     # 3. Mark batch as completed
     async with async_session_maker() as session:
@@ -1093,7 +1093,7 @@ async def stream_batch_events(batch_id: str):
             yield f"data: {json.dumps({'type': 'connected', 'batch_id': batch_id})}\n\n"
             while True:
                 try:
-                    payload = await asyncio.wait_for(q.get(), timeout=30.0)
+                    payload = await asyncio.wait_for(q.get(), timeout=5.0)
                     yield f"data: {payload}\n\n"
                     msg_obj = json.loads(payload)
                     if msg_obj.get("type") == "batch_complete":
@@ -1122,7 +1122,18 @@ async def stream_batch_events(batch_id: str):
 
 @app.post("/api/v1/assessment/batch/{batch_id}/process")
 async def trigger_batch_process(batch_id: str, background_tasks: BackgroundTasks):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except Exception:
+        raise HTTPException(400, "Invalid batch UUID")
+
+    async with async_session_maker() as session:
+        batch_obj = await session.get(AssessmentBatch, batch_uuid)
+        if not batch_obj:
+            raise HTTPException(404, "Batch not found")
+
     background_tasks.add_task(process_batch_background, batch_id)
+    return {"status": "processing_started", "batch_id": batch_id}
 
 @app.get("/api/v1/assessment/batch/{batch_id}/status")
 async def get_batch_status(batch_id: str):

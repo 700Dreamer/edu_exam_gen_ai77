@@ -50,7 +50,7 @@ const Header = ({
              <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
           </div>
           <div>
-             <h1 className="text-lg font-black tracking-widest leading-none">EDULYTICS V.2.0</h1>
+             <h1 className="text-lg font-black tracking-widest leading-none">EDULYTICS V.2.1</h1>
              <p className="text-[8px] tracking-[0.25em] font-bold mt-1 uppercase text-brand-500 opacity-90">AI Grading &amp; Analytics</p>
           </div>
         </div>
