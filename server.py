@@ -892,27 +892,33 @@ async def process_batch_background(batch_id: str):
                     content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
                     content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
 
-                try:
-                    resp = await client.chat.completions.create(
-                        model="gpt-4o",
-                        response_format={"type": "json_object"},
-                        messages=[{"role": "user", "content": content_payload}],
-                        max_tokens=4096
-                    )
-                    doc_data = json.loads(resp.choices[0].message.content)
-                except Exception as e:
-                    print(f"GPT-4o multi-page extraction failed, trying fallback: {e}")
+                doc_data = {"student_name": "", "questions": []}
+                for attempt in range(3):
                     try:
                         resp = await client.chat.completions.create(
-                            model="gpt-4o-mini",
+                            model="gpt-4o",
                             response_format={"type": "json_object"},
                             messages=[{"role": "user", "content": content_payload}],
                             max_tokens=4096
                         )
                         doc_data = json.loads(resp.choices[0].message.content)
-                    except Exception as e2:
-                        print(f"Fallback extraction error: {e2}")
-                        doc_data = {"student_name": "", "questions": []}
+                        break
+                    except Exception as e:
+                        print(f"GPT-4o vision extraction attempt {attempt + 1} failed: {e}")
+                        if attempt < 2:
+                            await asyncio.sleep(2 ** (attempt + 1))
+                        else:
+                            try:
+                                resp = await client.chat.completions.create(
+                                    model="gpt-4o-mini",
+                                    response_format={"type": "json_object"},
+                                    messages=[{"role": "user", "content": content_payload}],
+                                    max_tokens=4096
+                                )
+                                doc_data = json.loads(resp.choices[0].message.content)
+                            except Exception as e2:
+                                print(f"Fallback extraction error: {e2}")
+                                doc_data = {"student_name": "", "questions": []}
 
                 extracted_name = doc_data.get("student_name", "")
                 all_extracted_questions = doc_data.get("questions", [])
@@ -1057,8 +1063,17 @@ async def process_batch_background(batch_id: str):
                     "error": str(e)
                 })
 
-    # Execute all papers in parallel pool
-    await asyncio.gather(*[grade_single_paper_disintegrated(r_id, idx) for idx, r_id in enumerate(result_ids)], return_exceptions=True)
+    # High-performance chunked execution for scale (up to 5,000+ papers)
+    CHUNK_SIZE = 5
+    for i in range(0, total_papers, CHUNK_SIZE):
+        chunk_items = list(enumerate(result_ids))[i:i + CHUNK_SIZE]
+        tasks = [
+            grade_single_paper_disintegrated(r_id, idx)
+            for idx, r_id in chunk_items
+        ]
+        await asyncio.gather(*tasks, return_exceptions=True)
+        # Yield to event loop to allow garbage collection & prevent RAM bloat
+        await asyncio.sleep(0.1)
                     
     # 3. Mark batch as completed
     async with async_session_maker() as session:
@@ -1137,41 +1152,55 @@ async def trigger_batch_process(batch_id: str, background_tasks: BackgroundTasks
 
 @app.get("/api/v1/assessment/batch/{batch_id}/status")
 async def get_batch_status(batch_id: str):
-    async with async_session_maker() as session:
-        batch_obj = await session.get(AssessmentBatch, uuid.UUID(batch_id))
-        if not batch_obj: raise HTTPException(404, "Batch not found")
-        
-        query = select(StudentResult).where(StudentResult.batch_id == uuid.UUID(batch_id))
-        res = await session.execute(query)
-        results = res.scalars().all()
-        
-        total = len(results)
-        needs_review = sum(1 for r in results if r.needs_manual_review)
-        processed = sum(1 for r in results if r.raw_extracted_html is not None or r.ai_remarks is not None)
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+        async with async_session_maker() as session:
+            batch_obj = await session.get(AssessmentBatch, batch_uuid)
+            if not batch_obj: raise HTTPException(404, "Batch not found")
+            
+            query = select(StudentResult).where(StudentResult.batch_id == batch_uuid)
+            res = await session.execute(query)
+            results = res.scalars().all()
+            
+            total = len(results)
+            needs_review = sum(1 for r in results if r.needs_manual_review)
+            processed = sum(1 for r in results if r.raw_extracted_html is not None or r.ai_remarks is not None)
 
-        paper_summaries = []
-        for idx, r in enumerate(results):
-            student_name = getattr(r, 'ocr_student_name', None) or f"Paper #{idx + 1}"
-            if r.student_id:
-                st = await session.get(Student, r.student_id)
-                if st:
-                    student_name = f"{st.first_name} {st.last_name}".strip()
-            paper_summaries.append({
-                "paper_idx": idx + 1,
-                "result_id": str(r.id),
-                "student_name": student_name,
-                "score": r.total_score,
-                "max_score": r.max_score,
-                "status": "completed" if r.total_score is not None else ("grading" if r.raw_extracted_html else "pending"),
-                "needs_review": r.needs_manual_review
-            })
-        
+            paper_summaries = []
+            for idx, r in enumerate(results):
+                student_name = f"Paper #{idx + 1}"
+                if r.student_id:
+                    st = await session.get(Student, r.student_id)
+                    if st:
+                        student_name = f"{st.first_name} {st.last_name}".strip()
+                
+                paper_summaries.append({
+                    "paper_idx": idx + 1,
+                    "result_id": str(r.id),
+                    "student_name": student_name,
+                    "score": r.total_score,
+                    "max_score": getattr(r, 'max_score', 100),
+                    "status": "completed" if r.total_score is not None else ("grading" if r.raw_extracted_html else "pending"),
+                    "needs_review": r.needs_manual_review
+                })
+            
+            return {
+                "status": batch_obj.status,
+                "total": total,
+                "processed": processed,
+                "needs_review": needs_review,
+                "papers": paper_summaries
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in get_batch_status: {e}")
         return {
-            "status": batch_obj.status,
-            "total": total,
-            "processed": processed,
-            "needs_review": needs_review,
-            "papers": paper_summaries
+            "status": "Processing",
+            "total": 0,
+            "processed": 0,
+            "needs_review": 0,
+            "papers": []
         }
 
 @app.patch("/api/v1/assessment/result/{result_id}/assign-student")
