@@ -1151,7 +1151,7 @@ async def get_batch_status(batch_id: str):
 
         paper_summaries = []
         for idx, r in enumerate(results):
-            student_name = r.ocr_student_name or f"Paper #{idx + 1}"
+            student_name = getattr(r, 'ocr_student_name', None) or f"Paper #{idx + 1}"
             if r.student_id:
                 st = await session.get(Student, r.student_id)
                 if st:
