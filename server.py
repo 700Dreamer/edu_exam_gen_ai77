@@ -328,27 +328,32 @@ async def list_batches():
 
 @app.get("/api/v1/assessment/batch/{batch_id}/results")
 async def get_batch_results(batch_id: str):
-    async with async_session_maker() as session:
-        query = select(StudentResult, Student).outerjoin(
-            Student, StudentResult.student_id == Student.id
-        ).where(StudentResult.batch_id == uuid.UUID(batch_id))
-        res = await session.execute(query)
-        rows = res.all()
-        
-        results_data = []
-        for result, student in rows:
-            results_data.append({
-                "id": str(result.id),
-                "student_id": str(result.student_id) if result.student_id else None,
-                "student_name": student.full_name if student else "Unmatched/Review",
-                "index_number": student.index_number if student else None,
-                "total_score": result.total_score,
-                "ai_remarks": result.ai_remarks,
-                "needs_manual_review": result.needs_manual_review,
-                "paper_images_urls": result.paper_images_urls,
-                "raw_extracted_html": result.raw_extracted_html
-            })
-        return results_data
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+        async with async_session_maker() as session:
+            query = select(StudentResult, Student).outerjoin(
+                Student, StudentResult.student_id == Student.id
+            ).where(StudentResult.batch_id == batch_uuid)
+            res = await session.execute(query)
+            rows = res.all()
+            
+            results_data = []
+            for result, student in rows:
+                results_data.append({
+                    "id": str(result.id),
+                    "student_id": str(result.student_id) if result.student_id else None,
+                    "student_name": student.full_name if student else "Unmatched/Review",
+                    "index_number": student.index_number if student else None,
+                    "total_score": result.total_score,
+                    "ai_remarks": result.ai_remarks,
+                    "needs_manual_review": result.needs_manual_review,
+                    "paper_images_urls": result.paper_images_urls,
+                    "raw_extracted_html": result.raw_extracted_html
+                })
+            return results_data
+    except Exception as e:
+        print(f"Error in get_batch_results: {e}")
+        return []
 
 # ── Assessment Grading Endpoints ──
 @app.post("/api/v1/assessment/batch/create")
@@ -1253,47 +1258,58 @@ async def analytics_overview():
         needs_review = needs_review_res.scalars().all()
 
         return {
-            "total_schools": len(tenants),
-            "total_students": len(students),
-            "total_batches": len(batches),
-            "total_graded": len(graded),
-            "average_score": avg_score,
-            "needs_review_count": len(needs_review),
-            "completed_batches": sum(1 for b in batches if b.status == "Completed"),
-        }
+                    "total_schools": len(tenants),
+                    "total_students": len(students),
+                    "total_batches": len(batches),
+                    "total_graded": len(graded),
+                    "average_score": avg_score,
+                    "needs_review_count": len(needs_review),
+                    "completed_batches": sum(1 for b in batches if b.status == "Completed"),
+                }
 
 @app.get("/api/v1/analytics/score-distribution/{batch_id}")
 async def score_distribution(batch_id: str):
     """Returns score distribution buckets for a batch (for charting)."""
-    async with async_session_maker() as session:
-        query = select(StudentResult).where(
-            StudentResult.batch_id == uuid.UUID(batch_id),
-            StudentResult.total_score != None
-        )
-        res = await session.execute(query)
-        results = res.scalars().all()
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+        async with async_session_maker() as session:
+            query = select(StudentResult).where(
+                StudentResult.batch_id == batch_uuid,
+                StudentResult.total_score != None
+            )
+            res = await session.execute(query)
+            results = res.scalars().all()
 
-        buckets = {"0-49": 0, "50-59": 0, "60-69": 0, "70-79": 0, "80-89": 0, "90-100": 0}
-        for r in results:
-            s = r.total_score
-            if s < 50: buckets["0-49"] += 1
-            elif s < 60: buckets["50-59"] += 1
-            elif s < 70: buckets["60-69"] += 1
-            elif s < 80: buckets["70-79"] += 1
-            elif s < 90: buckets["80-89"] += 1
-            else: buckets["90-100"] += 1
+            buckets = {"0-49": 0, "50-59": 0, "60-69": 0, "70-79": 0, "80-89": 0, "90-100": 0}
+            for r in results:
+                s = r.total_score
+                if s < 50: buckets["0-49"] += 1
+                elif s < 60: buckets["50-59"] += 1
+                elif s < 70: buckets["60-69"] += 1
+                elif s < 80: buckets["70-79"] += 1
+                elif s < 90: buckets["80-89"] += 1
+                else: buckets["90-100"] += 1
 
-        scores = [r.total_score for r in results]
-        avg = round(sum(scores) / len(scores), 1) if scores else 0
-        highest = max(scores) if scores else 0
-        lowest = min(scores) if scores else 0
+            scores = [r.total_score for r in results]
+            avg = round(sum(scores) / len(scores), 1) if scores else 0
+            highest = max(scores) if scores else 0
+            lowest = min(scores) if scores else 0
 
+            return {
+                "buckets": buckets,
+                "average": avg,
+                "highest": highest,
+                "lowest": lowest,
+                "count": len(results)
+            }
+    except Exception as e:
+        print(f"Error in score_distribution: {e}")
         return {
-            "buckets": buckets,
-            "average": avg,
-            "highest": highest,
-            "lowest": lowest,
-            "count": len(results)
+            "buckets": {"0-49": 0, "50-59": 0, "60-69": 0, "70-79": 0, "80-89": 0, "90-100": 0},
+            "average": 0,
+            "highest": 0,
+            "lowest": 0,
+            "count": 0
         }
 
 
