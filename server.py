@@ -28,10 +28,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from contextlib import asynccontextmanager
-from core.models import create_db_and_tables, async_session_maker, Tenant, AcademicGroup, Student, AssessmentBatch, StudentResult
+from core.models import create_db_and_tables, async_session_maker, Tenant, AcademicGroup, Student, AssessmentBatch, StudentResult, BatchTask
 from core.syllabus_master import ALL_SUBJECTS, ALL_LEVELS
 from core.scanner_service import detect_scanners, detect_scanners_cached, scan_page, is_sane_installed, is_wia_available, ScannerDevice
+from core.worker_engine import enqueue_batch_tasks, process_worker_loop, get_queue_metrics, broadcast_event
 import sys as _sys
+import asyncio
 
 async def fix_existing_scores():
     """Recalculates any legacy StudentResult.total_score and normalizes hardcoded localhost URLs to relative URLs."""
@@ -72,7 +74,10 @@ async def fix_existing_scores():
 async def lifespan(app: FastAPI):
     await create_db_and_tables()
     await fix_existing_scores()
+    # Start embedded worker loop for seamless single-process local execution
+    worker_task = asyncio.create_task(process_worker_loop(single_run=False, poll_interval=2.0))
     yield
+    worker_task.cancel()
 
 app = FastAPI(title="Edulytics AI Engine - Standalone", version="1.0.0", lifespan=lifespan)
 
@@ -423,6 +428,8 @@ async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = 
         try:
             resp = await client.chat.completions.create(
                 model="gpt-4o",
+                temperature=0.0,
+                seed=42,
                 response_format={"type": "json_object"},
                 messages=[{"role": "user", "content": payload}],
                 max_tokens=4096
@@ -1141,7 +1148,7 @@ async def stream_batch_events(batch_id: str):
 
 
 @app.post("/api/v1/assessment/batch/{batch_id}/process")
-async def trigger_batch_process(batch_id: str, background_tasks: BackgroundTasks):
+async def trigger_batch_process(batch_id: str):
     try:
         batch_uuid = uuid.UUID(batch_id)
     except Exception:
@@ -1152,8 +1159,17 @@ async def trigger_batch_process(batch_id: str, background_tasks: BackgroundTasks
         if not batch_obj:
             raise HTTPException(404, "Batch not found")
 
-    background_tasks.add_task(process_batch_background, batch_id)
-    return {"status": "processing_started", "batch_id": batch_id}
+    res = await enqueue_batch_tasks(batch_uuid)
+    return {
+        "status": "processing_started",
+        "batch_id": batch_id,
+        "enqueued_tasks": res.get("enqueued_tasks", 0)
+    }
+
+@app.get("/api/v1/system/queue-status")
+async def get_system_queue_status():
+    metrics = await get_queue_metrics()
+    return {"status": "active", "metrics": metrics}
 
 @app.get("/api/v1/assessment/batch/{batch_id}/status")
 async def get_batch_status(batch_id: str):

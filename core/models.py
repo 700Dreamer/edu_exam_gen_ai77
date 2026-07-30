@@ -89,6 +89,20 @@ class StudentResult(Base):
     paper_images_urls: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     raw_extracted_html: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+class BatchTask(Base):
+    """Represents an individual granular task for background batch processing."""
+    __tablename__ = "batch_task"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("assessment_batch.id", ondelete="CASCADE"), nullable=False)
+    student_result_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("student_result.id", ondelete="CASCADE"), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(50), default="grade_paper", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="QUEUED", nullable=False) # QUEUED, PROCESSING, COMPLETED, FAILED
+    attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_retries: Mapped[int] = mapped_column(default=3, nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+
 async def create_db_and_tables():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
