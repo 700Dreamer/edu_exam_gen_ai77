@@ -308,17 +308,19 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
 
     func device(_ device: ICDevice, didOpenSessionWithError error: Error?) {
         if let error = error {
+            fputs("  [ERROR] Session open failed: \(error.localizedDescription)\n", stderr)
             scanErrorMessage = "Failed to open scanner session: \(error.localizedDescription)"
             return
         }
         sessionOpen = true
-        fputs("  Session opened. Waiting for scanner hardware...\n", stderr)
+        fputs("  [OK] Session opened. Waiting for scanner hardware...\n", stderr)
 
         // Dedicated job subfolder to prevent file overwriting
         let uniqueID = UUID().uuidString
         let jobDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("scan_job_\(uniqueID)")
         try? FileManager.default.createDirectory(at: jobDir, withIntermediateDirectories: true)
         self.jobDirectoryURL = jobDir
+        fputs("  [OK] Job directory: \(jobDir.path)\n", stderr)
 
         if let scanner = device as? ICScannerDevice {
             scanner.downloadsDirectory = jobDir
@@ -376,23 +378,53 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     func device(_ device: ICDevice, didCloseSessionWithError error: Error?) {}
 
     func scannerDevice(_ scanner: ICScannerDevice, didScanTo url: URL) {
+        fputs("  [PAGE] Received scan page: \(url.lastPathComponent) (\(url.path))\n", stderr)
         rawScannedURLs.append(url)
     }
 
     func scannerDevice(_ scanner: ICScannerDevice, didCompleteScanWithError error: Error?) {
         if let error = error {
-            fputs("  Scan completed with error: \(error.localizedDescription)\n", stderr)
+            fputs("  [WARN] Scan completed with error: \(error.localizedDescription)\n", stderr)
+        } else {
+            fputs("  [OK] Scan completed without error.\n", stderr)
+        }
+
+        fputs("  [DEBUG] rawScannedURLs count: \(rawScannedURLs.count)\n", stderr)
+        for (i, url) in rawScannedURLs.enumerated() {
+            fputs("  [DEBUG]   rawURL[\(i)]: \(url.path)\n", stderr)
+        }
+        fputs("  [DEBUG] jobDirectoryURL: \(jobDirectoryURL?.path ?? "NIL")\n", stderr)
+
+        // List job directory contents before processing
+        if let jobDir = jobDirectoryURL {
+            if let contents = try? FileManager.default.contentsOfDirectory(atPath: jobDir.path) {
+                fputs("  [DEBUG] Job directory contents (\(contents.count) files):\n", stderr)
+                for f in contents {
+                    let fullPath = jobDir.appendingPathComponent(f).path
+                    let size = (try? FileManager.default.attributesOfItem(atPath: fullPath)[.size] as? Int) ?? 0
+                    fputs("  [DEBUG]   \(f) (\(size) bytes)\n", stderr)
+                }
+            } else {
+                fputs("  [DEBUG] Could not list job directory!\n", stderr)
+            }
         }
 
         processAndOrderScannedFiles()
 
+        fputs("  [DEBUG] scannedFiles count after processing: \(scannedFiles.count)\n", stderr)
+        for f in scannedFiles {
+            fputs("  [DEBUG]   processed: \(f)\n", stderr)
+        }
+
         if scannedFiles.isEmpty {
-            scanErrorMessage = error != nil
+            let msg = error != nil
                 ? "Scan error: \(error!.localizedDescription)"
                 : "No pages scanned. Ensure paper is loaded in the feeder."
+            fputs("  [ERROR] \(msg)\n", stderr)
+            scanErrorMessage = msg
             scanSuccess = false
         } else {
-            fputs("  ADF batch finished. \(scannedFiles.count) page(s) captured.\n", stderr)
+            fputs("  [OK] ADF batch finished. \(scannedFiles.count) page(s) captured.\n", stderr)
             scanSuccess = true
         }
 
@@ -401,13 +433,21 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     }
 
     private func processAndOrderScannedFiles() {
-        guard let jobDir = jobDirectoryURL else { return }
+        guard let jobDir = jobDirectoryURL else {
+            fputs("  [ERROR] processAndOrderScannedFiles: jobDirectoryURL is NIL\n", stderr)
+            return
+        }
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: jobDir,
             includingPropertiesForKeys: [.creationDateKey],
             options: .skipsHiddenFiles
-        ) else { return }
+        ) else {
+            fputs("  [ERROR] processAndOrderScannedFiles: Could not list job directory at \(jobDir.path)\n", stderr)
+            return
+        }
+
+        fputs("  [DEBUG] processAndOrderScannedFiles: found \(urls.count) files in job directory\n", stderr)
 
         // Sort files by creation date, then by natural filename order
         let sortedURLs = urls.sorted { (url1, url2) -> Bool in
@@ -419,6 +459,8 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
 
         for (idx, rawURL) in sortedURLs.enumerated() {
             let pageIndex = idx + 1
+            fputs("  [DEBUG] Processing page \(pageIndex): \(rawURL.lastPathComponent)\n", stderr)
+
             if let dest = outputPath {
                 let destBase = (dest as NSString).deletingPathExtension
                 let destExt = (dest as NSString).pathExtension.lowercased()
@@ -428,8 +470,14 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
 
                 do {
                     if destExt == "jpg" || destExt == "jpeg" || destExt == "png" {
-                        guard let imageData = try? Data(contentsOf: rawURL),
-                              let imageRep = NSBitmapImageRep(data: imageData) else {
+                        guard let imageData = try? Data(contentsOf: rawURL) else {
+                            fputs("  [ERROR] Could not read image data from \(rawURL.path)\n", stderr)
+                            continue
+                        }
+                        fputs("  [DEBUG] Read \(imageData.count) bytes from \(rawURL.lastPathComponent)\n", stderr)
+
+                        guard let imageRep = NSBitmapImageRep(data: imageData) else {
+                            fputs("  [ERROR] Could not create NSBitmapImageRep from \(rawURL.lastPathComponent)\n", stderr)
                             continue
                         }
 
@@ -443,14 +491,19 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                             )
                         }
 
-                        guard let finalData = outputData else { continue }
+                        guard let finalData = outputData else {
+                            fputs("  [ERROR] Image conversion failed for page \(pageIndex)\n", stderr)
+                            continue
+                        }
                         try finalData.write(to: destURL)
+                        fputs("  [OK] Page \(pageIndex) -> \(pageDestPath) (\(finalData.count) bytes)\n", stderr)
                     } else {
                         try fm.moveItem(at: rawURL, to: destURL)
+                        fputs("  [OK] Page \(pageIndex) moved to \(pageDestPath)\n", stderr)
                     }
                     scannedFiles.append(pageDestPath)
                 } catch {
-                    fputs("  Failed to process page \(pageIndex): \(error.localizedDescription)\n", stderr)
+                    fputs("  [ERROR] Failed to process page \(pageIndex): \(error.localizedDescription)\n", stderr)
                 }
             } else {
                 scannedFiles.append(rawURL.path)
@@ -680,6 +733,12 @@ class ScannerHTTPServer {
 
             let status = (result["status"] as? String) == "success" ? 200 : 500
             logRequest("POST", "/scan", status)
+
+            // Log error details to terminal
+            if status == 500 {
+                let errMsg = result["message"] as? String ?? "unknown error"
+                fputs("  [ERROR] Scan failed: \(errMsg)\n", stderr)
+            }
 
             let json = jsonString(result)
             self.sendResponse(connection: connection, status: status, body: json, origin: origin)

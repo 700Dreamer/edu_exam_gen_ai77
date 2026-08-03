@@ -73,8 +73,18 @@ echo "  [3/4] Creating universal binary..."
 lipo -create "${OUT_ARM64}" "${OUT_X86}" -output "${OUT}"
 
 # Strip debug symbols
-echo "  [4/4] Stripping debug symbols..."
+echo "  [4/6] Stripping debug symbols..."
 strip -x "${OUT}" 2>/dev/null || true
+
+# Ad-hoc code sign (prevents Gatekeeper "damaged" rejection on other Macs)
+echo "  [5/6] Ad-hoc code signing..."
+codesign --force --sign - --timestamp=none "${OUT}" 2>/dev/null
+SIGN_STATUS=$(codesign -dv "${OUT}" 2>&1 | grep "Signature" || echo "signed (ad-hoc)")
+echo "        ${SIGN_STATUS}"
+
+# Remove quarantine attribute if present (safe for distribution)
+echo "  [6/6] Clearing quarantine attribute..."
+xattr -cr "${OUT}" 2>/dev/null || true
 
 # Clean intermediate files
 rm -f "${OUT_ARM64}" "${OUT_X86}"
@@ -97,3 +107,9 @@ echo ""
 echo "  Run with:"
 echo "    ${OUT}"
 echo ""
+echo "  Client installation:"
+echo "    1. Send EdulyticsScanner to client"
+echo "    2. Client runs:  xattr -cr EdulyticsScanner && chmod +x EdulyticsScanner"
+echo "    3. Client runs:  ./EdulyticsScanner"
+echo ""
+
