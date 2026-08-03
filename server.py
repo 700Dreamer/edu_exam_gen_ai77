@@ -1184,7 +1184,7 @@ async def get_batch_status(batch_id: str):
                 if r.student_id:
                     st = await session.get(Student, r.student_id)
                     if st:
-                        student_name = f"{st.first_name} {st.last_name}".strip()
+                        student_name = getattr(st, 'full_name', None) or f"{getattr(st, 'first_name', '')} {getattr(st, 'last_name', '')}".strip()
                 
                 paper_summaries.append({
                     "paper_idx": idx + 1,

@@ -396,33 +396,37 @@ export default function AssessmentView({
           if (data.type === "batch_started") {
             setLiveLogs((prev) => [...prev, { time: timeStr, message: `Batch initiated for ${data.total_papers} student papers.`, type: "info" }]);
           } else if (data.type === "paper_start") {
+            const key = data.paper_idx ?? data.paper_id;
             setLivePapers((prev) => ({
               ...prev,
-              [data.paper_idx]: {
-                paper_idx: data.paper_idx,
-                student_name: `Paper #${data.paper_idx}`,
+              [key]: {
+                paper_idx: key,
+                paper_id: data.paper_id,
+                student_name: data.student_name || `Paper #${key}`,
                 phase: data.phase,
                 status: "extracting"
               }
             }));
-            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx}: Started Phase 1 (Parallel Page Extraction)...`, type: "info" }]);
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${key}: Started Phase 1 (Parallel Page Extraction)...`, type: "info" }]);
           } else if (data.type === "page_extraction_complete") {
+            const key = data.paper_idx ?? data.paper_id;
             setLivePapers((prev) => ({
               ...prev,
-              [data.paper_idx]: {
-                ...prev[data.paper_idx],
+              [key]: {
+                ...prev[key],
                 student_name: data.student_name,
                 phase: data.phase,
                 questions_found: data.total_questions_extracted,
                 status: "grading"
               }
             }));
-            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx} (${data.student_name}): Extracted ${data.total_questions_extracted} questions. Starting Phase 2 (Micro-Batch Grading)...`, type: "info" }]);
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${key} (${data.student_name}): Extracted ${data.total_questions_extracted} questions. Starting Phase 2 (Micro-Batch Grading)...`, type: "info" }]);
           } else if (data.type === "paper_completed") {
+            const key = data.paper_idx ?? data.paper_id;
             setLivePapers((prev) => ({
               ...prev,
-              [data.paper_idx]: {
-                ...prev[data.paper_idx],
+              [key]: {
+                ...prev[key],
                 student_name: data.student_name,
                 phase: "Complete",
                 score: data.score,
@@ -431,17 +435,18 @@ export default function AssessmentView({
                 status: "completed"
               }
             }));
-            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx} (${data.student_name}): Graded successfully (${data.score}/${data.max_score} pts, ${data.questions_count} questions).`, type: "success" }]);
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${key} (${data.student_name}): Graded successfully (${data.score}/${data.max_score || 100} pts).`, type: "success" }]);
           } else if (data.type === "paper_error") {
+            const key = data.paper_idx ?? data.paper_id;
             setLivePapers((prev) => ({
               ...prev,
-              [data.paper_idx]: {
-                ...prev[data.paper_idx],
+              [key]: {
+                ...prev[key],
                 phase: "Error",
                 status: "error"
               }
             }));
-            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${data.paper_idx}: Error during processing: ${data.error}`, type: "error" }]);
+            setLiveLogs((prev) => [...prev, { time: timeStr, message: `Paper #${key}: Error during processing: ${data.error}`, type: "error" }]);
           } else if (data.type === "batch_complete") {
             setLiveLogs((prev) => [...prev, { time: timeStr, message: `Batch completed! All results persisted to Gradebook.`, type: "success" }]);
             setIsProcessing(false);
@@ -1774,8 +1779,8 @@ export default function AssessmentView({
                        <Layers className="w-4 h-4 text-brand-500" /> Live Paper Micro-Phases
                      </h4>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
-                       {Object.values(livePapers).map((paper: any) => (
-                         <div key={paper.paper_idx} className="p-3 border border-border-main bg-surface-soft flex items-center justify-between font-outfit">
+                       {Object.values(livePapers).map((paper: any, idx: number) => (
+                         <div key={paper.paper_idx || paper.paper_id || `live-paper-${idx}`} className="p-3 border border-border-main bg-surface-soft flex items-center justify-between font-outfit">
                            <div>
                              <div className="font-bold text-sm text-foreground flex items-center gap-2">
                                {paper.student_name}

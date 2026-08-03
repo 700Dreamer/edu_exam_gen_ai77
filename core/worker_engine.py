@@ -454,6 +454,7 @@ async def execute_task(task: BatchTask) -> bool:
     try:
         await broadcast_event(b_id, "paper_start", {
             "paper_id": str(r_id),
+            "paper_idx": str(r_id),
             "phase": "Phase 1: Page Extraction"
         })
         
@@ -694,6 +695,7 @@ async def execute_task(task: BatchTask) -> bool:
         score_pct_broadcast = min(100, max(0, round((total_score / max_possible) * 100))) if max_possible > 0 else 0
         await broadcast_event(b_id, "paper_completed", {
             "paper_id": str(r_id),
+            "paper_idx": str(r_id),
             "student_name": matched_student_name if matched else extracted_name,
             "score": score_pct_broadcast,
             "matched": matched,
@@ -722,6 +724,7 @@ async def execute_task(task: BatchTask) -> bool:
                 
         await broadcast_event(b_id, "paper_error", {
             "paper_id": str(r_id),
+            "paper_idx": str(r_id),
             "error": str(e)
         })
         return False
@@ -760,8 +763,11 @@ async def get_queue_metrics() -> Dict[str, Any]:
         counts = dict(res.all())
         
         redis_len = 0
+        redis_host = "disabled (DB Fallback)"
         r = await get_redis_client()
         if r:
+            redis_url = os.getenv("REDIS_URL", "")
+            redis_host = redis_url.split("@")[-1] if "@" in redis_url else (redis_url or "active")
             try:
                 redis_len = await r.llen("edulytics:queue:batch_tasks")
             except Exception:
@@ -774,6 +780,7 @@ async def get_queue_metrics() -> Dict[str, Any]:
             "failed": counts.get("FAILED", 0),
             "total_tasks": sum(counts.values()),
             "redis_active": r is not None,
+            "redis_host": redis_host,
             "redis_queue_length": redis_len
         }
 
