@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 from core.models import create_db_and_tables, async_session_maker, Tenant, AcademicGroup, Student, AssessmentBatch, StudentResult, BatchTask
 from core.syllabus_master import ALL_SUBJECTS, ALL_LEVELS
 from core.scanner_service import detect_scanners, detect_scanners_cached, scan_page, is_sane_installed, is_wia_available, ScannerDevice
-from core.worker_engine import enqueue_batch_tasks, process_worker_loop, get_queue_metrics, broadcast_event
+from core.worker_engine import enqueue_batch_tasks, process_worker_loop, get_queue_metrics, broadcast_event, subscribe_batch_events, close_redis_client
 import sys as _sys
 import asyncio
 
@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(process_worker_loop(single_run=False, poll_interval=2.0))
     yield
     worker_task.cancel()
+    await close_redis_client()
 
 app = FastAPI(title="Edulytics AI Engine - Standalone", version="1.0.0", lifespan=lifespan)
 
@@ -1106,34 +1107,24 @@ async def process_batch_background(batch_id: str):
 async def stream_batch_events(batch_id: str):
     """
     Server-Sent Events (SSE) endpoint streaming real-time grading progress to frontend UI.
+    Listens to Redis PubSub channel when active, or local in-memory event channels.
     """
     from fastapi.responses import StreamingResponse
     import asyncio
     
     async def event_generator():
-        q = asyncio.Queue()
-        if batch_id not in batch_subscribers:
-            batch_subscribers[batch_id] = []
-        batch_subscribers[batch_id].append(q)
-        
+        yield f"data: {json.dumps({'type': 'connected', 'batch_id': batch_id})}\n\n"
         try:
-            yield f"data: {json.dumps({'type': 'connected', 'batch_id': batch_id})}\n\n"
-            while True:
+            async for payload in subscribe_batch_events(batch_id):
+                yield f"data: {payload}\n\n"
                 try:
-                    payload = await asyncio.wait_for(q.get(), timeout=5.0)
-                    yield f"data: {payload}\n\n"
                     msg_obj = json.loads(payload)
                     if msg_obj.get("type") == "batch_complete":
                         break
-                except asyncio.TimeoutError:
-                    yield f": heartbeat\n\n"
+                except Exception:
+                    pass
         except asyncio.CancelledError:
             pass
-        finally:
-            if batch_id in batch_subscribers and q in batch_subscribers[batch_id]:
-                batch_subscribers[batch_id].remove(q)
-                if not batch_subscribers[batch_id]:
-                    del batch_subscribers[batch_id]
 
     return StreamingResponse(
         event_generator(),

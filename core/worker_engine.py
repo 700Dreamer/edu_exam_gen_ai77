@@ -14,22 +14,101 @@ from sqlalchemy import select, func
 from core.models import async_session_maker, AssessmentBatch, StudentResult, Student, BatchTask
 from core.ai_engine import get_async_openai_client
 
+try:
+    import redis.asyncio as aioredis
+except ImportError:
+    aioredis = None
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# ── In-Memory Event Streaming Subscriptions ──
+# ── Redis Connection & PubSub Management ──
+redis_client: Optional[Any] = None
+
+async def get_redis_client() -> Optional[Any]:
+    global redis_client
+    redis_url = os.getenv("REDIS_URL")
+    if not redis_url or aioredis is None:
+        return None
+    if redis_client is None:
+        try:
+            client = aioredis.from_url(redis_url, decode_responses=True)
+            await client.ping()
+            redis_client = client
+            print(f"Connected to Redis task broker at {redis_url.split('@')[-1] if '@' in redis_url else redis_url}")
+        except Exception as e:
+            print(f"Warning: Redis connection error ({e}). Falling back to DB task queue.")
+            redis_client = None
+    return redis_client
+
+async def close_redis_client():
+    global redis_client
+    if redis_client is not None:
+        try:
+            await redis_client.close()
+        except Exception:
+            pass
+        redis_client = None
+
+# ── In-Memory Event Streaming Subscriptions (Fallback) ──
 batch_subscribers: Dict[str, List[asyncio.Queue]] = {}
 
 async def broadcast_event(batch_id: str, event_type: str, data: dict):
     """
     Pushes real-time SSE events to all connected clients listening to batch_id stream.
+    Publishes to Redis PubSub channel when active, plus local in-memory subscribers.
     """
+    payload_dict = {"type": event_type, "timestamp": data.get("timestamp", datetime.utcnow().isoformat()), **data}
+    payload = json.dumps(payload_dict)
+    
+    r = await get_redis_client()
+    if r:
+        try:
+            await r.publish(f"edulytics:sse:{batch_id}", payload)
+        except Exception as e:
+            print(f"Redis PubSub publish error: {e}")
+
     if batch_id in batch_subscribers:
-        payload = json.dumps({"type": event_type, "timestamp": data.get("timestamp", datetime.utcnow().isoformat()), **data})
         for q in list(batch_subscribers[batch_id]):
             try:
                 await q.put(payload)
             except Exception:
                 pass
+
+async def subscribe_batch_events(batch_id: str):
+    """
+    Async generator yielding real-time SSE payload strings for batch_id.
+    Listens to Redis PubSub channel if Redis is active, or local asyncio Queue.
+    """
+    r = await get_redis_client()
+    if r:
+        pubsub = r.pubsub()
+        channel_name = f"edulytics:sse:{batch_id}"
+        await pubsub.subscribe(channel_name)
+        try:
+            async for message in pubsub.listen():
+                if message and message.get("type") == "message":
+                    yield message["data"]
+        finally:
+            try:
+                await pubsub.unsubscribe(channel_name)
+                await pubsub.close()
+            except Exception:
+                pass
+    else:
+        q = asyncio.Queue()
+        if batch_id not in batch_subscribers:
+            batch_subscribers[batch_id] = []
+        batch_subscribers[batch_id].append(q)
+        try:
+            while True:
+                payload = await q.get()
+                yield payload
+        finally:
+            if batch_id in batch_subscribers and q in batch_subscribers[batch_id]:
+                batch_subscribers[batch_id].remove(q)
+                if not batch_subscribers[batch_id]:
+                    del batch_subscribers[batch_id]
+
 
 
 def natural_sort_page_key(key: str) -> int:
@@ -224,10 +303,12 @@ def generate_html_report_from_json(ai_data: dict, subject: str) -> str:
 
 async def enqueue_batch_tasks(batch_id: Union[str, uuid.UUID]) -> Dict[str, Any]:
     """
-    Enqueues all student results of a batch into the persistent BatchTask database queue.
+    Enqueues all student results of a batch into the persistent BatchTask database queue
+    and pushes task IDs to Redis queue when active.
     """
     batch_uuid = uuid.UUID(str(batch_id)) if isinstance(batch_id, str) else batch_id
     
+    task_ids_to_push = []
     async with async_session_maker() as session:
         batch_obj = await session.get(AssessmentBatch, batch_uuid)
         if not batch_obj:
@@ -258,15 +339,25 @@ async def enqueue_batch_tasks(batch_id: Union[str, uuid.UUID]) -> Dict[str, Any]
                     status="QUEUED"
                 )
                 session.add(task_obj)
-                enqueued_count += 1
+                await session.flush()
             else:
                 task_obj.status = "QUEUED"
                 task_obj.attempts = 0
                 task_obj.last_error = None
                 task_obj.updated_at = datetime.utcnow()
-                enqueued_count += 1
+                
+            task_ids_to_push.append(str(task_obj.id))
+            enqueued_count += 1
                 
         await session.commit()
+
+    # If Redis client is active, push task IDs to Redis queue list
+    r = await get_redis_client()
+    if r and task_ids_to_push:
+        try:
+            await r.rpush("edulytics:queue:batch_tasks", *task_ids_to_push)
+        except Exception as e:
+            print(f"Redis rpush task error: {e}")
         
     await broadcast_event(str(batch_id), "batch_queued", {
         "batch_id": str(batch_id),
@@ -282,8 +373,26 @@ async def enqueue_batch_tasks(batch_id: Union[str, uuid.UUID]) -> Dict[str, Any]
 
 async def fetch_and_lock_next_task() -> Optional[BatchTask]:
     """
-    Atomically fetches and locks the next QUEUED or retriable FAILED task from the database.
+    Atomically fetches and locks the next QUEUED or retriable FAILED task from Redis queue or database.
     """
+    r = await get_redis_client()
+    if r:
+        try:
+            task_id_str = await r.lpop("edulytics:queue:batch_tasks")
+            if task_id_str:
+                async with async_session_maker() as session:
+                    task = await session.get(BatchTask, uuid.UUID(task_id_str))
+                    if task and task.status in ["QUEUED", "FAILED"]:
+                        task.status = "PROCESSING"
+                        task.attempts += 1
+                        task.updated_at = datetime.utcnow()
+                        await session.commit()
+                        await session.refresh(task)
+                        return task
+        except Exception as e:
+            print(f"Redis queue pop error: {e}. Falling back to DB query.")
+
+    # Fallback DB query if Redis is inactive or queue returned no task
     async with async_session_maker() as session:
         query = select(BatchTask).where(
             BatchTask.status == "QUEUED"
@@ -643,17 +752,28 @@ async def process_worker_loop(single_run: bool = False, poll_interval: float = 2
 
 async def get_queue_metrics() -> Dict[str, Any]:
     """
-    Fetches real-time task queue status and statistics from DB.
+    Fetches real-time task queue status and statistics from DB and Redis task broker.
     """
     async with async_session_maker() as session:
         query = select(BatchTask.status, func.count(BatchTask.id)).group_by(BatchTask.status)
         res = await session.execute(query)
         counts = dict(res.all())
         
+        redis_len = 0
+        r = await get_redis_client()
+        if r:
+            try:
+                redis_len = await r.llen("edulytics:queue:batch_tasks")
+            except Exception:
+                pass
+        
         return {
             "queued": counts.get("QUEUED", 0),
             "processing": counts.get("PROCESSING", 0),
             "completed": counts.get("COMPLETED", 0),
             "failed": counts.get("FAILED", 0),
-            "total_tasks": sum(counts.values())
+            "total_tasks": sum(counts.values()),
+            "redis_active": r is not None,
+            "redis_queue_length": redis_len
         }
+
