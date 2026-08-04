@@ -343,8 +343,15 @@ async def get_batch_results(batch_id: str):
             res = await session.execute(query)
             rows = res.all()
             
+            from core.storage import generate_presigned_download_url
+            
             results_data = []
             for result, student in rows:
+                signed_urls = {}
+                if result.paper_images_urls:
+                    for page_key, url in result.paper_images_urls.items():
+                        signed_urls[page_key] = generate_presigned_download_url(url)
+                        
                 results_data.append({
                     "id": str(result.id),
                     "student_id": str(result.student_id) if result.student_id else None,
@@ -353,7 +360,7 @@ async def get_batch_results(batch_id: str):
                     "total_score": result.total_score,
                     "ai_remarks": result.ai_remarks,
                     "needs_manual_review": result.needs_manual_review,
-                    "paper_images_urls": result.paper_images_urls,
+                    "paper_images_urls": signed_urls,
                     "raw_extracted_html": result.raw_extracted_html
                 })
             return results_data
@@ -478,6 +485,123 @@ def get_filename_prefix(filename: str) -> str:
     name = re.sub(r'[\s\-_]+(?:page|pg|p)?[\s\-_]*\d+$', '', name, flags=re.IGNORECASE)
     
     return name.strip()
+
+from core.storage import generate_presigned_upload_urls, verify_objects_exist
+
+class PresignUploadRequest(BaseModel):
+    filenames: List[str]
+
+@app.post("/api/v1/assessment/batch/{batch_id}/presign-upload")
+async def presign_upload(batch_id: str, req: PresignUploadRequest):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+        
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+            
+    try:
+        urls = generate_presigned_upload_urls(batch_id, req.filenames)
+        return {"upload_urls": urls}
+    except Exception as e:
+        print(f"Error generating presigned URLs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class ConfirmUploadRequest(BaseModel):
+    keys: List[str]
+    is_zip: Optional[bool] = False
+
+@app.post("/api/v1/assessment/batch/{batch_id}/confirm-upload")
+async def confirm_upload(batch_id: str, req: ConfirmUploadRequest):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+        
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+            
+        if not verify_objects_exist(req.keys):
+            raise HTTPException(status_code=400, detail="One or more uploaded files could not be verified in storage.")
+            
+        final_keys = []
+        
+        if req.is_zip and len(req.keys) == 1:
+            zip_key = req.keys[0]
+            from core.storage import get_s3_client, S3_BUCKET_NAME
+            s3 = get_s3_client()
+            
+            # Download ZIP to memory
+            response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=zip_key)
+            zip_bytes = response['Body'].read()
+            
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+                sorted_names = sorted(z.namelist(), key=natural_sort_filename_key)
+                for name in sorted_names:
+                    if name.endswith("/") or os.path.basename(name).startswith("."):
+                        continue
+                        
+                    ext = name.split(".")[-1].lower()
+                    if ext not in ["jpg", "jpeg", "png", "webp"]:
+                        continue
+                        
+                    file_data = z.read(name)
+                    # Upload extracted file back to S3
+                    safe_filename = f"scan_{uuid.uuid4().hex[:8]}.{ext}"
+                    new_key = f"batches/{batch_id}/{safe_filename}"
+                    
+                    s3.put_object(
+                        Bucket=S3_BUCKET_NAME,
+                        Key=new_key,
+                        Body=file_data
+                    )
+                    
+                    # For grouping, we'll try to infer prefix from folder name or file name
+                    parent_dir = os.path.dirname(name).strip()
+                    if parent_dir and parent_dir != "." and parent_dir != "/":
+                        group_name = os.path.basename(parent_dir)
+                    else:
+                        group_name = get_filename_prefix(os.path.basename(name))
+                        
+                    final_keys.append({"key": new_key, "group": group_name or "scan"})
+                    
+            # Delete original ZIP from S3 to save space
+            s3.delete_object(Bucket=S3_BUCKET_NAME, Key=zip_key)
+            
+        else:
+            # Normal direct uploads
+            for key in req.keys:
+                filename = os.path.basename(key)
+                prefix = get_filename_prefix(filename)
+                final_keys.append({"key": key, "group": prefix or "scan"})
+                
+        # Group keys by student
+        groups = {}
+        for item in final_keys:
+            grp = item["group"]
+            if grp not in groups:
+                groups[grp] = []
+            groups[grp].append(item["key"])
+            
+        # Create StudentResult rows with S3 keys
+        for prefix, keys in groups.items():
+            # Ensure naturally sorted within group
+            sorted_group_keys = sorted(keys, key=natural_sort_filename_key)
+            paper_images_urls = {f"page{i+1}": k for i, k in enumerate(sorted_group_keys)}
+            result = StudentResult(
+                batch_id=batch_uuid,
+                paper_images_urls=paper_images_urls,
+                needs_manual_review=False
+            )
+            session.add(result)
+            
+        await session.commit()
+        return {"confirmed": True, "uploaded_count": len(final_keys)}
 
 @app.post("/api/v1/assessment/batch/{batch_id}/upload")
 async def upload_batch_files(batch_id: str, files: List[UploadFile] = File(...)):
@@ -869,34 +993,44 @@ async def process_batch_background(batch_id: str):
                 paper_images_urls = dict(result.paper_images_urls)
             
             try:
-                b64s = []
+                from core.storage import generate_presigned_download_url
+                
+                images = []
                 sorted_keys = sorted(
                     paper_images_urls.keys(),
                     key=natural_sort_page_key
                 )
                 for key in sorted_keys:
                     url = paper_images_urls[key]
-                    filename = url.split("/")[-1]
-                    file_path = Path(BASE_DIR) / "static" / "uploads" / batch_id / filename
-                    if file_path.exists():
-                        with open(file_path, "rb") as f:
-                            b64s.append(base64.b64encode(f.read()).decode('utf-8'))
-                            
-                if not b64s:
+                    if url.startswith("batches/"):
+                        presigned = generate_presigned_download_url(url, expires_in=3600)
+                        images.append({"type": "url", "data": presigned})
+                    else:
+                        filename = url.split("/")[-1]
+                        file_path = Path(BASE_DIR) / "static" / "uploads" / batch_id / filename
+                        if file_path.exists():
+                            with open(file_path, "rb") as f:
+                                images.append({"type": "base64", "data": base64.b64encode(f.read()).decode('utf-8')})
+                                
+                if not images:
                     return
 
-                master_b64s = []
+                master_images = []
                 master_struct_str = ""
                 master_rubric_block = ""
                 if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
                     if batch_obj.master_question_urls:
                         for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
                             m_url = batch_obj.master_question_urls[m_key]
-                            m_filename = m_url.split("/")[-1]
-                            m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id / "master" / m_filename
-                            if m_path.exists():
-                                with open(m_path, "rb") as mf:
-                                    master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
+                            if m_url.startswith("batches/"):
+                                presigned = generate_presigned_download_url(m_url, expires_in=3600)
+                                master_images.append({"type": "url", "data": presigned})
+                            else:
+                                m_filename = m_url.split("/")[-1]
+                                m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id / "master" / m_filename
+                                if m_path.exists():
+                                    with open(m_path, "rb") as mf:
+                                        master_images.append({"type": "base64", "data": base64.b64encode(mf.read()).decode('utf-8')})
                     if batch_obj.master_exam_structure:
                         master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
                         master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
@@ -904,7 +1038,7 @@ async def process_batch_background(batch_id: str):
                 # ── PHASE 1: Multi-Page Unified Vision Document OCR & Context Preservation ──
                 system_prompt = f"""
                 You are a master academic OCR and exam vision engine.
-                You are evaluating a {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
+                You are evaluating a {subject} student exam paper consisting of {len(images)} pages in exact chronological order (Page 1 of {len(images)}, Page 2 of {len(images)}, etc.).
 
                 CRITICAL SECONDARY MARKING RULES:
                 1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
@@ -929,19 +1063,21 @@ async def process_batch_background(batch_id: str):
                 """
 
                 content_payload = []
-                if master_b64s:
+                if master_images:
                     content_payload.append({
                         "type": "text",
-                        "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_b64s)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
+                        "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
                     })
-                    for m_i, m_b64 in enumerate(master_b64s):
-                        content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_b64s)} ---"})
-                        content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m_b64}"}})
+                    for m_i, m_img in enumerate(master_images):
+                        content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
+                        img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+                        content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
-                content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(b64s)} PAGES) ===\n{system_prompt}"})
-                for p_i, b64_img in enumerate(b64s):
-                    content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
-                    content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
+                content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(images)} PAGES) ===\n{system_prompt}"})
+                for p_i, img in enumerate(images):
+                    content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(images)} ---"})
+                    img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
+                    content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
                 doc_data = {"student_name": "", "questions": []}
                 for attempt in range(3):
@@ -1696,34 +1832,44 @@ async def regrade_single_result(result_id: str):
     if not paper_images_urls:
         raise HTTPException(400, "No paper images found for this result")
         
-    b64s = []
+    from core.storage import generate_presigned_download_url
+    
+    images = []
     sorted_keys = sorted(
         paper_images_urls.keys(),
         key=natural_sort_page_key
     )
     for key in sorted_keys:
         url = paper_images_urls[key]
-        filename = url.split("/")[-1]
-        file_path = Path(BASE_DIR) / "static" / "uploads" / batch_id_str / filename
-        if file_path.exists():
-            with open(file_path, "rb") as f:
-                b64s.append(base64.b64encode(f.read()).decode('utf-8'))
+        if url.startswith("batches/"):
+            presigned = generate_presigned_download_url(url, expires_in=3600)
+            images.append({"type": "url", "data": presigned})
+        else:
+            filename = url.split("/")[-1]
+            file_path = Path(BASE_DIR) / "static" / "uploads" / batch_id_str / filename
+            if file_path.exists():
+                with open(file_path, "rb") as f:
+                    images.append({"type": "base64", "data": base64.b64encode(f.read()).decode('utf-8')})
                 
-    if not b64s:
-        raise HTTPException(400, "Image files missing on disk")
+    if not images:
+        raise HTTPException(400, "Image files missing on disk or S3")
         
-    master_b64s = []
+    master_images = []
     master_struct_str = ""
     master_rubric_block = ""
     if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
         if batch_obj.master_question_urls:
             for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
                 m_url = batch_obj.master_question_urls[m_key]
-                m_filename = m_url.split("/")[-1]
-                m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id_str / "master" / m_filename
-                if m_path.exists():
-                    with open(m_path, "rb") as mf:
-                        master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
+                if m_url.startswith("batches/"):
+                    presigned = generate_presigned_download_url(m_url, expires_in=3600)
+                    master_images.append({"type": "url", "data": presigned})
+                else:
+                    m_filename = m_url.split("/")[-1]
+                    m_path = Path(BASE_DIR) / "static" / "uploads" / batch_id_str / "master" / m_filename
+                    if m_path.exists():
+                        with open(m_path, "rb") as mf:
+                            master_images.append({"type": "base64", "data": base64.b64encode(mf.read()).decode('utf-8')})
         if batch_obj.master_exam_structure:
             master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
             master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
@@ -1731,7 +1877,7 @@ async def regrade_single_result(result_id: str):
     # Phase 1: Multi-Page Unified Vision Document OCR & Context Preservation
     system_prompt = f"""
     You are a master academic OCR and exam vision engine.
-    You are evaluating a {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
+    You are evaluating a {subject} student exam paper consisting of {len(images)} pages in exact chronological order (Page 1 of {len(images)}, Page 2 of {len(images)}, etc.).
 
     CRITICAL SECONDARY MARKING RULES:
     1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
@@ -1755,19 +1901,21 @@ async def regrade_single_result(result_id: str):
     """
 
     content_payload = []
-    if master_b64s:
+    if master_images:
         content_payload.append({
             "type": "text",
-            "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_b64s)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
+            "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
         })
-        for m_i, m_b64 in enumerate(master_b64s):
-            content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_b64s)} ---"})
-            content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m_b64}"}})
+        for m_i, m_img in enumerate(master_images):
+            content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
+            img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+            content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
-    content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(b64s)} PAGES) ===\n{system_prompt}"})
-    for p_i, b64_img in enumerate(b64s):
-        content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
-        content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
+    content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(images)} PAGES) ===\n{system_prompt}"})
+    for p_i, img in enumerate(images):
+        content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(images)} ---"})
+        img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
+        content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
     try:
         resp = await client.chat.completions.create(
@@ -1889,13 +2037,26 @@ async def reorder_paper_pages(result_id: str, req: ReorderPagesRequest):
         if not res_obj:
             raise HTTPException(404, "Student result record not found")
 
+        from core.storage import generate_presigned_download_url
+        
         new_dict = {}
         for idx, url in enumerate(req.page_urls):
-            new_dict[f"page_{idx + 1}"] = url
+            # Extract raw key if it's a presigned URL
+            if "?" in url and "batches/" in url:
+                raw_key = "batches/" + url.split("?")[0].split("batches/")[-1]
+            else:
+                raw_key = url
+            new_dict[f"page_{idx + 1}"] = raw_key
 
         res_obj.paper_images_urls = new_dict
         await session.commit()
-        return {"status": "success", "message": "Page sequence updated successfully", "paper_images_urls": new_dict}
+        
+        # Return presigned URLs to frontend
+        signed_urls = {}
+        for k, v in new_dict.items():
+            signed_urls[k] = generate_presigned_download_url(v)
+            
+        return {"status": "success", "message": "Page sequence updated successfully", "paper_images_urls": signed_urls}
 
 
 # ── Score Override Endpoint ──

@@ -458,38 +458,51 @@ async def execute_task(task: BatchTask) -> bool:
             "phase": "Phase 1: Page Extraction"
         })
         
-        b64s = []
+        from core.storage import generate_presigned_download_url
+        
+        images = []
         sorted_keys = sorted(paper_images_urls.keys(), key=natural_sort_page_key)
+        
         for key in sorted_keys:
             url = paper_images_urls[key]
-            filename = url.split("/")[-1]
-            file_path = Path(BASE_DIR) / "static" / "uploads" / b_id / filename
-            if file_path.exists():
-                with open(file_path, "rb") as f:
-                    b64s.append(base64.b64encode(f.read()).decode('utf-8'))
-                    
-        if not b64s:
-            raise ValueError(f"No local image files found for paper {r_id}")
+            if url.startswith("batches/"):
+                # S3 Direct Upload -> URL Handoff
+                presigned = generate_presigned_download_url(url, expires_in=3600)
+                images.append({"type": "url", "data": presigned})
+            else:
+                # Legacy local file -> Base64 fallback
+                filename = url.split("/")[-1]
+                file_path = Path(BASE_DIR) / "static" / "uploads" / b_id / filename
+                if file_path.exists():
+                    with open(file_path, "rb") as f:
+                        images.append({"type": "base64", "data": base64.b64encode(f.read()).decode('utf-8')})
+                        
+        if not images:
+            raise ValueError(f"No valid images found (S3 or local) for paper {r_id}")
 
-        master_b64s = []
+        master_images = []
         master_struct_str = ""
         master_rubric_block = ""
         if batch_obj and (batch_obj.mode == "answer_sheet" or batch_obj.master_question_urls or batch_obj.master_exam_structure):
             if batch_obj.master_question_urls:
                 for m_key in sorted(dict(batch_obj.master_question_urls).keys(), key=natural_sort_page_key):
                     m_url = batch_obj.master_question_urls[m_key]
-                    m_filename = m_url.split("/")[-1]
-                    m_path = Path(BASE_DIR) / "static" / "uploads" / b_id / "master" / m_filename
-                    if m_path.exists():
-                        with open(m_path, "rb") as mf:
-                            master_b64s.append(base64.b64encode(mf.read()).decode('utf-8'))
+                    if m_url.startswith("batches/"):
+                        presigned = generate_presigned_download_url(m_url, expires_in=3600)
+                        master_images.append({"type": "url", "data": presigned})
+                    else:
+                        m_filename = m_url.split("/")[-1]
+                        m_path = Path(BASE_DIR) / "static" / "uploads" / b_id / "master" / m_filename
+                        if m_path.exists():
+                            with open(m_path, "rb") as mf:
+                                master_images.append({"type": "base64", "data": base64.b64encode(mf.read()).decode('utf-8')})
             if batch_obj.master_exam_structure:
                 master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
                 master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
 
         system_prompt = f"""
         You are a master academic OCR and exam vision engine.
-        You are evaluating a {subject} student exam paper consisting of {len(b64s)} pages in exact chronological order (Page 1 of {len(b64s)}, Page 2 of {len(b64s)}, etc.).
+        You are evaluating a {subject} student exam paper consisting of {len(images)} pages in exact chronological order (Page 1 of {len(images)}, Page 2 of {len(images)}, etc.).
 
         CRITICAL SECONDARY MARKING RULES:
         1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
@@ -513,19 +526,21 @@ async def execute_task(task: BatchTask) -> bool:
         """
 
         content_payload = []
-        if master_b64s:
+        if master_images:
             content_payload.append({
                 "type": "text",
-                "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_b64s)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions and max marks:"
+                "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions and max marks:"
             })
-            for m_i, m_b64 in enumerate(master_b64s):
-                content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_b64s)} ---"})
-                content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{m_b64}"}})
+            for m_i, m_img in enumerate(master_images):
+                content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
+                img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+                content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
-        content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(b64s)} PAGES) ===\n{system_prompt}"})
-        for p_i, b64_img in enumerate(b64s):
-            content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(b64s)} ---"})
-            content_payload.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_img}"}})
+        content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(images)} PAGES) ===\n{system_prompt}"})
+        for p_i, img in enumerate(images):
+            content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(images)} ---"})
+            img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
+            content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
         doc_data = {"student_name": "", "questions": []}
         for attempt in range(3):

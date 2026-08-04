@@ -30,17 +30,22 @@ export default function AssessmentView({
   const [subject, setSubject] = useState(globalSubject || "Physics");
   const [configLocked, setConfigLocked] = useState(true);
   const [dragActive, setDragActive] = useState(false);
-  const [scannedPages, setScannedPages] = useState<{file: File, url: string}[]>([]);
+  const [scannedPages, setScannedPages] = useState<{ file: File, url: string }[]>([]);
   const [currentExamId, setCurrentExamId] = useState<string>("");
   const [currentExamPageCount, setCurrentExamPageCount] = useState<number>(0);
   const [expectedPageCount, setExpectedPageCount] = useState<number | "">("");
   const [showNextExamPrompt, setShowNextExamPrompt] = useState<boolean>(false);
   const [examLabel, setExamLabel] = useState<string>("");
-  
+
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batchStatus, setBatchStatus] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompilingPdf, setIsCompilingPdf] = useState(false);
+  
+  // Real-time Upload Progress State
+  const [uploadProgressText, setUploadProgressText] = useState<string>("");
+  const [uploadProgressPercent, setUploadProgressPercent] = useState<number>(0);
+
 
   const [batchMode, setBatchMode] = useState<"worksheet" | "answer_sheet" | "hybrid">("hybrid");
   const [masterQuestionFiles, setMasterQuestionFiles] = useState<File[]>([]);
@@ -48,12 +53,12 @@ export default function AssessmentView({
   // Scanned Thumbnail Full Preview Modal States
   const [previewModalUrl, setPreviewModalUrl] = useState<string | null>(null);
   const [previewModalTitle, setPreviewModalTitle] = useState<string>("");
-  
+
   const [apiConfig, setApiConfig] = useState<any>({ subjects: [] });
 
   // 3-Mode Upload States
   const [uploadMode, setUploadMode] = useState<"camera" | "scanner" | "zip">("scanner");
-  
+
   // Camera Device States & Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -87,12 +92,12 @@ export default function AssessmentView({
         setTenants(data);
         if (data.length > 0) setSelectedTenant(data[0].id);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => setApiConfig(data))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -104,7 +109,7 @@ export default function AssessmentView({
           if (data.length > 0) setSelectedGroup(data[0].id);
           else setSelectedGroup("");
         })
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [selectedTenant]);
 
@@ -124,15 +129,15 @@ export default function AssessmentView({
     if (isPrimary) {
       // Primary classes (P.1 - P.7): strictly exclude secondary subjects
       const secondaryOnly = [
-        "biology", "chemistry", "physics", "commerce", "entrepreneurship", "sub-math", 
-        "sub math", "general paper", "geography", "history", "accounting", "economics", 
+        "biology", "chemistry", "physics", "commerce", "entrepreneurship", "sub-math",
+        "sub math", "general paper", "geography", "history", "accounting", "economics",
         "agriculture", "computer studies", "literature"
       ];
       if (secondaryOnly.some(sec => sub === sec || sub.includes(sec))) return false;
 
       const primarySubjects = [
-        "mathematics", "math", "integrated science", "science", "english", 
-        "social studies with religious education", "social studies", "sst", 
+        "mathematics", "math", "integrated science", "science", "english",
+        "social studies with religious education", "social studies", "sst",
         "religious education", "re", "reading", "luganda", "physical education", "art and craft"
       ];
       return primarySubjects.some(ps => sub.includes(ps) || ps.includes(sub));
@@ -154,16 +159,16 @@ export default function AssessmentView({
 
   // Default fallback lists if API config returns empty
   const defaultPrimarySubjects = [
-    "Mathematics", "English", "Integrated Science", 
+    "Mathematics", "English", "Integrated Science",
     "Social Studies with Religious Education", "Luganda", "Art and Craft", "Physical Education"
   ];
   const defaultSecondarySubjects = [
-    "Mathematics", "English Language", "Biology", "Chemistry", "Physics", 
-    "Geography", "History", "Commerce", "Entrepreneurship Education", 
+    "Mathematics", "English Language", "Biology", "Chemistry", "Physics",
+    "Geography", "History", "Commerce", "Entrepreneurship Education",
     "Agriculture", "Computer Studies", "Sub-Math", "General Paper", "Luganda", "Literature in English"
   ];
   const defaultNurserySubjects = [
-    "Learning Area 1 (Language Development)", "Learning Area 2 (Mathematical Concepts)", 
+    "Learning Area 1 (Language Development)", "Learning Area 2 (Mathematical Concepts)",
     "Learning Area 3 (Expressive Arts)", "Learning Area 4 (Environment)", "Learning Area 5 (Health & Physical)"
   ];
 
@@ -175,8 +180,8 @@ export default function AssessmentView({
     return defaultSecondarySubjects;
   };
 
-  const rawSubjects = apiConfig.subjects && apiConfig.subjects.length > 0 
-    ? apiConfig.subjects 
+  const rawSubjects = apiConfig.subjects && apiConfig.subjects.length > 0
+    ? apiConfig.subjects
     : getFallbackSubjects(selectedLevel);
 
   const subjects = rawSubjects.filter((s: string) => isSubjectForLevel(s, selectedLevel));
@@ -318,13 +323,13 @@ export default function AssessmentView({
 
       let startPageNum = currentExamPageCount;
       let lastPreview = "";
-      
-      const newPages: {file: File, url: string}[] = [];
+
+      const newPages: { file: File, url: string }[] = [];
 
       for (let index = 0; index < imagesList.length; index++) {
         const b64 = imagesList[index];
         if (!b64) continue;
-        
+
         const binary = atob(b64);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -451,7 +456,7 @@ export default function AssessmentView({
             setLiveLogs((prev) => [...prev, { time: timeStr, message: `Batch completed! All results persisted to Gradebook.`, type: "success" }]);
             setIsProcessing(false);
           }
-        } catch (e) {}
+        } catch (e) { }
       };
 
       eventSource.onerror = () => {
@@ -490,7 +495,7 @@ export default function AssessmentView({
               setIsProcessing(false);
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }, 2000);
     }
 
@@ -539,19 +544,19 @@ export default function AssessmentView({
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
-      
+
       const activeDeviceId = deviceId || selectedDeviceId;
       const constraints = {
         video: activeDeviceId ? { deviceId: { exact: activeDeviceId } } : { facingMode: "environment" }
       };
-      
+
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
       setCameraActive(true);
-      
+
       // Enumerate device labels once user grants video permission
       enumerateCameraDevices();
     } catch (e: any) {
@@ -586,7 +591,7 @@ export default function AssessmentView({
       canvas.toBlob(async (blob) => {
         if (blob) {
           const pageNum = currentExamPageCount + 1;
-          
+
           let eid = currentExamId;
           if (!eid) {
             eid = `exam_${Date.now()}`;
@@ -606,12 +611,12 @@ export default function AssessmentView({
           const prefix = detectedName.trim() || examLabel.trim() || eid;
           const filename = `${prefix}_page_${pageNum}.jpg`;
           const file = new File([blob], filename, { type: "image/jpeg" });
-          
+
           setScannedPages(prev => [...prev, {
             file: file,
             url: URL.createObjectURL(file)
           }]);
-          
+
           setCurrentExamPageCount(pageNum);
 
           if (expectedPageCount && pageNum >= expectedPageCount) {
@@ -771,18 +776,66 @@ export default function AssessmentView({
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-       const newPages = Array.from(e.dataTransfer.files).map((f: any) => ({
-           file: f,
-           url: URL.createObjectURL(f)
-       }));
-       setScannedPages(prev => [...prev, ...newPages]);
-     }
+      const newPages = Array.from(e.dataTransfer.files).map((f: any) => ({
+        file: f,
+        url: URL.createObjectURL(f)
+      }));
+      setScannedPages(prev => [...prev, ...newPages]);
+    }
+  };
+
+  const uploadFileToS3WithXHR = (file: File, url: string, onProgress: (loaded: number) => void): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 3;
+
+      const attemptUpload = () => {
+        attempts++;
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", url, true);
+        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress(e.loaded);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            if (attempts < maxAttempts) {
+              console.warn(`Upload failed with status ${xhr.status}. Retrying... (${attempts}/${maxAttempts})`);
+              setTimeout(attemptUpload, 1000 * attempts);
+            } else {
+              reject(new Error(`Failed to upload file to S3 after ${maxAttempts} attempts. Status: ${xhr.status}`));
+            }
+          }
+        };
+
+        xhr.onerror = () => {
+          if (attempts < maxAttempts) {
+            console.warn(`Upload network error. Retrying... (${attempts}/${maxAttempts})`);
+            setTimeout(attemptUpload, 1000 * attempts);
+          } else {
+            reject(new Error("Network error during S3 upload."));
+          }
+        };
+
+        xhr.send(file);
+      };
+
+      attemptUpload();
+    });
   };
 
   const processBatch = async () => {
     if (scannedPages.length === 0 || !selectedGroup) return;
     setIsProcessing(true);
-    
+    setUploadProgressText("Initializing batch...");
+    setUploadProgressPercent(0);
+
     try {
       const initRes = await authFetch("/api/v1/assessment/batch/create", {
         method: "POST",
@@ -797,8 +850,9 @@ export default function AssessmentView({
       if (!initRes.ok) throw new Error("Failed to init batch");
       const { batch_id } = await initRes.json();
       setBatchId(batch_id);
-      
+
       if (masterQuestionFiles.length > 0) {
+        setUploadProgressText("Uploading master question...");
         const masterData = new FormData();
         for (const mFile of masterQuestionFiles) {
           masterData.append("files", mFile);
@@ -812,21 +866,88 @@ export default function AssessmentView({
           throw new Error(errData.detail || "Failed to upload master question paper");
         }
       }
-      
-      const formData = new FormData();
-      for (const page of scannedPages) {
-         formData.append("files", page.file);
+
+      // We'll upload scanned pages directly to S3
+      const allFiles = scannedPages.map(p => p.file);
+      if (allFiles.length === 0) {
+        // If only master question was uploaded, just start processing
+        setUploadProgressText("Starting grading...");
+        const procRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
+          method: "POST"
+        });
+        if (!procRes.ok) {
+          const errData = await procRes.json().catch(() => ({}));
+          throw new Error(errData.detail || "Failed to start batch processing");
+        }
+        setBatchStatus({ status: "Processing", processed: 0, total: 1, needs_review: 0 });
+        setScannedPages([]);
+        return;
       }
-      
-      const uploadRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/upload`, {
+
+      setUploadProgressText("Requesting upload URLs...");
+      const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: allFiles.map(f => f.name) })
       });
-      if (!uploadRes.ok) {
-        const errData = await uploadRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Failed to upload scanned pages");
-      }
+      if (!presignRes.ok) throw new Error("Failed to get presigned URLs");
+      const { upload_urls } = await presignRes.json();
       
+      const fileMap = new Map(allFiles.map(f => [f.name, f]));
+      
+      // Upload progress tracking
+      const totalBytes = allFiles.reduce((acc, f) => acc + f.size, 0);
+      const loadedBytesPerFile = new Map<string, number>();
+      let uploadedFilesCount = 0;
+
+      const updateProgress = () => {
+        let totalLoaded = 0;
+        loadedBytesPerFile.forEach(loaded => totalLoaded += loaded);
+        const percent = Math.round((totalLoaded / totalBytes) * 100);
+        setUploadProgressPercent(percent);
+        setUploadProgressText(`Uploading ${uploadedFilesCount}/${allFiles.length} pages... (${percent}%)`);
+      };
+
+      // Parallel uploads with concurrency limit
+      const maxConcurrency = 4;
+      const s3Keys: string[] = [];
+      let index = 0;
+
+      const uploadNext = async (): Promise<void> => {
+        if (index >= upload_urls.length) return;
+        const currentIdx = index++;
+        const urlData = upload_urls[currentIdx];
+        const file = fileMap.get(urlData.filename);
+        if (!file) return;
+
+        await uploadFileToS3WithXHR(file, urlData.url, (loaded) => {
+          loadedBytesPerFile.set(urlData.filename, loaded);
+          updateProgress();
+        });
+        
+        uploadedFilesCount++;
+        loadedBytesPerFile.set(urlData.filename, file.size);
+        s3Keys.push(urlData.key);
+        updateProgress();
+        
+        await uploadNext(); // Continue to next file
+      };
+
+      const workers = [];
+      for (let i = 0; i < maxConcurrency; i++) {
+        workers.push(uploadNext());
+      }
+      await Promise.all(workers);
+
+      setUploadProgressText("Confirming uploads...");
+      const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: s3Keys })
+      });
+      if (!confirmRes.ok) throw new Error("Failed to confirm uploads");
+
+      setUploadProgressText("Starting grading...");
       const procRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
         method: "POST"
       });
@@ -834,13 +955,16 @@ export default function AssessmentView({
         const errData = await procRes.json().catch(() => ({}));
         throw new Error(errData.detail || "Failed to start batch processing");
       }
-      
+
       setBatchStatus({ status: "Processing", processed: 0, total: scannedPages.length, needs_review: 0 });
       setScannedPages([]);
     } catch (e: any) {
       console.error(e);
       setIsProcessing(false);
       alert(e.message || "Failed to process batch.");
+    } finally {
+      setUploadProgressText("");
+      setUploadProgressPercent(0);
     }
   };
 
@@ -854,7 +978,9 @@ export default function AssessmentView({
     if (!zipFile || !selectedGroup) return;
     setIsUploadingZip(true);
     setIsProcessing(true);
-    
+    setUploadProgressText("Initializing batch...");
+    setUploadProgressPercent(0);
+
     try {
       const initRes = await authFetch("/api/v1/assessment/batch/create", {
         method: "POST",
@@ -869,28 +995,47 @@ export default function AssessmentView({
       const { batch_id } = await initRes.json();
       setBatchId(batch_id);
 
-      const formData = new FormData();
-      formData.append("file", zipFile);
-
-      const uploadRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/upload-zip`, {
+      setUploadProgressText("Requesting upload URL...");
+      const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
         method: "POST",
-        body: formData
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: [zipFile.name] })
       });
-      if (!uploadRes.ok) throw new Error("Failed to upload zip file");
-      const uploadData = await uploadRes.json();
-      
+      if (!presignRes.ok) throw new Error("Failed to get presigned URL");
+      const { upload_urls } = await presignRes.json();
+      const urlData = upload_urls[0];
+
+      setUploadProgressText(`Uploading ${zipFile.name}... (0%)`);
+      await uploadFileToS3WithXHR(zipFile, urlData.url, (loaded) => {
+        const percent = Math.round((loaded / zipFile.size) * 100);
+        setUploadProgressPercent(percent);
+        setUploadProgressText(`Uploading ZIP archive... (${percent}%)`);
+      });
+
+      setUploadProgressText("Confirming upload and extracting...");
+      const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: [urlData.key], is_zip: true }) // Added is_zip flag
+      });
+      if (!confirmRes.ok) throw new Error("Failed to confirm ZIP upload");
+      const uploadData = await confirmRes.json();
+
+      setUploadProgressText("Starting grading...");
       await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
         method: "POST"
       });
-      
+
       setBatchStatus({ status: "Processing", processed: 0, total: uploadData.uploaded_count || 1, needs_review: 0 });
       setZipFile(null);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setIsProcessing(false);
-      alert("Failed to process ZIP batch. Ensure the ZIP file is valid.");
+      alert(e.message || "Failed to process ZIP batch. Ensure the ZIP file is valid.");
     } finally {
+      setIsProcessing(false);
       setIsUploadingZip(false);
+      setUploadProgressText("");
+      setUploadProgressPercent(0);
     }
   };
 
@@ -903,209 +1048,209 @@ export default function AssessmentView({
     )}>
       <div className={cn(
         "bg-surface z-20 flex flex-col transition-all duration-700 ease-[cubic-bezier(0.4,0,0.2,1)] shadow-none",
-        isSidebarMode 
-          ? "w-full lg:w-[340px] lg:min-w-[340px] border-r border-border-main h-full rounded-none" 
+        isSidebarMode
+          ? "w-full lg:w-[340px] lg:min-w-[340px] border-r border-border-main h-full rounded-none"
           : "w-full max-w-5xl border border-border-main rounded-none mb-8 flex-none"
       )}>
-         <div className={cn("p-6 border-b border-border-main bg-surface-soft", isSidebarMode ? "" : "rounded-none")}>
-             <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-                <Layers className="w-5 h-5 text-brand-600"/> Batch Assessment Engine
-             </h2>
-             <p className="text-xs text-foreground/60 mt-1 font-medium">Enterprise Semantic Grading Pipeline</p>
-         </div>
-         
-         <div className={cn("p-6 flex-1", isSidebarMode ? "space-y-6 overflow-y-auto" : "")}>
-             <div className={cn("transition-all duration-500 overflow-hidden", configLocked ? "max-h-0 opacity-0 mb-0" : "max-h-[1000px] opacity-100")}>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                 
-                 {/* ── COLUMN 1: Paper Specifics ── */}
-                 <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
-                   <div className="flex items-center gap-2 border-b border-border-main pb-2">
-                     <Building2 className="w-4 h-4 text-brand-600" />
-                     <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">1. Paper Specifics</h3>
-                   </div>
-                   
-                   <div>
-                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">School / Tenant</label>
-                     <select 
-                       value={selectedTenant} 
-                       onChange={(e) => setSelectedTenant(e.target.value)}
-                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
-                     >
-                       <option value="" disabled>Select School...</option>
-                       {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                     </select>
-                   </div>
-                   
-                   <div>
-                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Academic Class & Stream</label>
-                     <select 
-                       value={selectedGroup} 
-                       onChange={(e) => setSelectedGroup(e.target.value)}
-                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
-                       disabled={groups.length === 0}
-                     >
-                       <option value="" disabled>Select Class Stream...</option>
-                       {groups.map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
-                     </select>
-                   </div>
+        <div className={cn("p-6 border-b border-border-main bg-surface-soft", isSidebarMode ? "" : "rounded-none")}>
+          <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Layers className="w-5 h-5 text-brand-600" /> Batch Assessment Engine
+          </h2>
+          <p className="text-xs text-foreground/60 mt-1 font-medium">Enterprise Semantic Grading Pipeline</p>
+        </div>
 
-                   <div>
-                     <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Subject</label>
-                     <select 
-                       value={subject} 
-                       onChange={(e) => setSubject(e.target.value)}
-                       className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
-                     >
-                       <option value="" disabled>Select Subject...</option>
-                       {subjects.map((s: string) => <option key={s} value={s}>{s}</option>)}
-                     </select>
-                   </div>
-                 </div>
+        <div className={cn("p-6 flex-1", isSidebarMode ? "space-y-6 overflow-y-auto" : "")}>
+          <div className={cn("transition-all duration-500 overflow-hidden", configLocked ? "max-h-0 opacity-0 mb-0" : "max-h-[1000px] opacity-100")}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-                 {/* ── COLUMN 2: Exam Layout & Marking Format ── */}
-                 <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
-                   <div className="flex items-center gap-2 border-b border-border-main pb-2">
-                     <FileText className="w-4 h-4 text-brand-600" />
-                     <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">2. Exam Layout</h3>
-                   </div>
+              {/* ── COLUMN 1: Paper Specifics ── */}
+              <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
+                <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                  <Building2 className="w-4 h-4 text-brand-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">1. Paper Specifics</h3>
+                </div>
 
-                   <div>
-                     <label className="text-xs font-medium text-foreground/60 mb-2 block">Marking Format</label>
-                     <div className="grid grid-cols-1 gap-2">
-                       <button
-                         type="button"
-                         onClick={() => setBatchMode("hybrid")}
-                         className={cn(
-                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
-                           batchMode === "hybrid"
-                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                         )}
-                       >
-                         <div className="text-xs font-bold text-brand-600">Hybrid Format</div>
-                         <div className="text-[10px] text-foreground/50 mt-0.5">Section A Worksheet + Section B/C Answer Sheet</div>
-                       </button>
+                <div>
+                  <label className="text-xs font-medium text-foreground/60 mb-1.5 block">School / Tenant</label>
+                  <select
+                    value={selectedTenant}
+                    onChange={(e) => setSelectedTenant(e.target.value)}
+                    className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="" disabled>Select School...</option>
+                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
 
-                       <button
-                         type="button"
-                         onClick={() => setBatchMode("answer_sheet")}
-                         className={cn(
-                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
-                           batchMode === "answer_sheet"
-                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                         )}
-                       >
-                         <div className="text-xs font-bold">Answer Sheet Only</div>
-                         <div className="text-[10px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
-                       </button>
+                <div>
+                  <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Academic Class & Stream</label>
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                    disabled={groups.length === 0}
+                  >
+                    <option value="" disabled>Select Class Stream...</option>
+                    {groups.map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
+                  </select>
+                </div>
 
-                       <button
-                         type="button"
-                         onClick={() => setBatchMode("worksheet")}
-                         className={cn(
-                           "p-2.5 border text-left rounded-none transition-all cursor-pointer",
-                           batchMode === "worksheet"
-                             ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
-                             : "border-border-main text-foreground/60 hover:bg-surface-soft"
-                         )}
-                       >
-                         <div className="text-xs font-bold">Worksheet Format</div>
-                         <div className="text-[10px] text-foreground/50 mt-0.5">Questions & answers printed together</div>
-                       </button>
-                     </div>
-                   </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground/60 mb-1.5 block">Subject</label>
+                  <select
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
+                  >
+                    <option value="" disabled>Select Subject...</option>
+                    {subjects.map((s: string) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
 
-                   {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
-                     <div className="p-3 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-2">
-                       <div className="flex justify-between items-center">
-                         <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider block">
-                           Master Paper {batchMode === "hybrid" ? "(Optional)" : "(1-Time)"}
-                         </label>
-                         {masterQuestionFiles.length > 0 && (
-                           <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s)</span>
-                         )}
-                       </div>
-                       <input
-                         type="file"
-                         multiple
-                         accept="image/*,.pdf"
-                         onChange={(e) => {
-                           if (e.target.files) {
-                             setMasterQuestionFiles(Array.from(e.target.files));
-                           }
-                         }}
-                         className="w-full text-xs text-foreground file:mr-2 file:py-1 file:px-2 file:border-0 file:text-[11px] file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
-                       />
-                     </div>
-                   )}
-                 </div>
+              {/* ── COLUMN 2: Exam Layout & Marking Format ── */}
+              <div className="space-y-4 border-b md:border-b-0 md:border-r border-border-main/50 pb-4 md:pb-0 md:pr-6">
+                <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                  <FileText className="w-4 h-4 text-brand-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">2. Exam Layout</h3>
+                </div>
 
-                 {/* ── COLUMN 3: Lock & Proceed ── */}
-                 <div className="space-y-4 flex flex-col justify-between">
-                   <div className="space-y-3">
-                     <div className="flex items-center gap-2 border-b border-border-main pb-2">
-                       <ShieldCheck className="w-4 h-4 text-brand-600" />
-                       <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">3. Lock & Proceed</h3>
-                     </div>
+                <div>
+                  <label className="text-xs font-medium text-foreground/60 mb-2 block">Marking Format</label>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBatchMode("hybrid")}
+                      className={cn(
+                        "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                        batchMode === "hybrid"
+                          ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                          : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                      )}
+                    >
+                      <div className="text-xs font-bold text-brand-600">Hybrid Format</div>
+                      <div className="text-[10px] text-foreground/50 mt-0.5">Section A Worksheet + Section B/C Answer Sheet</div>
+                    </button>
 
-                     <div className="p-3 bg-surface-soft border border-border-main space-y-2 text-xs">
-                       <div className="flex justify-between text-foreground/60">
-                         <span>Class:</span>
-                         <span className="font-bold text-foreground">{groups.find(g => g.id === selectedGroup)?.level || "Not set"}</span>
-                       </div>
-                       <div className="flex justify-between text-foreground/60">
-                         <span>Subject:</span>
-                         <span className="font-bold text-foreground">{subject || "Not set"}</span>
-                       </div>
-                       <div className="flex justify-between text-foreground/60">
-                         <span>Format:</span>
-                         <span className="font-bold text-brand-600 uppercase text-[10px]">{batchMode}</span>
-                       </div>
-                     </div>
-                   </div>
+                    <button
+                      type="button"
+                      onClick={() => setBatchMode("answer_sheet")}
+                      className={cn(
+                        "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                        batchMode === "answer_sheet"
+                          ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                          : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                      )}
+                    >
+                      <div className="text-xs font-bold">Answer Sheet Only</div>
+                      <div className="text-[10px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
+                    </button>
 
-                   <button 
-                     onClick={() => setConfigLocked(true)} 
-                     disabled={!subject || !selectedGroup} 
-                     className="w-full bg-brand-600 text-white text-xs font-bold py-3.5 rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none hover:shadow-none active:scale-[0.98] cursor-pointer uppercase tracking-wider flex items-center justify-center gap-2"
-                   >
-                     Lock Configuration & Proceed <ArrowRight className="w-4 h-4" />
-                   </button>
-                 </div>
+                    <button
+                      type="button"
+                      onClick={() => setBatchMode("worksheet")}
+                      className={cn(
+                        "p-2.5 border text-left rounded-none transition-all cursor-pointer",
+                        batchMode === "worksheet"
+                          ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                          : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                      )}
+                    >
+                      <div className="text-xs font-bold">Worksheet Format</div>
+                      <div className="text-[10px] text-foreground/50 mt-0.5">Questions & answers printed together</div>
+                    </button>
+                  </div>
+                </div>
 
-               </div>
-             </div>
-             
-             {configLocked && (
-               <div className="bg-surface border border-border-main rounded-none p-5 animate-in fade-in slide-in-from-right-4 duration-300 shadow-none font-outfit">
-                 <div className="flex justify-between items-center mb-4 border-b border-border-main/50 pb-3">
-                   <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4"/> Active Context</span>
-                   <button onClick={()=>{setConfigLocked(false); setBatchStatus(null); setBatchId(null); setScannedPages([]); stopCamera();}} className="text-xs font-bold text-foreground/50 hover:text-foreground transition-colors cursor-pointer">Edit</button>
-                 </div>
-                 <div className="grid grid-cols-1 gap-4">
-                   <div className="flex flex-col gap-1">
-                     <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">School / Tenant</span>
-                     <span className="text-sm font-bold text-foreground">{tenants.find(t => t.id === selectedTenant)?.name || "—"}</span>
-                   </div>
-                   <div className="flex flex-col gap-1">
-                     <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Class Stream</span>
-                     <span className="text-sm font-bold text-foreground">
-                       {(() => {
-                         const g = groups.find(x => x.id === selectedGroup);
-                         return g ? `${g.level} - ${g.stream}` : "—";
-                       })()}
-                     </span>
-                   </div>
-                   <div className="flex flex-col gap-1">
-                     <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Subject</span>
-                     <span className="text-sm font-bold text-foreground truncate">{subject}</span>
-                   </div>
-                 </div>
-               </div>
-             )}
-         </div>
+                {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
+                  <div className="p-3 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider block">
+                        Master Paper {batchMode === "hybrid" ? "(Optional)" : "(1-Time)"}
+                      </label>
+                      {masterQuestionFiles.length > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s)</span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setMasterQuestionFiles(Array.from(e.target.files));
+                        }
+                      }}
+                      className="w-full text-xs text-foreground file:mr-2 file:py-1 file:px-2 file:border-0 file:text-[11px] file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* ── COLUMN 3: Lock & Proceed ── */}
+              <div className="space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 border-b border-border-main pb-2">
+                    <ShieldCheck className="w-4 h-4 text-brand-600" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">3. Lock & Proceed</h3>
+                  </div>
+
+                  <div className="p-3 bg-surface-soft border border-border-main space-y-2 text-xs">
+                    <div className="flex justify-between text-foreground/60">
+                      <span>Class:</span>
+                      <span className="font-bold text-foreground">{groups.find(g => g.id === selectedGroup)?.level || "Not set"}</span>
+                    </div>
+                    <div className="flex justify-between text-foreground/60">
+                      <span>Subject:</span>
+                      <span className="font-bold text-foreground">{subject || "Not set"}</span>
+                    </div>
+                    <div className="flex justify-between text-foreground/60">
+                      <span>Format:</span>
+                      <span className="font-bold text-brand-600 uppercase text-[10px]">{batchMode}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setConfigLocked(true)}
+                  disabled={!subject || !selectedGroup}
+                  className="w-full bg-brand-600 text-white text-xs font-bold py-3.5 rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all shadow-none hover:shadow-none active:scale-[0.98] cursor-pointer uppercase tracking-wider flex items-center justify-center gap-2"
+                >
+                  Lock Configuration & Proceed <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          {configLocked && (
+            <div className="bg-surface border border-border-main rounded-none p-5 animate-in fade-in slide-in-from-right-4 duration-300 shadow-none font-outfit">
+              <div className="flex justify-between items-center mb-4 border-b border-border-main/50 pb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Active Context</span>
+                <button onClick={() => { setConfigLocked(false); setBatchStatus(null); setBatchId(null); setScannedPages([]); stopCamera(); }} className="text-xs font-bold text-foreground/50 hover:text-foreground transition-colors cursor-pointer">Edit</button>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">School / Tenant</span>
+                  <span className="text-sm font-bold text-foreground">{tenants.find(t => t.id === selectedTenant)?.name || "—"}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Class Stream</span>
+                  <span className="text-sm font-bold text-foreground">
+                    {(() => {
+                      const g = groups.find(x => x.id === selectedGroup);
+                      return g ? `${g.level} - ${g.stream}` : "—";
+                    })()}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Subject</span>
+                  <span className="text-sm font-bold text-foreground truncate">{subject}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className={cn(
@@ -1115,7 +1260,7 @@ export default function AssessmentView({
         <div className="max-w-5xl mx-auto w-full h-full space-y-6">
           {configLocked && !batchStatus && !isProcessing && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-              
+
               {/* Mode Selectors */}
               <div className="flex gap-2 bg-surface border border-border-main p-1.5 rounded-none w-fit mx-auto shadow-none">
                 <button
@@ -1182,16 +1327,16 @@ export default function AssessmentView({
                           <p className="text-[11px] text-foreground/60 mt-1 leading-relaxed">
                             {scannerPlatform === "windows" ? (
                               <>Windows scanner support requires pywin32. Install with:<br />
-                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">pip install pywin32</code>
-                              <br /><span className="text-[10px] text-foreground/40 mt-1 inline-block">Make sure your scanner is connected and powered on. Windows usually auto-installs scanner drivers.</span>
+                                <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">pip install pywin32</code>
+                                <br /><span className="text-[10px] text-foreground/40 mt-1 inline-block">Make sure your scanner is connected and powered on. Windows usually auto-installs scanner drivers.</span>
                               </>
                             ) : scannerPlatform === "linux" ? (
                               <>SANE scanner drivers are required. Install with:<br />
-                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">sudo apt-get install sane-utils</code>
+                                <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">sudo apt-get install sane-utils</code>
                               </>
                             ) : (
                               <>SANE scanner drivers are required. Install with:<br />
-                              <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">brew install sane-backends</code>
+                                <code className="bg-surface-soft px-2 py-0.5 border border-border-main text-[10px] font-mono mt-1 inline-block">brew install sane-backends</code>
                               </>
                             )}
                           </p>
@@ -1207,7 +1352,7 @@ export default function AssessmentView({
                         <div>
                           <p className="text-xs font-bold text-brand-700">Want Instant Scanning Speed?</p>
                           <p className="text-[11px] text-foreground/70 mt-1 leading-relaxed">
-                            You are currently using the remote scanner fallback which can be slow. 
+                            You are currently using the remote scanner fallback which can be slow.
                             Download the <b>Edulytics Scanner Agent</b> for instant, zero-delay ADF batch scanning.
                           </p>
                           <a href="/ScannerAgent.exe" download className="mt-2 inline-block px-3 py-1 bg-brand-600 text-white text-[10px] font-bold uppercase tracking-wider rounded-none hover:bg-brand-700 transition-colors">
@@ -1338,10 +1483,10 @@ export default function AssessmentView({
                           {isScanning ? (
                             <div className="border border-border-main bg-zinc-950 p-3 shadow-none relative w-48 h-64 overflow-hidden flex flex-col justify-between select-none">
                               <div className="absolute inset-0 bg-gradient-to-b from-zinc-900 via-zinc-950 to-black" />
-                              
+
                               {/* Scanner Bed Glass Grid */}
                               <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.03)_1px,_transparent_1px)] bg-[size:10px_10px]" />
-                              
+
                               {/* Document Paper Container */}
                               <div className="absolute inset-x-4 top-4 bottom-4 bg-zinc-800 border border-zinc-700 shadow-xl overflow-hidden flex items-center justify-center">
                                 {/* Mock Document Content (blurred/sketchy) */}
@@ -1356,7 +1501,7 @@ export default function AssessmentView({
                                 </div>
 
                                 {/* Scanned Reveal Layer */}
-                                <div 
+                                <div
                                   className="absolute inset-0 bg-white transition-all duration-100 ease-out"
                                   style={{
                                     clipPath: `inset(0px 0px ${100 - scanProgress}% 0px)`
@@ -1376,13 +1521,13 @@ export default function AssessmentView({
                               </div>
 
                               {/* Laser Scan Line */}
-                              <div 
+                              <div
                                 className="absolute left-0 right-0 h-0.5 bg-green-400 shadow-[0_0_10px_#4ade80,_0_0_20px_#22c55e] transition-all duration-100 ease-out z-10 animate-pulse"
                                 style={{
                                   top: `${scanProgress}%`
                                 }}
                               />
-                                   {/* Progress bar info overlay */}
+                              {/* Progress bar info overlay */}
                               <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center bg-zinc-950 border border-zinc-800 px-2 py-1 text-[8px] font-mono text-green-400 z-20">
                                 <span>SCANNING...</span>
                                 <span>{Math.round(scanProgress)}%</span>
@@ -1452,7 +1597,7 @@ export default function AssessmentView({
                     {/* File Upload Fallback — always available */}
                     <div className="border-t border-border-main pt-5">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-foreground/40 mb-3">Or upload scanned files manually</p>
-                      <div 
+                      <div
                         onDragEnter={handleDrag}
                         onDragLeave={handleDrag}
                         onDragOver={handleDrag}
@@ -1486,7 +1631,7 @@ export default function AssessmentView({
                         className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer shadow-none"
                       >
                         {videoDevices.map(d => (
-                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.substring(0,5)}`}</option>
+                          <option key={d.deviceId} value={d.deviceId}>{d.label || `Camera ${d.deviceId.substring(0, 5)}`}</option>
                         ))}
                       </select>
                     </div>
@@ -1500,7 +1645,7 @@ export default function AssessmentView({
                         {expectedPageCount ? `${currentExamPageCount} of ${expectedPageCount} Pages` : `${currentExamPageCount} Pages`} Snapped
                       </span>
                     </div>
-                    
+
                     <div className="space-y-1.5">
                       <label className="text-[10px] uppercase font-bold tracking-wider text-foreground/50">Student Name / Prefix (Optional)</label>
                       <input
@@ -1540,7 +1685,7 @@ export default function AssessmentView({
                       <button onClick={() => startCamera()} className="mt-4 px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 transition-all cursor-pointer">Retry Connection</button>
                     </div>
                   )}
-                  
+
                   {cameraActive && (
                     <div className="space-y-4">
                       <div className="flex gap-4 justify-center">
@@ -1624,7 +1769,7 @@ export default function AssessmentView({
                   <p className="text-xs text-foreground/50 max-w-sm mx-auto font-medium leading-relaxed">
                     Upload a single `.zip` archive containing scanned JPEG/PNG exam pages. The backend will extract them automatically.
                   </p>
-                  
+
                   <div className="max-w-md mx-auto">
                     <input
                       type="file"
@@ -1646,17 +1791,17 @@ export default function AssessmentView({
                   )}
                 </div>
               )}
-              
+
               {/* Document Queue Display (Camera/Scanner list) */}
               {uploadMode !== "zip" && scannedPages.length > 0 && (
                 <div className="bg-surface border border-border-main p-6 rounded-none shadow-none mt-8">
                   <div className="flex justify-between items-center mb-6 border-b border-border-main/50 pb-3">
-                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><FileText className="w-4 h-4 text-brand-500"/> Document Queue</h3>
-                     <span className="text-xs font-black bg-brand-500/10 text-brand-600 px-3 py-1 rounded-none">
-                       {getGroupedPages().length} Exam(s) | {scannedPages.length} Pages Pending
-                     </span>
+                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2"><FileText className="w-4 h-4 text-brand-500" /> Document Queue</h3>
+                    <span className="text-xs font-black bg-brand-500/10 text-brand-600 px-3 py-1 rounded-none">
+                      {getGroupedPages().length} Exam(s) | {scannedPages.length} Pages Pending
+                    </span>
                   </div>
-                  
+
                   <div className="space-y-6">
                     {getGroupedPages().map(([groupName, pages]) => (
                       <div key={groupName} className="bg-surface-soft border border-border-main p-4 space-y-3 text-left">
@@ -1674,58 +1819,58 @@ export default function AssessmentView({
                             </span>
                           </div>
                         </div>
-                        
-                        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
-                           {pages.map((page, idx) => {
-                             const globalIndex = scannedPages.findIndex(x => x.file === page.file);
-                             return (
-                               <div 
-                                 key={idx} 
-                                 className="relative min-w-[110px] h-36 bg-surface rounded-none border border-border-main overflow-hidden group cursor-pointer"
-                                 onClick={() => {
-                                   setPreviewModalUrl(page.url);
-                                   setPreviewModalTitle(`${groupName.replace(/_/g, " ")} - Page ${idx + 1}`);
-                                 }}
-                               >
-                                 <img 
-                                   src={page.url} 
-                                   className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-all group-hover:scale-105" 
-                                   alt={`Page ${idx + 1}`} 
-                                 />
-                                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
-                                   <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                                     <button 
-                                       onClick={() => rotatePage(globalIndex)} 
-                                       className="bg-brand-600 text-white p-1 rounded-none hover:bg-brand-700 transition-all shadow-none hover:scale-110 cursor-pointer"
-                                       title="Rotate 90° Clockwise"
-                                     >
-                                       <RotateCw className="w-3 h-3"/>
-                                     </button>
-                                     <button 
-                                       onClick={() => setScannedPages(prev => prev.filter((_, i) => i !== globalIndex))} 
-                                       className="bg-red-500 text-white p-1 rounded-none hover:bg-red-600 transition-all shadow-none hover:scale-110 cursor-pointer"
-                                       title="Delete Page"
-                                     >
-                                       <X className="w-3 h-3"/>
-                                     </button>
-                                   </div>
 
-                                   <div className="flex items-center justify-between text-white text-[10px] font-extrabold tracking-wider uppercase">
-                                     <span>Page {idx + 1}</span>
-                                     <span className="bg-brand-500/80 px-1.5 py-0.5 rounded-none text-[9px] flex items-center gap-1">
-                                       <Eye className="w-3 h-3" /> Preview
-                                     </span>
-                                   </div>
-                                 </div>
-                               </div>
-                             );
-                           })}
+                        <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                          {pages.map((page, idx) => {
+                            const globalIndex = scannedPages.findIndex(x => x.file === page.file);
+                            return (
+                              <div
+                                key={idx}
+                                className="relative min-w-[110px] h-36 bg-surface rounded-none border border-border-main overflow-hidden group cursor-pointer"
+                                onClick={() => {
+                                  setPreviewModalUrl(page.url);
+                                  setPreviewModalTitle(`${groupName.replace(/_/g, " ")} - Page ${idx + 1}`);
+                                }}
+                              >
+                                <img
+                                  src={page.url}
+                                  className="w-full h-full object-cover opacity-85 group-hover:opacity-100 transition-all group-hover:scale-105"
+                                  alt={`Page ${idx + 1}`}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2">
+                                  <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      onClick={() => rotatePage(globalIndex)}
+                                      className="bg-brand-600 text-white p-1 rounded-none hover:bg-brand-700 transition-all shadow-none hover:scale-110 cursor-pointer"
+                                      title="Rotate 90° Clockwise"
+                                    >
+                                      <RotateCw className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => setScannedPages(prev => prev.filter((_, i) => i !== globalIndex))}
+                                      className="bg-red-500 text-white p-1 rounded-none hover:bg-red-600 transition-all shadow-none hover:scale-110 cursor-pointer"
+                                      title="Delete Page"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+
+                                  <div className="flex items-center justify-between text-white text-[10px] font-extrabold tracking-wider uppercase">
+                                    <span>Page {idx + 1}</span>
+                                    <span className="bg-brand-500/80 px-1.5 py-0.5 rounded-none text-[9px] flex items-center gap-1">
+                                      <Eye className="w-3 h-3" /> Preview
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  <button 
+                  <button
                     onClick={processBatch}
                     className="w-full mt-6 py-4 bg-brand-600 text-white text-sm font-black uppercase tracking-wider rounded-none hover:bg-brand-700 shadow-none hover:shadow-none transition-all flex items-center justify-center gap-3 group cursor-pointer"
                   >
@@ -1738,118 +1883,124 @@ export default function AssessmentView({
 
           {(isProcessing || batchStatus) && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 font-outfit">
-               <div className="bg-surface border border-border-main rounded-none p-8 shadow-none">
-                 <div className="flex justify-between items-start mb-6">
-                   <div>
-                     <h3 className="text-xl font-black text-foreground mb-1 flex items-center gap-2">
-                       Batch Progress Engine
-                       {batchStatus?.status === "Processing" && (
-                         <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase bg-brand-500/10 text-brand-600 border border-brand-500/30 animate-pulse">
-                           Live SSE Stream Active
-                         </span>
-                       )}
-                     </h3>
-                     <p className="text-sm text-foreground/60">Batch ID: <span className="font-mono text-xs">{batchId}</span></p>
-                   </div>
-                   <div className={cn(
-                     "px-4 py-1.5 rounded-none text-xs font-black uppercase tracking-wider flex items-center gap-2",
-                     batchStatus?.status === "Completed" ? "bg-emerald-500/10 text-emerald-500" : "bg-brand-500/10 text-brand-500 animate-pulse"
-                   )}>
-                     {batchStatus?.status === "Completed" ? <CheckCircle2 className="w-4 h-4" /> : <Loader2 className="w-4 h-4 animate-spin" />}
-                     {batchStatus?.status || "Processing"}
-                   </div>
-                 </div>
+              <div className="bg-surface border border-border-main rounded-none p-8 shadow-none">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h3 className="text-xl font-black text-foreground mb-1 flex items-center gap-2">
+                      Batch Progress Engine
+                      {batchStatus?.status === "Processing" && !uploadProgressText && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase bg-brand-500/10 text-brand-600 border border-brand-500/30 animate-pulse">
+                          Live SSE Stream Active
+                        </span>
+                      )}
+                      {uploadProgressText && (
+                        <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase bg-sky-500/10 text-sky-600 border border-sky-500/30 animate-pulse">
+                          Direct S3 Upload Active
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-sm text-foreground/60">Batch ID: <span className="font-mono text-xs">{batchId}</span></p>
+                    {uploadProgressText && <p className="text-sm font-bold text-sky-600 mt-2">{uploadProgressText}</p>}
+                  </div>
+                  <div className={cn(
+                    "px-4 py-1.5 rounded-none text-xs font-black uppercase tracking-wider flex items-center gap-2",
+                    batchStatus?.status === "Completed" ? "bg-emerald-500/10 text-emerald-500" : (uploadProgressText ? "bg-sky-500/10 text-sky-500 animate-pulse" : "bg-brand-500/10 text-brand-500 animate-pulse")
+                  )}>
+                    {batchStatus?.status === "Completed" ? <CheckCircle2 className="w-4 h-4" /> : <Loader2 className="w-4 h-4 animate-spin" />}
+                    {uploadProgressText ? "Uploading" : (batchStatus?.status || "Processing")}
+                  </div>
+                </div>
 
-                 <div className="w-full h-3 bg-surface-soft rounded-none overflow-hidden mb-6 shadow-none">
-                   <div 
-                     className="h-full bg-brand-500 transition-all duration-700 ease-out" 
-                     style={{ width: `${batchStatus?.total ? (batchStatus.processed / batchStatus.total) * 100 : 0}%` }}
-                   >
-                     <div className="w-full h-full bg-white/20 animate-[shimmer_2s_infinite]"></div>
-                   </div>
-                 </div>
-                 
-                 <div className="grid grid-cols-3 gap-6 text-center mb-8">
-                   <div className="p-4 rounded-none bg-surface-soft border border-border-main">
-                     <div className="text-3xl font-black text-foreground mb-1">{batchStatus?.processed || 0} / {batchStatus?.total || 0}</div>
-                     <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Graded</div>
-                   </div>
-                   <div className={cn("p-4 rounded-none border transition-colors", batchStatus?.needs_review > 0 ? "bg-amber-500/10 border-amber-500/30" : "bg-surface-soft border-border-main")}>
-                     <div className={cn("text-3xl font-black mb-1", batchStatus?.needs_review > 0 ? "text-amber-500" : "text-foreground")}>{batchStatus?.needs_review || 0}</div>
-                     <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Manual Review</div>
-                   </div>
-                   <div className="p-4 rounded-none bg-surface-soft border border-border-main">
-                     <div className="text-3xl font-black text-foreground mb-1">{batchStatus?.status === "Completed" ? "100%" : "—"}</div>
-                     <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Confidence</div>
-                   </div>
-                 </div>
+                <div className="w-full h-3 bg-surface-soft rounded-none overflow-hidden mb-6 shadow-none">
+                  <div
+                    className={cn("h-full transition-all duration-700 ease-out", uploadProgressText ? "bg-sky-500" : "bg-brand-500")}
+                    style={{ width: uploadProgressText ? `${uploadProgressPercent}%` : `${batchStatus?.total ? (batchStatus.processed / batchStatus.total) * 100 : 0}%` }}
+                  >
+                    <div className="w-full h-full bg-white/20 animate-[shimmer_2s_infinite]"></div>
+                  </div>
+                </div>
 
-                 {/* ── LIVE PER-PAPER PROGRESS CARDS ── */}
-                 {Object.keys(livePapers).length > 0 && (
-                   <div className="mt-8 pt-6 border-t border-border-main">
-                     <h4 className="text-xs font-black uppercase tracking-wider text-foreground/70 mb-4 flex items-center gap-2">
-                       <Layers className="w-4 h-4 text-brand-500" /> Live Paper Micro-Phases
-                     </h4>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
-                       {Object.values(livePapers).map((paper: any, idx: number) => (
-                         <div key={paper.paper_idx || paper.paper_id || `live-paper-${idx}`} className="p-3 border border-border-main bg-surface-soft flex items-center justify-between font-outfit">
-                           <div>
-                             <div className="font-bold text-sm text-foreground flex items-center gap-2">
-                               {paper.student_name}
-                               {paper.status === "completed" && <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 font-black border border-emerald-500/20">DONE</span>}
-                               {paper.status === "grading" && <span className="text-[10px] bg-brand-500/10 text-brand-600 px-1.5 py-0.5 font-black border border-brand-500/20 animate-pulse">GRADING</span>}
-                               {paper.status === "extracting" && <span className="text-[10px] bg-sky-500/10 text-sky-600 px-1.5 py-0.5 font-black border border-sky-500/20 animate-pulse">OCR</span>}
-                             </div>
-                             <div className="text-xs text-foreground/60 mt-0.5 flex items-center gap-2">
-                               <span>{paper.phase}</span>
-                               {paper.questions_found && <span>• {paper.questions_found} Qs Extracted</span>}
-                             </div>
-                           </div>
-                           {paper.score !== undefined && (
-                             <div className="text-right">
-                               <div className="text-sm font-black text-brand-600">{paper.score} / {paper.max_score}</div>
-                               <div className="text-[10px] font-bold text-foreground/50">{paper.questions_count} Qs Graded</div>
-                             </div>
-                           )}
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 )}
+                <div className="grid grid-cols-3 gap-6 text-center mb-8">
+                  <div className="p-4 rounded-none bg-surface-soft border border-border-main">
+                    <div className="text-3xl font-black text-foreground mb-1">{batchStatus?.processed || 0} / {batchStatus?.total || 0}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Graded</div>
+                  </div>
+                  <div className={cn("p-4 rounded-none border transition-colors", batchStatus?.needs_review > 0 ? "bg-amber-500/10 border-amber-500/30" : "bg-surface-soft border-border-main")}>
+                    <div className={cn("text-3xl font-black mb-1", batchStatus?.needs_review > 0 ? "text-amber-500" : "text-foreground")}>{batchStatus?.needs_review || 0}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Manual Review</div>
+                  </div>
+                  <div className="p-4 rounded-none bg-surface-soft border border-border-main">
+                    <div className="text-3xl font-black text-foreground mb-1">{batchStatus?.status === "Completed" ? "100%" : "—"}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-foreground/50">Confidence</div>
+                  </div>
+                </div>
 
-                 {/* ── LIVE STREAM TERMINAL LOG ── */}
-                 {liveLogs.length > 0 && (
-                   <div className="mt-6 pt-6 border-t border-border-main font-mono text-xs">
-                     <div className="flex justify-between items-center mb-2">
-                       <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 flex items-center gap-1.5">
-                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> Live Server Log Feed
-                       </span>
-                       <span className="text-[10px] text-foreground/40">{liveLogs.length} events</span>
-                     </div>
-                     <div className="bg-zinc-950 text-emerald-400 p-4 rounded-none h-40 overflow-y-auto space-y-1.5 shadow-inner">
-                       {liveLogs.map((log, idx) => (
-                         <div key={idx} className="flex gap-2">
-                           <span className="text-zinc-600 select-none">[{log.time}]</span>
-                           <span className={cn(
-                             log.type === "success" && "text-emerald-400 font-bold",
-                             log.type === "error" && "text-rose-400 font-bold",
-                             log.type === "warning" && "text-amber-300",
-                             log.type === "info" && "text-zinc-300"
-                           )}>{log.message}</span>
-                         </div>
-                       ))}
-                     </div>
-                   </div>
-                 )}
-               </div>
+                {/* ── LIVE PER-PAPER PROGRESS CARDS ── */}
+                {Object.keys(livePapers).length > 0 && (
+                  <div className="mt-8 pt-6 border-t border-border-main">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-foreground/70 mb-4 flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-brand-500" /> Live Paper Micro-Phases
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                      {Object.values(livePapers).map((paper: any, idx: number) => (
+                        <div key={paper.paper_idx || paper.paper_id || `live-paper-${idx}`} className="p-3 border border-border-main bg-surface-soft flex items-center justify-between font-outfit">
+                          <div>
+                            <div className="font-bold text-sm text-foreground flex items-center gap-2">
+                              {paper.student_name}
+                              {paper.status === "completed" && <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 font-black border border-emerald-500/20">DONE</span>}
+                              {paper.status === "grading" && <span className="text-[10px] bg-brand-500/10 text-brand-600 px-1.5 py-0.5 font-black border border-brand-500/20 animate-pulse">GRADING</span>}
+                              {paper.status === "extracting" && <span className="text-[10px] bg-sky-500/10 text-sky-600 px-1.5 py-0.5 font-black border border-sky-500/20 animate-pulse">OCR</span>}
+                            </div>
+                            <div className="text-xs text-foreground/60 mt-0.5 flex items-center gap-2">
+                              <span>{paper.phase}</span>
+                              {paper.questions_found && <span>• {paper.questions_found} Qs Extracted</span>}
+                            </div>
+                          </div>
+                          {paper.score !== undefined && (
+                            <div className="text-right">
+                              <div className="text-sm font-black text-brand-600">{paper.score} / {paper.max_score}</div>
+                              <div className="text-[10px] font-bold text-foreground/50">{paper.questions_count} Qs Graded</div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── LIVE STREAM TERMINAL LOG ── */}
+                {liveLogs.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-border-main font-mono text-xs">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" /> Live Server Log Feed
+                      </span>
+                      <span className="text-[10px] text-foreground/40">{liveLogs.length} events</span>
+                    </div>
+                    <div className="bg-zinc-950 text-emerald-400 p-4 rounded-none h-40 overflow-y-auto space-y-1.5 shadow-inner">
+                      {liveLogs.map((log, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <span className="text-zinc-600 select-none">[{log.time}]</span>
+                          <span className={cn(
+                            log.type === "success" && "text-emerald-400 font-bold",
+                            log.type === "error" && "text-rose-400 font-bold",
+                            log.type === "warning" && "text-amber-300",
+                            log.type === "info" && "text-zinc-300"
+                          )}>{log.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {!configLocked && (
             <div className="flex flex-col items-center justify-center text-center opacity-40 pointer-events-none mt-12 pb-12">
-               <FileCheck className="w-20 h-20 mb-5 text-foreground/40" />
-               <h3 className="text-xl font-bold text-foreground">Awaiting Context</h3>
-               <p className="text-sm text-foreground/60 mt-2 max-w-sm">Configure and lock the academic context on the left to initiate the batch grading engine.</p>
+              <FileCheck className="w-20 h-20 mb-5 text-foreground/40" />
+              <h3 className="text-xl font-bold text-foreground">Awaiting Context</h3>
+              <p className="text-sm text-foreground/60 mt-2 max-w-sm">Configure and lock the academic context on the left to initiate the batch grading engine.</p>
             </div>
           )}
         </div>
@@ -1894,11 +2045,11 @@ export default function AssessmentView({
 
       {/* ── SCANNED PAGE FULL-SCREEN PREVIEW MODAL ── */}
       {previewModalUrl && (
-        <div 
+        <div
           className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit"
           onClick={() => setPreviewModalUrl(null)}
         >
-          <div 
+          <div
             className="bg-surface border border-border-main max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl relative"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1908,7 +2059,7 @@ export default function AssessmentView({
                 <FileText className="w-5 h-5 text-brand-500" />
                 <h3 className="font-extrabold text-sm text-foreground uppercase tracking-wider">{previewModalTitle}</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setPreviewModalUrl(null)}
                 className="p-1.5 hover:bg-foreground/10 text-foreground transition-colors cursor-pointer"
               >
@@ -1918,9 +2069,9 @@ export default function AssessmentView({
 
             {/* Modal Image Display */}
             <div className="flex-1 bg-zinc-950 p-6 flex items-center justify-center overflow-auto">
-              <img 
-                src={previewModalUrl} 
-                alt="Scanned Exam Page Preview" 
+              <img
+                src={previewModalUrl}
+                alt="Scanned Exam Page Preview"
                 className="max-h-[75vh] w-auto object-contain border border-zinc-800 shadow-xl"
               />
             </div>
@@ -1928,10 +2079,10 @@ export default function AssessmentView({
             {/* Modal Footer Controls */}
             <div className="flex items-center justify-between px-6 py-3 border-t border-border-main bg-surface-soft text-xs text-foreground/70 font-bold">
               <span>Click outside or press X to return to Document Queue</span>
-              <a 
-                href={previewModalUrl} 
-                download="scanned_exam_page.jpg" 
-                target="_blank" 
+              <a
+                href={previewModalUrl}
+                download="scanned_exam_page.jpg"
+                target="_blank"
                 rel="noreferrer"
                 className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-1.5 rounded-none uppercase text-[11px] font-black tracking-wider flex items-center gap-2 cursor-pointer transition-colors"
               >
