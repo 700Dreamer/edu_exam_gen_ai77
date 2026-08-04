@@ -803,10 +803,14 @@ export default function AssessmentView({
         for (const mFile of masterQuestionFiles) {
           masterData.append("files", mFile);
         }
-        await authFetch(`/api/v1/assessment/batch/${batch_id}/upload-master-question`, {
+        const masterRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/upload-master-question`, {
           method: "POST",
           body: masterData
         });
+        if (!masterRes.ok) {
+          const errData = await masterRes.json().catch(() => ({}));
+          throw new Error(errData.detail || "Failed to upload master question paper");
+        }
       }
       
       const formData = new FormData();
@@ -814,21 +818,29 @@ export default function AssessmentView({
          formData.append("files", page.file);
       }
       
-      await authFetch(`/api/v1/assessment/batch/${batch_id}/upload`, {
+      const uploadRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/upload`, {
         method: "POST",
         body: formData,
       });
+      if (!uploadRes.ok) {
+        const errData = await uploadRes.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to upload scanned pages");
+      }
       
-      await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
+      const procRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
         method: "POST"
       });
+      if (!procRes.ok) {
+        const errData = await procRes.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to start batch processing");
+      }
       
       setBatchStatus({ status: "Processing", processed: 0, total: scannedPages.length, needs_review: 0 });
       setScannedPages([]);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       setIsProcessing(false);
-      alert("Failed to process batch.");
+      alert(e.message || "Failed to process batch.");
     }
   };
 

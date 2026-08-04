@@ -379,6 +379,16 @@ async def create_batch(req: BatchCreateRequest):
 
 @app.post("/api/v1/assessment/batch/{batch_id}/upload-master-question")
 async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = File(...)):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail=f"Assessment batch {batch_id} not found")
+
     out_dir = Path(BASE_DIR) / "static" / "uploads" / batch_id / "master"
     out_dir.mkdir(parents=True, exist_ok=True)
     
@@ -440,7 +450,7 @@ async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = 
             print(f"Master Question Paper AI Ingestion error: {e}")
 
     async with async_session_maker() as session:
-        batch = await session.get(AssessmentBatch, uuid.UUID(batch_id))
+        batch = await session.get(AssessmentBatch, batch_uuid)
         if batch:
             batch.mode = "answer_sheet"
             batch.master_question_urls = master_urls
@@ -471,48 +481,74 @@ def get_filename_prefix(filename: str) -> str:
 
 @app.post("/api/v1/assessment/batch/{batch_id}/upload")
 async def upload_batch_files(batch_id: str, files: List[UploadFile] = File(...)):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail=f"Assessment batch {batch_id} not found")
+
     out_dir = Path(BASE_DIR) / "static" / "uploads" / batch_id
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    # Sort files naturally by filename so page2 comes before page10
-    sorted_files = sorted(files, key=lambda f: natural_sort_filename_key(f.filename or ""))
-    
-    groups = {}
-    for file in sorted_files:
-        prefix = get_filename_prefix(file.filename or "scan")
-        if not prefix:
-            prefix = "scan"
+    try:
+        # Sort files naturally by filename so page2 comes before page10
+        sorted_files = sorted(files, key=lambda f: natural_sort_filename_key(f.filename or ""))
         
-        file_bytes = await file.read()
-        ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
-        if ext[1:] not in ["jpg", "jpeg", "png", "webp"]:
-            ext = ".jpg"
+        groups = {}
+        for file in sorted_files:
+            prefix = get_filename_prefix(file.filename or "scan")
+            if not prefix:
+                prefix = "scan"
             
-        unique_name = f"scan_{uuid.uuid4().hex[:8]}{ext}"
-        file_path = out_dir / unique_name
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
+            file_bytes = await file.read()
+            ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
+            if ext[1:] not in ["jpg", "jpeg", "png", "webp"]:
+                ext = ".jpg"
+                
+            unique_name = f"scan_{uuid.uuid4().hex[:8]}{ext}"
+            file_path = out_dir / unique_name
+            with open(file_path, "wb") as f:
+                f.write(file_bytes)
+                
+            url = f"/static/uploads/{batch_id}/{unique_name}"
+            if prefix not in groups:
+                groups[prefix] = []
+            groups[prefix].append(url)
             
-        url = f"/static/uploads/{batch_id}/{unique_name}"
-        if prefix not in groups:
-            groups[prefix] = []
-        groups[prefix].append(url)
-        
-    async with async_session_maker() as session:
-        for prefix, urls in groups.items():
-            paper_images_urls = {f"page{i+1}": url for i, url in enumerate(urls)}
-            result = StudentResult(
-                batch_id=uuid.UUID(batch_id),
-                paper_images_urls=paper_images_urls,
-                needs_manual_review=False
-            )
-            session.add(result)
-        await session.commit()
-        
-    return {"uploaded_count": len(files)}
+        async with async_session_maker() as session:
+            for prefix, urls in groups.items():
+                paper_images_urls = {f"page{i+1}": url for i, url in enumerate(urls)}
+                result = StudentResult(
+                    batch_id=batch_uuid,
+                    paper_images_urls=paper_images_urls,
+                    needs_manual_review=False
+                )
+                session.add(result)
+            await session.commit()
+            
+        return {"uploaded_count": len(files)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in upload_batch_files: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process file upload: {str(e)}")
 
 @app.post("/api/v1/assessment/batch/{batch_id}/upload-zip")
 async def upload_batch_zip(batch_id: str, file: UploadFile = File(...)):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail=f"Assessment batch {batch_id} not found")
+
     out_dir = Path(BASE_DIR) / "static" / "uploads" / batch_id
     out_dir.mkdir(parents=True, exist_ok=True)
     
@@ -561,7 +597,7 @@ async def upload_batch_zip(batch_id: str, file: UploadFile = File(...)):
                 for group_name, urls in groups.items():
                     paper_images_urls = {f"page{i+1}": url for i, url in enumerate(urls)}
                     result = StudentResult(
-                        batch_id=uuid.UUID(batch_id),
+                        batch_id=batch_uuid,
                         paper_images_urls=paper_images_urls,
                         needs_manual_review=False
                     )
@@ -569,6 +605,8 @@ async def upload_batch_zip(batch_id: str, file: UploadFile = File(...)):
                 await session.commit()
                 
             return {"uploaded_count": extracted_count}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid zip file: {str(e)}")
 

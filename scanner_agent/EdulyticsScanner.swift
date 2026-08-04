@@ -85,7 +85,15 @@ func parseJSONBody(_ body: String) -> [String: Any] {
 // MARK: - Scanner Manager (ImageCaptureCore)
 
 class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate, ICDeviceDelegate {
+    // Shared instance for device list caching only (never used for scanning)
     static let shared = ScannerManager()
+
+    // Create a fresh instance for each scan to avoid ICA stale-state issues.
+    // ICA's ICDeviceBrowser and ICScannerDevice objects accumulate internal state
+    // that prevents session re-acquisition in a long-lived process.
+    static func newScanInstance() -> ScannerManager {
+        return ScannerManager()
+    }
 
     let browser = ICDeviceBrowser()
     private var discoveredDevices: [ICScannerDevice] = []
@@ -186,7 +194,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
     // -- Scan Execution --
 
     func performScan(deviceName: String?, dpi: Int = 150, mode: String = "Color", paperSize: String = "a4") -> [String: Any] {
-        // Reset scan state
+        // Reset scan state (fresh instance, but belt-and-suspenders)
         self.scanSuccess = false
         self.scanCompleted = false
         self.scanErrorMessage = nil
@@ -202,9 +210,6 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         let outPath = "\(tmpDir)edulytics_scan_\(scanID).jpg"
         self.outputPath = outPath
 
-        // Kill conflicting EPSON background processes
-        killConflictingProcesses()
-
         // Discover devices
         discoveredDevices.removeAll()
         foundFirstDevice = false
@@ -217,13 +222,17 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
                discoveredDevices.contains(where: { $0.name?.contains(targetName) == true }) {
                 break
             } else if foundFirstDevice {
-                let grace = Date().addingTimeInterval(0.1)
+                let grace = Date().addingTimeInterval(0.2)
                 while Date() < grace {
                     RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
                 }
                 break
             }
         }
+
+        // CRITICAL: Do NOT stop the browser before requestOpenSession.
+        // The browser must remain active to hold the device reference valid.
+        // It is stopped after scan completion, mirroring mac_scanner.swift.
 
         guard let scanner = discoveredDevices.first(where: {
             deviceName == nil || $0.name == deviceName || $0.name?.contains(deviceName!) == true
@@ -234,6 +243,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
 
         let actualDeviceID = scanner.name ?? "unknown"
         scanner.delegate = self
+
         fputs("  Requesting session for: \(actualDeviceID)\n", stderr)
         scanner.requestOpenSession()
 
@@ -243,6 +253,7 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
 
+        // Stop browser only after scan is done (mirrors mac_scanner.swift)
         browser.stop()
 
         if !scanSuccess {
@@ -514,19 +525,6 @@ class ScannerManager: NSObject, ICDeviceBrowserDelegate, ICScannerDeviceDelegate
         try? fm.removeItem(at: jobDir)
     }
 
-    private func killConflictingProcesses() {
-        let processNames = ["EPSON Scanner 2", "EEventManager", "Epson Scanner Monitor"]
-        for name in processNames {
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-            task.arguments = ["-f", name]
-            task.standardOutput = FileHandle.nullDevice
-            task.standardError = FileHandle.nullDevice
-            try? task.run()
-            task.waitUntilExit()
-        }
-        Thread.sleep(forTimeInterval: 0.1)
-    }
 }
 
 
@@ -716,34 +714,103 @@ class ScannerHTTPServer {
         let body = bodyParts.count > 1 ? bodyParts[1...].joined(separator: "\r\n\r\n") : ""
         let params = parseJSONBody(body)
 
-        let deviceId = params["device_id"] as? String
+        let deviceId = params["device_id"] as? String ?? ""
         let dpi = params["dpi"] as? Int ?? 150
         let mode = params["mode"] as? String ?? "Color"
 
-        fputs("\n  Scan request: device=\(deviceId ?? "auto") dpi=\(dpi) mode=\(mode)\n", stderr)
+        fputs("\n  Scan request: device=\(deviceId) dpi=\(dpi) mode=\(mode)\n", stderr)
 
-        // Run scan on main thread (ICA requires RunLoop for delegate callbacks)
-        DispatchQueue.main.async {
-            let result = ScannerManager.shared.performScan(
-                deviceName: deviceId,
-                dpi: dpi,
-                mode: mode,
-                paperSize: "a4"
-            )
+        // CRITICAL: Run the scan in a SUBPROCESS.
+        // ICA (ImageCaptureCore) accumulates stale state at the process level.
+        // After one scan, the ICA objects cannot open a new session in the same process.
+        // Spawning a subprocess gives each scan a completely fresh ICA context,
+        // exactly like the proven mac_scanner CLI pattern.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let execPath = ProcessInfo.processInfo.arguments[0]
 
-            let status = (result["status"] as? String) == "success" ? 200 : 500
-            logRequest("POST", "/scan", status)
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: execPath)
+            task.arguments = [
+                "--scan-subprocess",
+                "--device", deviceId,
+                "--dpi", String(dpi),
+                "--mode", mode,
+            ]
 
-            // Log error details to terminal
-            if status == 500 {
-                let errMsg = result["message"] as? String ?? "unknown error"
-                fputs("  [ERROR] Scan failed: \(errMsg)\n", stderr)
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            task.standardOutput = stdoutPipe
+            task.standardError = stderrPipe
+
+            do {
+                try task.run()
+            } catch {
+                let errJson = jsonString(["status": "error", "message": "Failed to launch scan subprocess: \(error.localizedDescription)"])
+                logRequest("POST", "/scan", 500)
+                fputs("  [ERROR] Subprocess launch failed: \(error.localizedDescription)\n", stderr)
+                self.sendResponse(connection: connection, status: 500, body: errJson, origin: origin)
+                return
             }
 
-            let json = jsonString(result)
-            self.sendResponse(connection: connection, status: status, body: json, origin: origin)
+            // CRITICAL: Read both pipes concurrently BEFORE calling waitUntilExit.
+            // If we call waitUntilExit first, the subprocess blocks writing to stdout
+            // when the OS pipe buffer fills (~64KB). With 10 pages of base64 JPEG
+            // (~7MB), the buffer fills immediately causing a permanent deadlock.
+            var stdoutData = Data()
+            var stderrData = Data()
+            let group = DispatchGroup()
+
+            group.enter()
+            DispatchQueue.global(qos: .utility).async {
+                stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.enter()
+            DispatchQueue.global(qos: .utility).async {
+                stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+
+            group.wait()
+            task.waitUntilExit()
+
+            // Forward subprocess stderr to our stderr
+            if let stderrStr = String(data: stderrData, encoding: .utf8), !stderrStr.isEmpty {
+                fputs(stderrStr, stderr)
+            }
+
+            // Parse subprocess stdout as JSON result
+            guard let stdoutStr = String(data: stdoutData, encoding: .utf8),
+                  !stdoutStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                let errJson = jsonString(["status": "error", "message": "Scan subprocess produced no output (exit code \(task.terminationStatus))"])
+                logRequest("POST", "/scan", 500)
+                fputs("  [ERROR] Subprocess produced no stdout output\n", stderr)
+                self.sendResponse(connection: connection, status: 500, body: errJson, origin: origin)
+                return
+            }
+
+            // Extract JSON from stdout (skip any non-JSON lines)
+            let trimmed = stdoutStr.trimmingCharacters(in: .whitespacesAndNewlines)
+            let jsonOutput: String
+            if let startIdx = trimmed.firstIndex(of: "{"),
+               let endIdx = trimmed.lastIndex(of: "}") {
+                jsonOutput = String(trimmed[startIdx...endIdx])
+            } else {
+                jsonOutput = trimmed
+            }
+
+            let status = task.terminationStatus == 0 ? 200 : 500
+            logRequest("POST", "/scan", status)
+
+            if status == 500 {
+                fputs("  [ERROR] Scan subprocess exited with code \(task.terminationStatus)\n", stderr)
+            }
+
+            self.sendResponse(connection: connection, status: status, body: jsonOutput, origin: origin)
         }
     }
+
 
     // -- HTTP Response --
 
@@ -843,10 +910,48 @@ signal(SIGTERM) { _ in
 
 // -- Main --
 
+let args = CommandLine.arguments
+
+// ── Subprocess scan mode ──
+// When invoked with --scan-subprocess, run a single scan and exit.
+// This gives each scan a completely fresh ICA process context.
+if args.contains("--scan-subprocess") {
+    let devName = args.firstIndex(of: "--device").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+    let dpiStr = args.firstIndex(of: "--dpi").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+    let mode = args.firstIndex(of: "--mode").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } ?? "Color"
+    let dpi = Int(dpiStr ?? "150") ?? 150
+
+    let manager = ScannerManager()
+    let result = manager.performScan(
+        deviceName: devName,
+        dpi: dpi,
+        mode: mode,
+        paperSize: "a4"
+    )
+
+    // Output result as JSON to stdout
+    let json = jsonString(result)
+    print(json)
+
+    let success = (result["status"] as? String) == "success"
+    exit(success ? 0 : 1)
+}
+
+// ── Device list mode (--list) ──
+if args.contains("--list") {
+    let manager = ScannerManager()
+    let devices = manager.getDevices(forceRefresh: true)
+    let json = jsonString(["sane_installed": true, "platform": "macos", "devices": devices])
+    print(json)
+    exit(0)
+}
+
+// ── HTTP Server mode (default) ──
+
 printSplash()
 
 let server = ScannerHTTPServer(port: AGENT_PORT)
 server.start()
 
-// Keep the main RunLoop alive (required for ICA delegate callbacks)
+// Keep the main RunLoop alive (required for ICA delegate callbacks on /devices)
 RunLoop.current.run()
