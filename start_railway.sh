@@ -49,9 +49,10 @@ if [ "$DATA_DIR" != "/app" ]; then
 fi
 # ─────────────────────────────────────────
 
-echo "🚀 Starting FastAPI backend on internal port 8000..."
+echo "Starting FastAPI backend on internal port 8000..."
 # Start the backend in the background. It listens on localhost so it's not exposed externally.
-uvicorn main:app --host 127.0.0.1 --port 8000 &
+# --h11-max-incomplete-event-size: raise from default 16KB to 100MB to handle large file uploads
+uvicorn main:app --host 127.0.0.1 --port 8000 --h11-max-incomplete-event-size 104857600 &
 BACKEND_PID=$!
 
 echo "⏳ Waiting for backend to be ready..."
