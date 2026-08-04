@@ -974,8 +974,8 @@ async def process_batch_background(batch_id: str):
     total_papers = len(result_ids)
     await broadcast_event(batch_id, "batch_started", {"total_papers": total_papers})
 
-    # 2. Worker pool with Semaphore=3 for high-performance disintegrated grading
-    semaphore = asyncio.Semaphore(3)
+    # 2. Worker pool with Semaphore=15 for high-performance disintegrated grading
+    semaphore = asyncio.Semaphore(15)
     
     async def grade_single_paper_disintegrated(r_id, paper_idx: int):
         async with semaphore:
