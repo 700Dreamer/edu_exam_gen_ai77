@@ -89,14 +89,15 @@ export default function AssessmentView({
     authFetch("/api/v1/tenant/list")
       .then(res => res.json())
       .then(data => {
-        setTenants(data);
-        if (data.length > 0) setSelectedTenant(data[0].id);
+        const list = Array.isArray(data) ? data : [];
+        setTenants(list);
+        if (list.length > 0) setSelectedTenant(list[0].id);
       })
-      .catch(() => { });
+      .catch(() => setTenants([]));
 
     authFetch(`${API_BASE}/api/syllabus/config?t=${Date.now()}`)
       .then(res => res.json())
-      .then(data => setApiConfig(data))
+      .then(data => setApiConfig(data && typeof data === "object" ? data : { subjects: [] }))
       .catch(() => { });
   }, []);
 
@@ -105,11 +106,12 @@ export default function AssessmentView({
       authFetch(`/api/v1/tenant/${selectedTenant}/groups`)
         .then(res => res.json())
         .then(data => {
-          setGroups(data);
-          if (data.length > 0) setSelectedGroup(data[0].id);
+          const list = Array.isArray(data) ? data : [];
+          setGroups(list);
+          if (list.length > 0) setSelectedGroup(list[0].id);
           else setSelectedGroup("");
         })
-        .catch(() => { });
+        .catch(() => setGroups([]));
     }
   }, [selectedTenant]);
 
@@ -1078,7 +1080,7 @@ export default function AssessmentView({
                     className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
                   >
                     <option value="" disabled>Select School...</option>
-                    {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    {(Array.isArray(tenants) ? tenants : []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
 
@@ -1088,10 +1090,10 @@ export default function AssessmentView({
                     value={selectedGroup}
                     onChange={(e) => setSelectedGroup(e.target.value)}
                     className="w-full text-xs border border-border-main rounded-none p-2.5 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer"
-                    disabled={groups.length === 0}
+                    disabled={!Array.isArray(groups) || groups.length === 0}
                   >
                     <option value="" disabled>Select Class Stream...</option>
-                    {groups.map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
+                    {(Array.isArray(groups) ? groups : []).map(g => <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>)}
                   </select>
                 </div>
 

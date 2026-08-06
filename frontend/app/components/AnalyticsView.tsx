@@ -160,7 +160,7 @@ export default function AnalyticsView({ theme }: { theme: string }) {
               onChange={e => setSelectedTenant(e.target.value)}
               className="text-xs border border-border-main rounded-none p-2 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
             >
-              {tenants.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {(Array.isArray(tenants) ? tenants : []).map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
           <div className="p-6">

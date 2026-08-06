@@ -24,14 +24,25 @@ export const authFetch = async (url: string, options: RequestInit = {}) => {
     fetchUrl = `${API_BASE}${url}`;
   }
 
-  const response = await window.fetch(fetchUrl, { ...options, headers });
-  if (response.status === 401) {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("edulytics_token");
-      window.dispatchEvent(new Event("edulytics_logout"));
+  try {
+    const response = await window.fetch(fetchUrl, { ...options, headers });
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("edulytics_token");
+        window.dispatchEvent(new Event("edulytics_logout"));
+      }
     }
+    return response;
+  } catch (error) {
+    console.warn(`[authFetch] Network error reaching ${fetchUrl}:`, error);
+    return new Response(
+      JSON.stringify({
+        error: "Backend server unreachable. Ensure API backend on port 8000 is active.",
+        insights: "<p class='text-xs text-red-500 italic'>Backend server unreachable. Ensure API backend on port 8000 is running and try again.</p>"
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } }
+    );
   }
-  return response;
 };
 
 export type Page = "onboarding" | "roster" | "assessment" | "gradebook" | "analytics";

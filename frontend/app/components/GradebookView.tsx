@@ -749,13 +749,17 @@ export default function GradebookView({ theme }: { theme: string }) {
       if (force) setInsights("");
       const url = `/api/v1/analytics/batch-insights/${batchId}${force ? '?force_regenerate=true' : ''}`;
       authFetch(url)
-        .then(res => res.json())
-        .then(data => {
-          setInsights(data.insights || "");
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) {
+            setInsights(data.insights || "<p class='text-xs text-red-500 italic'>Failed to load insights. Click Generate Insights to attempt again.</p>");
+          } else {
+            setInsights(data.insights || "");
+          }
         })
         .catch(err => {
           console.error("Failed to fetch batch insights:", err);
-          setInsights("<p class='text-xs text-red-500 italic'>Failed to load insights. Click Retry to attempt again.</p>");
+          setInsights("<p class='text-xs text-red-500 italic'>Failed to load insights. Click Generate Insights to attempt again.</p>");
         })
         .finally(() => {
           setLoadingInsights(false);
