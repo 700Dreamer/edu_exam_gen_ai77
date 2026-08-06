@@ -88,6 +88,8 @@ class StudentResult(Base):
     needs_manual_review: Mapped[bool] = mapped_column(default=False, nullable=False)
     paper_images_urls: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     raw_extracted_html: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    mode: Mapped[Optional[str]] = mapped_column(String(50), default="hybrid", nullable=True)
+    attempted_items: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 class BatchTask(Base):
     """Represents an individual granular task for background batch processing."""
@@ -121,6 +123,14 @@ async def create_db_and_tables():
             pass
         try:
             await conn.execute(text("ALTER TABLE assessment_batch ADD COLUMN master_exam_structure JSON"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE student_result ADD COLUMN mode TEXT DEFAULT 'hybrid'"))
+        except Exception:
+            pass
+        try:
+            await conn.execute(text("ALTER TABLE student_result ADD COLUMN attempted_items JSON"))
         except Exception:
             pass
 

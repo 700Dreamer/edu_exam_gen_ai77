@@ -65,8 +65,9 @@ async def fix_existing_scores():
                     max_pts = float(match.group(2))
                     if max_pts > 0:
                         r.total_score = min(100, max(0, round((pts / max_pts) * 100)))
-                else:
-                    r.total_score = 100
+            # 3. Default legacy StudentResult mode to "hybrid"
+            if not r.mode:
+                r.mode = "hybrid"
 
         await session.commit()
 
@@ -328,6 +329,9 @@ async def list_batches():
                 "subject": batch.subject,
                 "exam_type": batch.exam_type,
                 "status": batch.status,
+                "mode": batch.mode or "worksheet",
+                "master_question_urls": batch.master_question_urls,
+                "master_exam_structure": batch.master_exam_structure,
                 "created_at": batch.created_at.isoformat()
             })
         return batches_data
@@ -337,6 +341,9 @@ async def get_batch_results(batch_id: str):
     try:
         batch_uuid = uuid.UUID(batch_id)
         async with async_session_maker() as session:
+            batch_obj = await session.get(AssessmentBatch, batch_uuid)
+            batch_mode = batch_obj.mode if batch_obj else "hybrid"
+
             query = select(StudentResult, Student).outerjoin(
                 Student, StudentResult.student_id == Student.id
             ).where(StudentResult.batch_id == batch_uuid)
@@ -361,7 +368,9 @@ async def get_batch_results(batch_id: str):
                     "ai_remarks": result.ai_remarks,
                     "needs_manual_review": result.needs_manual_review,
                     "paper_images_urls": signed_urls,
-                    "raw_extracted_html": result.raw_extracted_html
+                    "raw_extracted_html": result.raw_extracted_html,
+                    "mode": result.mode or batch_mode or "hybrid",
+                    "attempted_items": result.attempted_items or []
                 })
             return results_data
     except Exception as e:
@@ -403,20 +412,21 @@ async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = 
     master_urls = {}
     b64s = []
     
+    page_counter = 1
     for idx, file in enumerate(sorted_files):
-        file_bytes = await file.read()
-        ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
-        if ext[1:] not in ["jpg", "jpeg", "png", "webp"]:
-            ext = ".jpg"
-            
-        unique_name = f"master_p{idx+1}_{uuid.uuid4().hex[:6]}{ext}"
-        file_path = out_dir / unique_name
-        with open(file_path, "wb") as f:
-            f.write(file_bytes)
-            
-        url = f"/static/uploads/{batch_id}/master/{unique_name}"
-        master_urls[f"page{idx+1}"] = url
-        b64s.append(base64.b64encode(file_bytes).decode('utf-8'))
+        raw_bytes = await file.read()
+        processed_imgs = process_file_bytes_to_jpeg_images(raw_bytes, file.filename or "")
+        
+        for img_bytes, img_ext in processed_imgs:
+            unique_name = f"master_p{page_counter}_{uuid.uuid4().hex[:6]}{img_ext}"
+            file_path = out_dir / unique_name
+            with open(file_path, "wb") as f:
+                f.write(img_bytes)
+                
+            url = f"/static/uploads/{batch_id}/master/{unique_name}"
+            master_urls[f"page{page_counter}"] = url
+            b64s.append(base64.b64encode(img_bytes).decode('utf-8'))
+            page_counter += 1
 
     # Extract Question Paper & Marking Guide Structure using Vision AI
     structure = {"questions": []}
@@ -424,6 +434,7 @@ async def upload_master_question_paper(batch_id: str, files: List[UploadFile] = 
         system_prompt = """
         You are a master examination question paper indexer.
         Extract all questions, sub-questions, question statements, and max mark allocations from this master exam paper.
+        IMPORTANT: IGNORE any student name, candidate name, or class written on the master question paper header. Treat it purely as a master question paper template.
         
         Return JSON format:
         {
@@ -471,6 +482,46 @@ import re
 def natural_sort_filename_key(filename: str) -> list:
     """Natural sort key helper so 'page2.jpg' comes before 'page10.jpg'."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(filename))]
+
+def process_file_bytes_to_jpeg_images(file_bytes: bytes, filename: str) -> List[tuple]:
+    """
+    Converts raw PDF files or non-standard image uploads into clean JPEG image bytes
+    suitable for OpenAI Vision API (gpt-4o) and web rendering.
+    Returns list of (jpeg_bytes, ".jpg").
+    """
+    ext = os.path.splitext(filename or "")[1].lower()
+    is_pdf = ext == ".pdf" or file_bytes.startswith(b"%PDF")
+    
+    output_images = []
+    if is_pdf:
+        try:
+            import pypdfium2 as pdfium
+            pdf = pdfium.PdfDocument(file_bytes)
+            for i, page in enumerate(pdf):
+                pil_img = page.render(scale=2).to_pil()
+                if pil_img.mode != "RGB":
+                    pil_img = pil_img.convert("RGB")
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=92)
+                output_images.append((buf.getvalue(), ".jpg"))
+        except Exception as e:
+            print(f"Error converting PDF file {filename} with pypdfium2: {e}")
+    else:
+        try:
+            from PIL import Image
+            pil_img = Image.open(io.BytesIO(file_bytes))
+            if pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            buf = io.BytesIO()
+            pil_img.save(buf, format="JPEG", quality=92)
+            output_images.append((buf.getvalue(), ".jpg"))
+        except Exception as e:
+            output_images.append((file_bytes, ".jpg" if ext not in [".jpg", ".jpeg", ".png", ".webp"] else ext))
+            
+    if not output_images:
+        output_images.append((file_bytes, ".jpg"))
+        
+    return output_images
 
 def get_filename_prefix(filename: str) -> str:
     base = os.path.basename(filename)
@@ -596,6 +647,7 @@ async def confirm_upload(batch_id: str, req: ConfirmUploadRequest):
             result = StudentResult(
                 batch_id=batch_uuid,
                 paper_images_urls=paper_images_urls,
+                mode=batch.mode or "hybrid",
                 needs_manual_review=False
             )
             session.add(result)
@@ -629,19 +681,18 @@ async def upload_batch_files(batch_id: str, files: List[UploadFile] = File(...))
                 prefix = "scan"
             
             file_bytes = await file.read()
-            ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
-            if ext[1:] not in ["jpg", "jpeg", "png", "webp"]:
-                ext = ".jpg"
-                
-            unique_name = f"scan_{uuid.uuid4().hex[:8]}{ext}"
-            file_path = out_dir / unique_name
-            with open(file_path, "wb") as f:
-                f.write(file_bytes)
-                
-            url = f"/static/uploads/{batch_id}/{unique_name}"
-            if prefix not in groups:
-                groups[prefix] = []
-            groups[prefix].append(url)
+            processed_imgs = process_file_bytes_to_jpeg_images(file_bytes, file.filename or "")
+            
+            for img_bytes, img_ext in processed_imgs:
+                unique_name = f"scan_{uuid.uuid4().hex[:8]}{img_ext}"
+                file_path = out_dir / unique_name
+                with open(file_path, "wb") as f:
+                    f.write(img_bytes)
+                    
+                url = f"/static/uploads/{batch_id}/{unique_name}"
+                if prefix not in groups:
+                    groups[prefix] = []
+                groups[prefix].append(url)
             
         async with async_session_maker() as session:
             for prefix, urls in groups.items():
@@ -649,6 +700,7 @@ async def upload_batch_files(batch_id: str, files: List[UploadFile] = File(...))
                 result = StudentResult(
                     batch_id=batch_uuid,
                     paper_images_urls=paper_images_urls,
+                    mode=batch.mode or "hybrid",
                     needs_manual_review=False
                 )
                 session.add(result)
@@ -723,6 +775,7 @@ async def upload_batch_zip(batch_id: str, file: UploadFile = File(...)):
                     result = StudentResult(
                         batch_id=batch_uuid,
                         paper_images_urls=paper_images_urls,
+                        mode=batch.mode or "hybrid",
                         needs_manual_review=False
                     )
                     session.add(result)
@@ -759,6 +812,9 @@ async def process_batch_background(batch_id: str):
         result_ids = res.scalars().all()
 # In-memory event stream subscribers per batch
 batch_subscribers: dict = {}
+
+# Global Vision Semaphore to prevent API gateway rate-limit throttling
+GLOBAL_VISION_SEMAPHORE = asyncio.Semaphore(6)
 
 async def broadcast_event(batch_id: str, event_type: str, data: dict):
     """
@@ -1046,6 +1102,8 @@ async def process_batch_background(batch_id: str):
                 3. HYBRID FORMAT SUPPORT: For Hybrid exams (Section A Worksheet + Section B Answer Sheet), evaluate Section A questions & student answers printed on front pages, and evaluate Section B/C extended answers either referencing the Master Question Paper (if attached) or directly from the student's written pages.
                 4. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
                 5. STUDENT NAME: Extract the student's full name from the cover or page header.
+                
+                CRITICAL INSTRUCTION: DO NOT SKIP ANY QUESTIONS. YOU MUST EXTRACT EVERY SINGLE QUESTION PRESENT ON THE PAPER. DO NOT STOP EARLY, CONTINUE UNTIL THE ABSOLUTE END OF THE EXAM SCRIPT.
 
                 {master_rubric_block}
 
@@ -1062,62 +1120,109 @@ async def process_batch_background(batch_id: str):
                 }}
                 """
 
-                content_payload = []
-                if master_images:
-                    content_payload.append({
-                        "type": "text",
-                        "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions, passages, diagrams, tables, and max marks:"
-                    })
-                    for m_i, m_img in enumerate(master_images):
-                        content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
-                        img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+                # ── PHASE 1: Parallel Page-Chunked Vision Extraction & Deduplicative Merging ──
+                PAGE_CHUNK_SIZE = 4
+                page_chunks = [images[i:i + PAGE_CHUNK_SIZE] for i in range(0, len(images), PAGE_CHUNK_SIZE)]
+                
+                async def extract_page_chunk(pc_idx: int, p_images: list):
+                    start_pg = pc_idx * PAGE_CHUNK_SIZE + 1
+                    end_pg = min(len(images), (pc_idx + 1) * PAGE_CHUNK_SIZE)
+                    
+                    chunk_prompt = f"""
+                    You are a master academic OCR and exam vision engine.
+                    You are evaluating pages {start_pg} to {end_pg} of a {len(images)}-page {subject} student exam script.
+
+                    STRICT EXTRACTION RULES:
+                    1. EXTRACT ALL VISIBLE QUESTIONS AND ANSWERS on pages {start_pg} to {end_pg}.
+                    2. DO NOT SKIP ANY QUESTION OR SUB-PART. Extract every item completely.
+                    3. ALIGNMENT: Match each handwritten answer on the student's answer sheet to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
+                    4. STUDENT NAME: Extract the student's full name ONLY if clearly visible on these pages. IGNORE any name written on the Master Question Paper pages!
+
+                    {master_rubric_block}
+
+                    Return JSON format:
+                    {{
+                      "student_name": "Extracted Student Name or empty string",
+                      "questions": [
+                        {{
+                          "q_number": "1(a)",
+                          "question_text": "Full question statement from Master Question Paper",
+                          "student_answer": "Student written answer..."
+                        }}
+                      ]
+                    }}
+                    """
+                    
+                    content_payload = []
+                    if master_images:
+                        content_payload.append({
+                            "type": "text",
+                            "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions and max marks:"
+                        })
+                        for m_i, m_img in enumerate(master_images):
+                            content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
+                            img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+                            content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
+
+                    content_payload.append({"type": "text", "text": f"\n=== STUDENT SCRIPT PAGES {start_pg} TO {end_pg} OF {len(images)} ===\n{chunk_prompt}"})
+                    for p_i, img in enumerate(p_images):
+                        pg_num = start_pg + p_i
+                        content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {pg_num} OF {len(images)} ---"})
+                        img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
                         content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
-                content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(images)} PAGES) ===\n{system_prompt}"})
-                for p_i, img in enumerate(images):
-                    content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(images)} ---"})
-                    img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
-                    content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
-
-                doc_data = {"student_name": "", "questions": []}
-                for attempt in range(3):
-                    try:
-                        resp = await client.chat.completions.create(
-                            model="gpt-4o",
-                            response_format={"type": "json_object"},
-                            messages=[{"role": "user", "content": content_payload}],
-                            max_tokens=4096
-                        )
-                        doc_data = json.loads(resp.choices[0].message.content)
-                        break
-                    except Exception as e:
-                        print(f"GPT-4o vision extraction attempt {attempt + 1} failed: {e}")
-                        if attempt < 2:
-                            await asyncio.sleep(2 ** (attempt + 1))
-                        else:
+                    async with GLOBAL_VISION_SEMAPHORE:
+                        doc_data = {"student_name": "", "questions": []}
+                        for attempt in range(3):
                             try:
                                 resp = await client.chat.completions.create(
-                                    model="gpt-4o-mini",
+                                    model="gpt-4o-2024-08-06",
+                                    temperature=0.0,
+                                    seed=42,
                                     response_format={"type": "json_object"},
                                     messages=[{"role": "user", "content": content_payload}],
-                                    max_tokens=4096
+                                    max_tokens=16384
                                 )
                                 doc_data = json.loads(resp.choices[0].message.content)
-                            except Exception as e2:
-                                print(f"Fallback extraction error: {e2}")
-                                doc_data = {"student_name": "", "questions": []}
+                                break
+                            except Exception as e:
+                                print(f"GPT-4o vision extraction attempt {attempt + 1} for pages {start_pg}-{end_pg} failed: {e}")
+                                if attempt < 2:
+                                    await asyncio.sleep(2 ** (attempt + 1))
+                        return doc_data
 
-                extracted_name = doc_data.get("student_name", "")
-                all_extracted_questions = doc_data.get("questions", [])
+                chunk_extractions = await asyncio.gather(*[extract_page_chunk(idx, p_chunk) for idx, p_chunk in enumerate(page_chunks)])
 
-                # Ensure question numbers are sorted
-                try:
-                    all_extracted_questions = sorted(
-                        all_extracted_questions,
-                        key=lambda x: int(re.search(r'\d+', str(x.get("q_number", 0))).group() if re.search(r'\d+', str(x.get("q_number", 0))) else 0)
-                    )
-                except Exception:
-                    pass
+                extracted_name = ""
+                merged_questions_map = {}
+
+                for c_data in chunk_extractions:
+                    if not extracted_name and c_data.get("student_name"):
+                        extracted_name = c_data.get("student_name", "").strip()
+                    
+                    raw_qs = c_data.get("questions", [])
+                    for q in raw_qs:
+                        if not isinstance(q, dict):
+                            continue
+                        q_key = normalize_q_key(q.get("q_number", "0"))
+                        q["q_number"] = q_key
+                        
+                        if q_key not in merged_questions_map:
+                            merged_questions_map[q_key] = q
+                        else:
+                            exist = merged_questions_map[q_key]
+                            ans1 = str(exist.get("student_answer", "")).strip()
+                            ans2 = str(q.get("student_answer", "")).strip()
+                            
+                            if ans2 and ans2.lower() not in ans1.lower():
+                                exist["student_answer"] = (ans1 + " " + ans2).strip()
+                            
+                            q_text1 = str(exist.get("question_text", "")).strip()
+                            q_text2 = str(q.get("question_text", "")).strip()
+                            if len(q_text2) > len(q_text1):
+                                exist["question_text"] = q_text2
+
+                all_extracted_questions = sorted(list(merged_questions_map.values()), key=question_sort_tuple)
 
                 await broadcast_event(batch_id, "page_extraction_complete", {
                     "paper_id": str(r_id),
@@ -1129,7 +1234,7 @@ async def process_batch_background(batch_id: str):
 
                 # If no questions extracted via vision, fallback to chunking empty
                 if not all_extracted_questions:
-                    all_extracted_questions = [{"q_number": 1, "question_text": "Full Exam Assessment", "student_answer": "Complete"}]
+                    all_extracted_questions = [{"q_number": "1", "question_text": "Full Exam Assessment", "student_answer": "Complete"}]
 
                 # ── PHASE 2: Parallel Micro-Batch Grading (Text Chunks of 12) ──
                 chunk_size = 12
@@ -1165,18 +1270,22 @@ async def process_batch_background(batch_id: str):
                       ]
                     }}
                     """
-                    try:
-                        resp = await client.chat.completions.create(
-                            model="gpt-4o-mini",
-                            response_format={"type": "json_object"},
-                            messages=[{"role": "user", "content": chunk_prompt}],
-                            max_tokens=4096
-                        )
-                        chunk_res = json.loads(resp.choices[0].message.content)
-                        return chunk_res.get("graded_questions", q_chunk)
-                    except Exception as e:
-                        print(f"Error grading chunk {c_idx+1}: {e}")
-                        return q_chunk
+                    for g_attempt in range(3):
+                        try:
+                            resp = await client.chat.completions.create(
+                                model="gpt-4o-mini",
+                                response_format={"type": "json_object"},
+                                messages=[{"role": "user", "content": chunk_prompt}],
+                                max_tokens=4096
+                            )
+                            chunk_res = json.loads(resp.choices[0].message.content)
+                            if "graded_questions" in chunk_res and isinstance(chunk_res["graded_questions"], list):
+                                return chunk_res["graded_questions"]
+                        except Exception as e:
+                            print(f"Error grading chunk {c_idx+1} (attempt {g_attempt+1}): {e}")
+                            if g_attempt < 2:
+                                await asyncio.sleep(2 ** (g_attempt + 1))
+                    return q_chunk
 
                 chunk_results = await asyncio.gather(*[grade_chunk(i, chunk) for i, chunk in enumerate(question_chunks)])
                 

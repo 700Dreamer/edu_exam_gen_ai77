@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import {
-  Download, Loader2, FileCheck, AlertCircle, CheckCircle2, Trash2, Edit3, RefreshCw, ChevronLeft, ChevronRight
+  Download, Loader2, FileCheck, AlertCircle, CheckCircle2, Trash2, Edit3, RefreshCw, ChevronLeft, ChevronRight,
+  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X
 } from "lucide-react";
 import { cn, authFetch } from "../lib/utils";
 
@@ -14,7 +15,13 @@ export default function GradebookView({ theme }: { theme: string }) {
   const [distribution, setDistribution] = useState<any | null>(null);
 
   const [selectedResult, setSelectedResult] = useState<any | null>(null);
-  const [activeDetailTab, setActiveDetailTab] = useState<"report" | "paper">("report");
+  const [activeDetailTab, setActiveDetailTab] = useState<"inspector" | "report" | "paper">("inspector");
+  const [selectedItemKey, setSelectedItemKey] = useState<string>("all");
+  const [masterPageIndex, setMasterPageIndex] = useState<number>(0);
+  const [showMasterUploadModal, setShowMasterUploadModal] = useState<boolean>(false);
+  const [masterUploadFiles, setMasterUploadFiles] = useState<FileList | null>(null);
+  const [isUploadingMaster, setIsUploadingMaster] = useState<boolean>(false);
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [classStudents, setClassStudents] = useState<any[]>([]);
   const [resolutionStudentId, setResolutionStudentId] = useState("");
@@ -102,6 +109,95 @@ export default function GradebookView({ theme }: { theme: string }) {
       alert("Error initiating re-grading.");
     } finally {
       setIsReGrading(false);
+    }
+  };
+
+  const parseResultQuestions = (html: string) => {
+    if (typeof window === "undefined" || !html) return [];
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, "text/html");
+      const rows = Array.from(doc.querySelectorAll("table tbody tr"));
+
+      return rows.map((tr) => {
+        const tds = Array.from(tr.querySelectorAll("td"));
+        if (tds.length < 5) return null;
+
+        const qNumRaw = tds[0]?.textContent?.trim() || "";
+        const qNum = qNumRaw.replace(/^Q/i, "").trim();
+        const qText = tds[1]?.textContent?.trim() || "";
+        const studentAns = tds[2]?.textContent?.trim() || "";
+        const statusText = tds[3]?.textContent?.trim() || "";
+        const scoreStr = tds[4]?.textContent?.trim() || "0/0";
+        const explanation = tds[5]?.innerHTML?.trim() || tds[5]?.textContent?.trim() || "";
+        const remarks = tds[6]?.textContent?.trim() || "";
+
+        let scoreAwarded = 0;
+        let maxScore = 5;
+        const scoreMatch = scoreStr.match(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+        if (scoreMatch) {
+          scoreAwarded = parseFloat(scoreMatch[1]);
+          maxScore = parseFloat(scoreMatch[2]);
+        }
+
+        return {
+          qNum,
+          qText,
+          studentAns,
+          status: statusText.toUpperCase(),
+          scoreStr,
+          scoreAwarded,
+          maxScore,
+          explanation,
+          remarks
+        };
+      }).filter(Boolean);
+    } catch (e) {
+      console.error("Error parsing result questions:", e);
+      return [];
+    }
+  };
+
+  const handleUploadMasterPaper = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBatch || !masterUploadFiles || masterUploadFiles.length === 0) return;
+    setIsUploadingMaster(true);
+    try {
+      const formData = new FormData();
+      for (let i = 0; i < masterUploadFiles.length; i++) {
+        formData.append("files", masterUploadFiles[i]);
+      }
+      const res = await authFetch(`/api/v1/assessment/batch/${selectedBatch.id}/upload-master-question`, {
+        method: "POST",
+        body: formData
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedBatch((prev: any) => ({
+          ...prev,
+          mode: "answer_sheet",
+          master_question_urls: data.master_urls,
+          master_exam_structure: data.structure
+        }));
+        setBatches((prev: any[]) =>
+          prev.map(b => b.id === selectedBatch.id ? {
+            ...b,
+            mode: "answer_sheet",
+            master_question_urls: data.master_urls,
+            master_exam_structure: data.structure
+          } : b)
+        );
+        setShowMasterUploadModal(false);
+        setMasterUploadFiles(null);
+        alert("Master Question Paper uploaded successfully! Dual-Pane Question Inspector active.");
+      } else {
+        alert("Failed to upload Master Question Paper.");
+      }
+    } catch (err) {
+      console.error("Master upload error:", err);
+      alert("Error uploading Master Question Paper.");
+    } finally {
+      setIsUploadingMaster(false);
     }
   };
 
@@ -878,7 +974,18 @@ export default function GradebookView({ theme }: { theme: string }) {
                       .map(r => (
                       <div
                         key={r.id}
-                        onClick={() => { setSelectedResult(r); setResolutionStudentId(""); setActiveDetailTab("report"); }}
+                        onClick={() => {
+                          setSelectedResult(r);
+                          setResolutionStudentId("");
+                          setSelectedItemKey("all");
+                          setMasterPageIndex(0);
+                          const resMode = r.mode || selectedBatch?.mode || "hybrid";
+                          if (resMode === "answer_sheet") {
+                            setActiveDetailTab("inspector");
+                          } else {
+                            setActiveDetailTab("report");
+                          }
+                        }}
                         className={cn(
                           "p-4 cursor-pointer hover:bg-surface-soft/30 transition-all flex justify-between items-center",
                           selectedResult?.id === r.id ? "bg-brand-50/40 border-l-4 border-brand-600 pl-3" : ""
@@ -947,32 +1054,51 @@ export default function GradebookView({ theme }: { theme: string }) {
                     </div>
 
                     {/* Toggle Tabs (only if not in manual review) */}
-                    {!selectedResult.needs_manual_review && (
-                      <div className="flex border-b border-border-main bg-surface-soft/20 px-6 shrink-0 font-outfit">
-                        <button
-                          onClick={() => setActiveDetailTab("report")}
-                          className={cn(
-                            "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4",
-                            activeDetailTab === "report"
-                              ? "border-brand-600 text-brand-600 font-extrabold"
-                              : "border-transparent text-foreground/50 hover:text-foreground"
+                    {!selectedResult.needs_manual_review && (() => {
+                      const resMode = selectedResult.mode || selectedBatch?.mode || "hybrid";
+                      return (
+                        <div className="flex border-b border-border-main bg-surface-soft/20 px-6 shrink-0 font-outfit">
+                          {resMode === "answer_sheet" && (
+                            <button
+                              onClick={() => setActiveDetailTab("inspector")}
+                              className={cn(
+                                "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4 flex items-center gap-1.5",
+                                activeDetailTab === "inspector"
+                                  ? "border-brand-600 text-brand-600 font-extrabold"
+                                  : "border-transparent text-foreground/50 hover:text-foreground"
+                              )}
+                            >
+                              <BookOpen className="w-3.5 h-3.5" />
+                              Dual Inspector
+                            </button>
                           )}
-                        >
-                          Exam Report
-                        </button>
-                        <button
-                          onClick={() => setActiveDetailTab("paper")}
-                          className={cn(
-                            "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer",
-                            activeDetailTab === "paper"
-                              ? "border-brand-600 text-brand-600 font-extrabold"
-                              : "border-transparent text-foreground/50 hover:text-foreground"
-                          )}
-                        >
-                          Scanned Paper
-                        </button>
-                      </div>
-                    )}
+                          <button
+                            onClick={() => setActiveDetailTab("report")}
+                            className={cn(
+                              "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4 flex items-center gap-1.5",
+                              activeDetailTab === "report"
+                                ? "border-brand-600 text-brand-600 font-extrabold"
+                                : "border-transparent text-foreground/50 hover:text-foreground"
+                            )}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            Exam Report
+                          </button>
+                          <button
+                            onClick={() => setActiveDetailTab("paper")}
+                            className={cn(
+                              "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5",
+                              activeDetailTab === "paper"
+                                ? "border-brand-600 text-brand-600 font-extrabold"
+                                : "border-transparent text-foreground/50 hover:text-foreground"
+                            )}
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                            Scanned Paper
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* Identity Resolution Form vs Regular Output */}
                     {selectedResult.needs_manual_review ? (
@@ -1026,7 +1152,294 @@ export default function GradebookView({ theme }: { theme: string }) {
                     ) : (
                       /* Display Graded scan & AI report based on active detail tab */
                       <div className="flex-1 flex flex-col overflow-hidden">
-                        {activeDetailTab === "paper" ? (
+                        {activeDetailTab === "inspector" ? (
+                          /* Dual-Pane Answer Sheet Inspector View */
+                          <div className="flex-1 flex flex-col overflow-hidden bg-surface font-outfit">
+                            {/* Mode & Master Paper Action Header */}
+                            <div className="px-6 py-2.5 bg-surface-soft/60 border-b border-border-main flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+                              <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-brand-500/10 text-brand-700 border border-brand-500/20">
+                                  Answer Sheet Only Mode
+                                </span>
+                                {selectedBatch?.master_question_urls ? (
+                                  <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 flex items-center gap-1">
+                                    <Check className="w-3 h-3 text-emerald-600" />
+                                    Master Question Paper Attached ({Object.keys(selectedBatch.master_question_urls).length} Pages)
+                                  </span>
+                                ) : (
+                                  <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 border border-amber-500/20 flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                                    No Master Paper Attached
+                                  </span>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => setShowMasterUploadModal(true)}
+                                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-wider rounded-none transition-all flex items-center gap-1.5 cursor-pointer shadow-none"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                {selectedBatch?.master_question_urls ? "Change Master Paper" : "Upload Master Question Paper"}
+                              </button>
+                            </div>
+
+                            {/* Item Navigation Bar & Split Screen */}
+                            {(() => {
+                              const attemptedList: string[] = selectedResult.attempted_items?.items || [];
+                              const rawParsedQs = parseResultQuestions(selectedResult.raw_extracted_html || "");
+                              const parsedQs = attemptedList.length > 0
+                                ? rawParsedQs.filter((q: any) => attemptedList.includes(q.qNum))
+                                : rawParsedQs;
+                              const activeItem = parsedQs.find((q: any) => q.qNum === selectedItemKey) || parsedQs[0];
+
+                              return (
+                                <div className="flex-1 flex flex-col overflow-hidden">
+                                  {parsedQs.length > 0 && (
+                                    <div className="px-6 py-2 bg-surface border-b border-border-main flex items-center gap-2 overflow-x-auto custom-scrollbar shrink-0">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-foreground/40 shrink-0">
+                                        Item Navigator:
+                                      </span>
+                                      <button
+                                        onClick={() => setSelectedItemKey("all")}
+                                        className={cn(
+                                          "px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-none border transition-all cursor-pointer shrink-0",
+                                          selectedItemKey === "all"
+                                            ? "bg-brand-600 text-white border-brand-600"
+                                            : "bg-surface-soft text-foreground/70 border-border-main hover:bg-surface-soft/80"
+                                        )}
+                                      >
+                                        All Items ({parsedQs.length})
+                                      </button>
+                                      {parsedQs.map((q: any) => {
+                                        const isSelected = selectedItemKey === q.qNum;
+                                        const isCorrect = q.status === "CORRECT";
+                                        const isPartial = q.status === "PARTIAL";
+                                        return (
+                                          <button
+                                            key={q.qNum}
+                                            onClick={() => setSelectedItemKey(q.qNum)}
+                                            className={cn(
+                                              "px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-none border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
+                                              isSelected
+                                                ? "bg-brand-600 text-white border-brand-600"
+                                                : "bg-surface text-foreground/80 border-border-main hover:bg-surface-soft"
+                                            )}
+                                          >
+                                            <span>Item {q.qNum}</span>
+                                            <span className={cn(
+                                              "px-1.5 py-0.2 text-[9px] font-black rounded-none",
+                                              isSelected
+                                                ? "bg-white/20 text-white"
+                                                : isCorrect ? "bg-emerald-500/15 text-emerald-600" : isPartial ? "bg-amber-500/15 text-amber-600" : "bg-rose-500/15 text-rose-600"
+                                            )}>
+                                              {q.scoreAwarded}/{q.maxScore}
+                                            </span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {/* Dual-Pane Grid */}
+                                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-border-main">
+                                    {/* LEFT PANE: Master Question Context */}
+                                    <div className="flex flex-col bg-surface-soft/30 overflow-hidden">
+                                      <div className="px-4 py-2.5 bg-surface border-b border-border-main flex justify-between items-center shrink-0">
+                                        <div className="flex items-center gap-2">
+                                          <BookOpen className="w-4 h-4 text-brand-600" />
+                                          <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                                            Master Question Paper Prompt
+                                          </h4>
+                                        </div>
+                                        {selectedBatch?.master_question_urls && (
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-bold text-foreground/50">
+                                              Page {masterPageIndex + 1} of {Object.keys(selectedBatch.master_question_urls).length}
+                                            </span>
+                                            <button
+                                              onClick={() => setMasterPageIndex(prev => Math.max(0, prev - 1))}
+                                              disabled={masterPageIndex === 0}
+                                              className="p-1 text-xs border border-border-main bg-surface disabled:opacity-30 cursor-pointer"
+                                            >
+                                              <ChevronLeft className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              onClick={() => setMasterPageIndex(prev => Math.min(Object.keys(selectedBatch.master_question_urls).length - 1, prev + 1))}
+                                              disabled={masterPageIndex >= Object.keys(selectedBatch.master_question_urls).length - 1}
+                                              className="p-1 text-xs border border-border-main bg-surface disabled:opacity-30 cursor-pointer"
+                                            >
+                                              <ChevronRight className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+                                        {selectedBatch?.master_question_urls ? (
+                                          <div className="space-y-3">
+                                            {(() => {
+                                              const masterKeys = Object.keys(selectedBatch.master_question_urls).sort((a, b) => {
+                                                const numA = parseInt(a.replace(/\D/g, "") || "0");
+                                                const numB = parseInt(b.replace(/\D/g, "") || "0");
+                                                return numA - numB;
+                                              });
+                                              const currentKey = masterKeys[masterPageIndex] || masterKeys[0];
+                                              const currentMasterUrl = selectedBatch.master_question_urls[currentKey];
+
+                                              return (
+                                                <div className="space-y-3">
+                                                  <div className="border border-border-main bg-white shadow-md">
+                                                    <img
+                                                      src={currentMasterUrl}
+                                                      alt={`Master Question Paper Page ${masterPageIndex + 1}`}
+                                                      className="w-full object-contain"
+                                                    />
+                                                  </div>
+                                                  <div className="text-[10px] text-foreground/40 text-center font-mono">
+                                                    Master Question Reference Page {masterPageIndex + 1}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })()}
+                                          </div>
+                                        ) : (
+                                          <div className="space-y-4">
+                                            <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 space-y-1">
+                                              <div className="font-bold flex items-center gap-1.5">
+                                                <AlertCircle className="w-4 h-4 text-amber-600" />
+                                                No Master Question Paper scan uploaded
+                                              </div>
+                                              <p className="text-[11px] text-amber-700/90 leading-relaxed">
+                                                Showing AI-extracted question prompt. Click <strong>Upload Master Question Paper</strong> above to attach master scan.
+                                              </p>
+                                            </div>
+
+                                            {activeItem ? (
+                                              <div className="bg-surface border border-border-main p-4 space-y-3 shadow-sm">
+                                                <div className="flex justify-between items-center border-b border-border-main/50 pb-2">
+                                                  <span className="text-xs font-black uppercase tracking-wider text-brand-600 bg-brand-500/10 px-2.5 py-1 border border-brand-500/20">
+                                                    Question {activeItem.qNum}
+                                                  </span>
+                                                  <span className="text-xs font-extrabold text-foreground/60">
+                                                    {activeItem.maxScore} Marks Allocated
+                                                  </span>
+                                                </div>
+                                                <div className="text-xs font-medium text-foreground leading-relaxed">
+                                                  {activeItem.qText || "Full examination item statement."}
+                                                </div>
+                                              </div>
+                                            ) : (
+                                              <div className="p-8 text-center text-xs text-foreground/40 italic">
+                                                Select an item from the navigator above to inspect question prompt.
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* RIGHT PANE: Full Student Script & Item Rubric Evaluation */}
+                                    <div className="flex flex-col bg-surface overflow-hidden">
+                                      <div className="px-4 py-2.5 bg-surface-soft/60 border-b border-border-main flex justify-between items-center shrink-0">
+                                        <div className="flex items-center gap-2">
+                                          <FileText className="w-4 h-4 text-brand-600" />
+                                          <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                                            Student Script & Item Evaluation
+                                          </h4>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-foreground/50 uppercase">
+                                          {selectedResult.student_name}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
+                                        {/* Active Item Rubric & Feedback Box */}
+                                        {activeItem && selectedItemKey !== "all" && (
+                                          <div className="bg-surface-soft/40 border border-brand-500/30 p-4 space-y-3 shadow-sm">
+                                            <div className="flex justify-between items-center border-b border-border-main/50 pb-2">
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                                                  Item {activeItem.qNum} Evaluation
+                                                </span>
+                                                <span className={cn(
+                                                  "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border",
+                                                  activeItem.status === "CORRECT" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : activeItem.status === "PARTIAL" ? "bg-amber-500/10 text-amber-600 border-amber-500/20" : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                                                )}>
+                                                  {activeItem.status}
+                                                </span>
+                                              </div>
+                                              <span className="text-sm font-black text-brand-600 bg-brand-500/10 px-3 py-1 border border-brand-500/20">
+                                                {activeItem.scoreAwarded} / {activeItem.maxScore} Pts
+                                              </span>
+                                            </div>
+
+                                            <div className="space-y-2 text-xs">
+                                              <div>
+                                                <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Student Response:</span>
+                                                <p className="font-semibold text-foreground bg-surface p-2.5 border border-border-main/60 mt-1 leading-relaxed">
+                                                  {activeItem.studentAns || "—"}
+                                                </p>
+                                              </div>
+
+                                              {activeItem.explanation && (
+                                                <div>
+                                                  <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Marking Justification & Explanation:</span>
+                                                  <div
+                                                    className="text-foreground/80 bg-surface p-2.5 border border-border-main/60 mt-1 leading-relaxed text-xs"
+                                                    dangerouslySetInnerHTML={{ __html: activeItem.explanation }}
+                                                  />
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Full Student Script (All Pages) */}
+                                        <div className="space-y-4">
+                                          <div className="flex justify-between items-center border-b border-border-main pb-2">
+                                            <h5 className="text-xs font-black uppercase tracking-wider text-foreground/60 flex items-center gap-1.5">
+                                              <Layers className="w-3.5 h-3.5 text-brand-600" />
+                                              Full Student Answer Paper ({Object.keys(selectedResult.paper_images_urls || {}).length} Pages)
+                                            </h5>
+                                          </div>
+
+                                          {(() => {
+                                            const paper_images = selectedResult.paper_images_urls || {};
+                                            const sortedEntries = Object.entries(paper_images).sort((a, b) => {
+                                              const numA = parseInt(a[0].replace(/\D/g, "") || "0");
+                                              const numB = parseInt(b[0].replace(/\D/g, "") || "0");
+                                              return numA - numB;
+                                            });
+
+                                            if (sortedEntries.length === 0) {
+                                              return <div className="text-xs text-foreground/40 italic py-6 text-center">No image scans found for this student.</div>;
+                                            }
+
+                                            return sortedEntries.map(([key, url], idx) => (
+                                              <div key={key} className="space-y-1.5">
+                                                <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-wider text-foreground/50 px-1">
+                                                  <span>Student Page {idx + 1} of {sortedEntries.length}</span>
+                                                </div>
+                                                <div className="border border-border-main bg-white shadow-md">
+                                                  <img
+                                                    src={url as string}
+                                                    alt={`Student Answer Script Page ${idx + 1}`}
+                                                    className="w-full object-contain"
+                                                    onError={(e: any) => { e.target.src = `https://via.placeholder.com/600x800?text=Page+${idx + 1}+Offline`; }}
+                                                  />
+                                                </div>
+                                              </div>
+                                            ));
+                                          })()}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        ) : activeDetailTab === "paper" ? (
                           /* Graded scan Image (Full Width) */
                           <div className="flex-1 bg-surface-soft overflow-y-auto p-6 flex flex-col gap-6 items-center custom-scrollbar">
                             {(() => {
@@ -1124,6 +1537,65 @@ export default function GradebookView({ theme }: { theme: string }) {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Master Question Paper Upload Modal */}
+        {showMasterUploadModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-outfit animate-in fade-in duration-200">
+            <div className="bg-surface border border-border-main max-w-lg w-full p-6 space-y-5 shadow-2xl relative text-left">
+              <div className="flex justify-between items-center border-b border-border-main pb-3">
+                <div className="flex items-center gap-2">
+                  <Upload className="w-5 h-5 text-brand-600" />
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-foreground">
+                    Upload Master Question Paper
+                  </h3>
+                </div>
+                <button
+                  onClick={() => { setShowMasterUploadModal(false); setMasterUploadFiles(null); }}
+                  className="text-foreground/40 hover:text-foreground p-1 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleUploadMasterPaper} className="space-y-4">
+                <p className="text-xs text-foreground/75 leading-relaxed">
+                  Select the Master Question Paper image file(s) or PDF for <strong>{selectedBatch?.subject} ({selectedBatch?.level} {selectedBatch?.stream})</strong>.
+                  The AI engine will index all question items and display them side-by-side with student answer scripts.
+                </p>
+
+                <div className="border-2 border-dashed border-border-main p-6 text-center space-y-2 hover:border-brand-500 transition-colors bg-surface-soft/40">
+                  <BookOpen className="w-8 h-8 mx-auto text-brand-600/60" />
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,.pdf"
+                    onChange={(e) => setMasterUploadFiles(e.target.files)}
+                    className="w-full text-xs text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-xs file:font-extrabold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
+                  />
+                  <p className="text-[10px] text-foreground/40 font-mono">Supports PNG, JPG, WEBP or PDF files</p>
+                </div>
+
+                <div className="flex gap-3 justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowMasterUploadModal(false); setMasterUploadFiles(null); }}
+                    className="px-4 py-2 border border-border-main text-xs font-bold text-foreground/70 hover:bg-surface-soft cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!masterUploadFiles || masterUploadFiles.length === 0 || isUploadingMaster}
+                    className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black uppercase tracking-wider disabled:opacity-50 transition-all flex items-center gap-2 cursor-pointer shadow-none"
+                  >
+                    {isUploadingMaster && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {isUploadingMaster ? "Indexing Master Paper..." : "Attach & Index Master Paper"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

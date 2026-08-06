@@ -21,6 +21,9 @@ except ImportError:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Global Vision Semaphore to prevent API gateway rate-limit throttling
+GLOBAL_VISION_SEMAPHORE = asyncio.Semaphore(6)
+
 # ── Redis Connection & PubSub Management ──
 redis_client: Optional[Any] = None
 
@@ -197,6 +200,42 @@ def find_closest_student_match(ocr_name: str, students: list, threshold: float =
 
     return None, best_score
 
+def safe_file_to_base64_jpeg(file_path: Path) -> List[str]:
+    """
+    Safely loads a file from disk, rendering PDF pages or converting non-JPEG images
+    into base64 encoded JPEG strings for OpenAI Vision API.
+    """
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+        if data.startswith(b"%PDF"):
+            import pypdfium2 as pdfium
+            import io
+            pdf = pdfium.PdfDocument(data)
+            results = []
+            for page in pdf:
+                pil_img = page.render(scale=2).to_pil()
+                if pil_img.mode != "RGB":
+                    pil_img = pil_img.convert("RGB")
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=92)
+                results.append(base64.b64encode(buf.getvalue()).decode('utf-8'))
+            return results if results else [base64.b64encode(data).decode('utf-8')]
+        else:
+            try:
+                from PIL import Image
+                import io
+                pil_img = Image.open(io.BytesIO(data))
+                if pil_img.mode != "RGB":
+                    pil_img = pil_img.convert("RGB")
+                buf = io.BytesIO()
+                pil_img.save(buf, format="JPEG", quality=92)
+                return [base64.b64encode(buf.getvalue()).decode('utf-8')]
+            except Exception:
+                return [base64.b64encode(data).decode('utf-8')]
+    except Exception as e:
+        print(f"Error converting file {file_path}: {e}")
+        return []
 
 def generate_html_report_from_json(ai_data: dict, subject: str) -> str:
     """
@@ -474,8 +513,9 @@ async def execute_task(task: BatchTask) -> bool:
                 filename = url.split("/")[-1]
                 file_path = Path(BASE_DIR) / "static" / "uploads" / b_id / filename
                 if file_path.exists():
-                    with open(file_path, "rb") as f:
-                        images.append({"type": "base64", "data": base64.b64encode(f.read()).decode('utf-8')})
+                    b64_list = await asyncio.to_thread(safe_file_to_base64_jpeg, file_path)
+                    for b64_str in b64_list:
+                        images.append({"type": "base64", "data": b64_str})
                         
         if not images:
             raise ValueError(f"No valid images found (S3 or local) for paper {r_id}")
@@ -494,8 +534,9 @@ async def execute_task(task: BatchTask) -> bool:
                         m_filename = m_url.split("/")[-1]
                         m_path = Path(BASE_DIR) / "static" / "uploads" / b_id / "master" / m_filename
                         if m_path.exists():
-                            with open(m_path, "rb") as mf:
-                                master_images.append({"type": "base64", "data": base64.b64encode(mf.read()).decode('utf-8')})
+                            m_b64_list = await asyncio.to_thread(safe_file_to_base64_jpeg, m_path)
+                            for b64_str in m_b64_list:
+                                master_images.append({"type": "base64", "data": b64_str})
             if batch_obj.master_exam_structure:
                 master_struct_str = json.dumps(batch_obj.master_exam_structure, indent=2)
                 master_rubric_block = f"INDEXED MASTER EXAM RUBRIC:\n{master_struct_str}\n"
@@ -508,7 +549,9 @@ async def execute_task(task: BatchTask) -> bool:
         1. REFER TO MASTER QUESTION PAPER: You MUST evaluate the student's handwritten answers by referring directly to the Master Question Paper images and Indexed Exam Rubric provided.
         2. QUESTION ALIGNMENT: Match each handwritten answer on the student's answer sheet to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
         3. MULTI-PAGE CONTINUITY: Read all pages together as one continuous answer booklet!
-        4. STUDENT NAME: Extract the student's full name from the cover or page header.
+        4. STUDENT NAME: Extract the student's full name ONLY from the student script cover or page header. IGNORE any name written on the Master Question Paper pages!
+        
+        CRITICAL INSTRUCTION: DO NOT SKIP ANY QUESTIONS. YOU MUST EXTRACT EVERY SINGLE QUESTION PRESENT ON THE PAPER. DO NOT STOP EARLY, CONTINUE UNTIL THE ABSOLUTE END OF THE EXAM SCRIPT.
 
         {master_rubric_block}
 
@@ -525,62 +568,109 @@ async def execute_task(task: BatchTask) -> bool:
         }}
         """
 
-        content_payload = []
-        if master_images:
-            content_payload.append({
-                "type": "text",
-                "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions and max marks:"
-            })
-            for m_i, m_img in enumerate(master_images):
-                content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
-                img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+        # ── PHASE 1: Parallel Page-Chunked Vision Extraction & Deduplicative Merging ──
+        PAGE_CHUNK_SIZE = 4
+        page_chunks = [images[i:i + PAGE_CHUNK_SIZE] for i in range(0, len(images), PAGE_CHUNK_SIZE)]
+        
+        async def extract_page_chunk(pc_idx: int, p_images: list):
+            start_pg = pc_idx * PAGE_CHUNK_SIZE + 1
+            end_pg = min(len(images), (pc_idx + 1) * PAGE_CHUNK_SIZE)
+            
+            chunk_prompt = f"""
+            You are a master academic OCR and exam vision engine.
+            You are evaluating pages {start_pg} to {end_pg} of a {len(images)}-page {subject} student exam script.
+
+            STRICT EXTRACTION RULES:
+            1. EXTRACT ALL VISIBLE QUESTIONS AND ANSWERS on pages {start_pg} to {end_pg}.
+            2. DO NOT SKIP ANY QUESTION OR SUB-PART. Extract every item completely.
+            3. ALIGNMENT: Match each handwritten answer on the student's answer sheet to the corresponding Master Question statement, diagrams, passages, and max mark allocations.
+            4. STUDENT NAME: Extract the student's full name ONLY if clearly visible on these pages. IGNORE any name written on the Master Question Paper pages!
+
+            {master_rubric_block}
+
+            Return JSON format:
+            {{
+              "student_name": "Extracted Student Name or empty string",
+              "questions": [
+                {{
+                  "q_number": "1(a)",
+                  "question_text": "Full question statement from Master Question Paper",
+                  "student_answer": "Student written answer..."
+                }}
+              ]
+            }}
+            """
+            
+            content_payload = []
+            if master_images:
+                content_payload.append({
+                    "type": "text",
+                    "text": f"=== UNIVERSAL MASTER QUESTION PAPER ({len(master_images)} PAGES) ===\nRefer directly to these Master Question Paper images to verify questions and max marks:"
+                })
+                for m_i, m_img in enumerate(master_images):
+                    content_payload.append({"type": "text", "text": f"\n--- MASTER QUESTION PAPER PAGE {m_i + 1} OF {len(master_images)} ---"})
+                    img_url_payload = m_img["data"] if m_img["type"] == "url" else f"data:image/jpeg;base64,{m_img['data']}"
+                    content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
+
+            content_payload.append({"type": "text", "text": f"\n=== STUDENT SCRIPT PAGES {start_pg} TO {end_pg} OF {len(images)} ===\n{chunk_prompt}"})
+            for p_i, img in enumerate(p_images):
+                pg_num = start_pg + p_i
+                content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {pg_num} OF {len(images)} ---"})
+                img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
                 content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
 
-        content_payload.append({"type": "text", "text": f"\n=== STUDENT ANSWER SCRIPT ({len(images)} PAGES) ===\n{system_prompt}"})
-        for p_i, img in enumerate(images):
-            content_payload.append({"type": "text", "text": f"\n--- STUDENT SCRIPT PAGE {p_i + 1} OF {len(images)} ---"})
-            img_url_payload = img["data"] if img["type"] == "url" else f"data:image/jpeg;base64,{img['data']}"
-            content_payload.append({"type": "image_url", "image_url": {"url": img_url_payload}})
+            async with GLOBAL_VISION_SEMAPHORE:
+                doc_data = {"student_name": "", "questions": []}
+                for attempt in range(3):
+                    try:
+                        resp = await client.chat.completions.create(
+                            model="gpt-4o-2024-08-06",
+                            temperature=0.0,
+                            seed=42,
+                            response_format={"type": "json_object"},
+                            messages=[{"role": "user", "content": content_payload}],
+                            max_tokens=16384
+                        )
+                        doc_data = json.loads(resp.choices[0].message.content)
+                        break
+                    except Exception as e:
+                        print(f"GPT-4o vision extraction attempt {attempt + 1} for pages {start_pg}-{end_pg} failed: {e}")
+                        if attempt < 2:
+                            await asyncio.sleep(2 ** (attempt + 1))
+                return doc_data
 
-        doc_data = {"student_name": "", "questions": []}
-        for attempt in range(3):
-            try:
-                resp = await client.chat.completions.create(
-                    model="gpt-4o",
-                    temperature=0.0,
-                    seed=42,
-                    response_format={"type": "json_object"},
-                    messages=[{"role": "user", "content": content_payload}],
-                    max_tokens=4096
-                )
-                doc_data = json.loads(resp.choices[0].message.content)
-                break
-            except Exception as e:
-                print(f"GPT-4o vision extraction attempt {attempt + 1} failed: {e}")
-                if attempt < 2:
-                    await asyncio.sleep(2 ** (attempt + 1))
-                else:
-                    resp = await client.chat.completions.create(
-                        model="gpt-4o",
-                        temperature=0.0,
-                        seed=42,
-                        response_format={"type": "json_object"},
-                        messages=[{"role": "user", "content": content_payload}],
-                        max_tokens=4096
-                    )
-                    doc_data = json.loads(resp.choices[0].message.content)
+        chunk_extractions = await asyncio.gather(*[extract_page_chunk(idx, p_chunk) for idx, p_chunk in enumerate(page_chunks)])
 
-        extracted_name = doc_data.get("student_name", "")
-        raw_questions = doc_data.get("questions", [])
+        extracted_name = ""
+        merged_questions_map = {}
 
-        # Standardize question keys and sort deterministically
-        all_extracted_questions = []
-        for q in raw_questions:
-            if isinstance(q, dict):
-                q["q_number"] = normalize_q_key(q.get("q_number", "0"))
-                all_extracted_questions.append(q)
+        for c_data in chunk_extractions:
+            if not extracted_name and c_data.get("student_name"):
+                extracted_name = c_data.get("student_name", "").strip()
+            
+            raw_qs = c_data.get("questions", [])
+            for q in raw_qs:
+                if not isinstance(q, dict):
+                    continue
+                q_key = normalize_q_key(q.get("q_number", "0"))
+                q["q_number"] = q_key
                 
-        all_extracted_questions = sorted(all_extracted_questions, key=question_sort_tuple)
+                if q_key not in merged_questions_map:
+                    merged_questions_map[q_key] = q
+                else:
+                    exist = merged_questions_map[q_key]
+                    ans1 = str(exist.get("student_answer", "")).strip()
+                    ans2 = str(q.get("student_answer", "")).strip()
+                    
+                    if ans2 and ans2.lower() not in ans1.lower():
+                        exist["student_answer"] = (ans1 + " " + ans2).strip()
+                    
+                    q_text1 = str(exist.get("question_text", "")).strip()
+                    q_text2 = str(q.get("question_text", "")).strip()
+                    if len(q_text2) > len(q_text1):
+                        exist["question_text"] = q_text2
+
+        all_extracted_questions = sorted(list(merged_questions_map.values()), key=question_sort_tuple)
 
         if not all_extracted_questions:
             all_extracted_questions = [{"q_number": "1", "question_text": "Full Exam Assessment", "student_answer": "Complete"}]
@@ -628,20 +718,24 @@ async def execute_task(task: BatchTask) -> bool:
               ]
             }}
             """
-            try:
-                resp = await client.chat.completions.create(
-                    model="gpt-4o",
-                    temperature=0.0,
-                    seed=42,
-                    response_format={"type": "json_object"},
-                    messages=[{"role": "user", "content": chunk_prompt}],
-                    max_tokens=4096
-                )
-                chunk_res = json.loads(resp.choices[0].message.content)
-                return chunk_res.get("graded_questions", q_chunk)
-            except Exception as e:
-                print(f"Error grading chunk {c_idx+1}: {e}")
-                return q_chunk
+            for g_attempt in range(3):
+                try:
+                    resp = await client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        temperature=0.0,
+                        seed=42,
+                        response_format={"type": "json_object"},
+                        messages=[{"role": "user", "content": chunk_prompt}],
+                        max_tokens=4096
+                    )
+                    chunk_res = json.loads(resp.choices[0].message.content)
+                    if "graded_questions" in chunk_res and isinstance(chunk_res["graded_questions"], list):
+                        return chunk_res["graded_questions"]
+                except Exception as e:
+                    print(f"Error grading chunk {c_idx+1} (attempt {g_attempt+1}): {e}")
+                    if g_attempt < 2:
+                        await asyncio.sleep(2 ** (g_attempt + 1))
+            return q_chunk
 
         chunk_results = await asyncio.gather(*[grade_chunk(i, chunk) for i, chunk in enumerate(question_chunks)])
         
@@ -673,12 +767,21 @@ async def execute_task(task: BatchTask) -> bool:
             matched_student_name = extracted_name
             matched = False
 
+        attempted_item_numbers = [
+            str(q.get("q_number")).strip() for q in graded_all_questions
+            if q.get("q_number") and str(q.get("student_answer", "")).strip() not in ["", "—", "None", "Unattempted"]
+        ]
+        if not attempted_item_numbers:
+            attempted_item_numbers = [str(q.get("q_number")).strip() for q in graded_all_questions if q.get("q_number")]
+
         async with async_session_maker() as session:
             result_obj = await session.get(StudentResult, r_id)
             if result_obj:
                 score_pct = min(100, max(0, round((total_score / max_possible) * 100))) if max_possible > 0 else 0
                 result_obj.total_score = score_pct
                 result_obj.raw_extracted_html = html
+                result_obj.mode = batch_obj.mode or "hybrid"
+                result_obj.attempted_items = {"items": attempted_item_numbers}
                 if matched:
                     result_obj.student_id = matched_student_id
                     result_obj.needs_manual_review = False

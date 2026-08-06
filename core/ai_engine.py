@@ -462,7 +462,14 @@ def get_async_openai_client():
     if not api_key:
         raise ValueError("OPENAI_API_KEY is missing. Add it to the .env file in the root directory.")
     import httpx
-    return AsyncOpenAI(api_key=api_key, timeout=httpx.Timeout(120.0))
+    return AsyncOpenAI(
+        api_key=api_key,
+        timeout=httpx.Timeout(120.0),
+        http_client=httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=50, keepalive_expiry=30.0),
+            timeout=httpx.Timeout(120.0)
+        )
+    )
 
 def process_tikz_safeguard(raw_text):
     """Ensures that any generated TikZ code is safely wrapped for TikZJax engine."""
