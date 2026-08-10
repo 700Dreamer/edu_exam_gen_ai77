@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   Download, Loader2, FileCheck, AlertCircle, CheckCircle2, Trash2, Edit3, RefreshCw, ChevronLeft, ChevronRight,
-  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X
+  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X, FileDown
 } from "lucide-react";
 import { cn, authFetch } from "../lib/utils";
 
@@ -31,6 +31,12 @@ export default function GradebookView({ theme }: { theme: string }) {
   const [isReGrading, setIsReGrading] = useState(false);
   const [isRegradingPaper, setIsRegradingPaper] = useState(false);
   const [openedBatchIds, setOpenedBatchIds] = useState<Set<string>>(new Set());
+
+  // PDF Export state
+  const [pdfJobId, setPdfJobId] = useState<string | null>(null);
+  const [pdfJobStatus, setPdfJobStatus] = useState<string>("");
+  const [pdfToastMessage, setPdfToastMessage] = useState<string>("");
+  const [isExportingStudentPdf, setIsExportingStudentPdf] = useState(false);
 
   useEffect(() => {
     try {
@@ -650,6 +656,105 @@ export default function GradebookView({ theme }: { theme: string }) {
     window.open(`/api/v1/assessment/batch/${batchId}/export-csv`, "_blank");
   };
 
+  // ── PDF Export Handlers ──
+
+  const handleExportStudentPdf = async (resultId: string) => {
+    setIsExportingStudentPdf(true);
+    try {
+      const res = await authFetch(`/api/v1/assessment/result/${resultId}/export-pdf`);
+      if (!res.ok) {
+        alert("Failed to generate student PDF.");
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch ? filenameMatch[1] : "Edulytics_Student_Report.pdf";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Student PDF export error:", err);
+      alert("Error generating student PDF.");
+    } finally {
+      setIsExportingStudentPdf(false);
+    }
+  };
+
+  const handleExportClassPdf = async (batchId: string) => {
+    try {
+      setPdfToastMessage("Initiating PDF report generation...");
+      const res = await authFetch(`/api/v1/assessment/batch/${batchId}/export-pdf`, { method: "POST" });
+      if (!res.ok) {
+        setPdfToastMessage("");
+        alert("Failed to start PDF generation.");
+        return;
+      }
+      const data = await res.json();
+      const jobId = data.job_id;
+      setPdfJobId(jobId);
+      setPdfJobStatus("generating");
+      setPdfToastMessage("Generating class report and individual student PDFs...");
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusRes = await authFetch(`/api/v1/assessment/batch/${batchId}/report-status/${jobId}`);
+          if (!statusRes.ok) {
+            clearInterval(pollInterval);
+            setPdfJobStatus("failed");
+            setPdfToastMessage("PDF generation check failed.");
+            setTimeout(() => setPdfToastMessage(""), 5000);
+            return;
+          }
+          const statusData = await statusRes.json();
+
+          if (statusData.status === "ready") {
+            clearInterval(pollInterval);
+            setPdfJobStatus("ready");
+            setPdfToastMessage("PDF report ready! Downloading...");
+
+            // Auto-download
+            const dlRes = await authFetch(statusData.download_url);
+            if (dlRes.ok) {
+              const blob = await dlRes.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = statusData.filename || "Edulytics_Report.zip";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+              setPdfToastMessage("PDF report downloaded successfully.");
+            } else {
+              setPdfToastMessage("Download failed. Try again.");
+            }
+            setTimeout(() => { setPdfToastMessage(""); setPdfJobId(null); setPdfJobStatus(""); }, 4000);
+
+          } else if (statusData.status === "failed") {
+            clearInterval(pollInterval);
+            setPdfJobStatus("failed");
+            setPdfToastMessage(`PDF generation failed: ${statusData.error || "Unknown error"}`);
+            setTimeout(() => { setPdfToastMessage(""); setPdfJobId(null); setPdfJobStatus(""); }, 6000);
+          }
+        } catch (pollErr) {
+          console.error("PDF poll error:", pollErr);
+        }
+      }, 2500);
+
+    } catch (err) {
+      console.error("Class PDF export error:", err);
+      setPdfToastMessage("");
+      alert("Error starting PDF generation.");
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Completed": return "bg-emerald-500/10 text-emerald-500";
@@ -955,6 +1060,18 @@ export default function GradebookView({ theme }: { theme: string }) {
               >
                 <Download className="w-3.5 h-3.5" /> Export CSV
               </button>
+              <button
+                onClick={() => handleExportClassPdf(selectedBatch.id)}
+                disabled={pdfJobStatus === "generating"}
+                className="flex items-center gap-2 px-4 py-2 bg-brand-800 text-white text-xs font-bold rounded-none hover:bg-brand-900 disabled:opacity-50 transition-all cursor-pointer shadow-none"
+                title="Generate class performance report + individual student PDFs as a ZIP download"
+              >
+                {pdfJobStatus === "generating" ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating PDF...</>
+                ) : (
+                  <><FileDown className="w-3.5 h-3.5" /> Export PDF Report</>
+                )}
+              </button>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Student Results Table */}
@@ -1049,6 +1166,17 @@ export default function GradebookView({ theme }: { theme: string }) {
                           {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                           {isRegradingPaper ? "Re-evaluating Script..." : "Re-evaluate Script"}
                         </button>
+                        {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
+                          <button
+                            onClick={() => handleExportStudentPdf(selectedResult.id)}
+                            disabled={isExportingStudentPdf}
+                            className="px-3 py-1.5 bg-brand-800 hover:bg-brand-900 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            title="Download this student's grading report as a PDF"
+                          >
+                            {isExportingStudentPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+                            {isExportingStudentPdf ? "Generating..." : "Export PDF"}
+                          </button>
+                        )}
                         {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
                           <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
                             {Math.min(100, Math.max(0, Math.round(selectedResult.total_score)))}%
@@ -1604,6 +1732,30 @@ export default function GradebookView({ theme }: { theme: string }) {
           </div>
         )}
       </div>
+
+      {/* PDF Generation Toast */}
+      {pdfToastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-surface border border-border-main shadow-lg px-5 py-3 flex items-center gap-3 font-outfit max-w-md">
+            {pdfJobStatus === "generating" && (
+              <Loader2 className="w-4 h-4 animate-spin text-brand-600 shrink-0" />
+            )}
+            {pdfJobStatus === "ready" && (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            )}
+            {pdfJobStatus === "failed" && (
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+            )}
+            <span className="text-xs font-bold text-foreground">{pdfToastMessage}</span>
+            <button
+              onClick={() => { setPdfToastMessage(""); setPdfJobId(null); setPdfJobStatus(""); }}
+              className="text-foreground/40 hover:text-foreground ml-2 cursor-pointer shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

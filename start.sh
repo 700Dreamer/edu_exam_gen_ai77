@@ -5,6 +5,12 @@ if [ -d "$HOME/node-v20/bin" ]; then
     export PATH="$HOME/node-v20/bin:$PATH"
 fi
 
+# Capture the active python3 path before modifying PATH
+ORIG_PYTHON3=$(which python3 2>/dev/null || echo "python3")
+
+# Expose Homebrew libraries to ctypes/cffi for WeasyPrint on Apple Silicon Mac
+export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:/usr/local/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Kill anything on port 8000 (FastAPI) or 3000 (Next.js)
@@ -17,7 +23,7 @@ echo "[INFO] Starting Edulytics AI Engine (FastAPI)..."
 if [ -f ".venv/bin/python" ]; then
     ./.venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir core --reload-dir ui &
 else
-    python3 -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir core --reload-dir ui &
+    $ORIG_PYTHON3 -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload --reload-dir core --reload-dir ui &
 fi
 
 echo "[INFO] Starting Edulytics Studio Frontend (Next.js / webpack)..."

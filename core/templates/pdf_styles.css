@@ -1,0 +1,622 @@
+/* ── Edulytics PDF Report Stylesheet ──
+   Mirrors the frontend design system: Outfit font, burgundy brand palette,
+   sharp geometry (no border-radius), uppercase micro-labels, same status colors.
+*/
+
+@page {
+  size: A4;
+  margin: 18mm 16mm 20mm 16mm;
+
+  @bottom-center {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: 'Outfit', sans-serif;
+    font-size: 7pt;
+    color: #94a3b8;
+    letter-spacing: 0.08em;
+  }
+}
+
+@page :first {
+  margin-top: 14mm;
+}
+
+/* ── Base Reset ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  font-size: 9pt;
+  color: #0f172a;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Brand Palette ── */
+:root {
+  --brand-50: #fdf2f2;
+  --brand-100: #fce7e7;
+  --brand-500: #e11d1d;
+  --brand-600: #c51010;
+  --brand-800: #800020;
+  --brand-900: #5a0015;
+  --surface: #ffffff;
+  --surface-soft: #f8fafc;
+  --border: #e2e8f0;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --emerald: #059669;
+  --emerald-bg: rgba(5, 150, 105, 0.08);
+  --rose: #e11d48;
+  --rose-bg: rgba(225, 29, 72, 0.08);
+  --amber: #d97706;
+  --amber-bg: rgba(217, 119, 6, 0.08);
+  --purple: #7c3aed;
+  --sky: #0284c7;
+}
+
+/* ── Report Header / Branding Strip ── */
+.report-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 10pt;
+  border-bottom: 2.5pt solid var(--brand-800);
+  margin-bottom: 14pt;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: 10pt;
+}
+
+.brand-logo-mark {
+  width: 32pt;
+  height: 32pt;
+  background: var(--brand-800);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: 14pt;
+  letter-spacing: 0.05em;
+}
+
+.brand-text h1 {
+  font-size: 13pt;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--fg);
+  line-height: 1.1;
+}
+
+.brand-text .brand-subtitle {
+  font-size: 6pt;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--brand-600);
+  margin-top: 2pt;
+}
+
+.header-meta {
+  text-align: right;
+  font-size: 7.5pt;
+  color: var(--fg-muted);
+  line-height: 1.6;
+}
+
+.header-meta strong {
+  color: var(--fg);
+  font-weight: 800;
+}
+
+/* ── Section Labels (micro uppercase) ── */
+.sec-label {
+  font-size: 7.5pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #64748b;
+  margin-top: 10pt;
+  margin-bottom: 8pt;
+  padding-bottom: 3pt;
+  border-bottom: 1.5pt solid #e2e8f0;
+  display: block;
+}
+
+/* ── Student Identity Card ── */
+.student-identity {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  padding: 12pt 16pt;
+  margin-bottom: 14pt;
+}
+
+.student-info h2 {
+  font-size: 14pt;
+  font-weight: 900;
+  color: var(--fg);
+  margin-bottom: 2pt;
+}
+
+.student-info .index-num {
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+.score-badge {
+  text-align: center;
+  padding: 8pt 16pt;
+  border: 2px solid var(--brand-800);
+  background: rgba(128, 0, 32, 0.04);
+}
+
+.score-badge .score-value {
+  font-size: 24pt;
+  font-weight: 900;
+  color: var(--brand-800);
+  line-height: 1;
+}
+
+.score-badge .score-label {
+  font-size: 6pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--brand-600);
+  margin-top: 2pt;
+}
+
+/* ── Stats Summary Grid ── */
+.stats-grid {
+  display: flex;
+  gap: 8pt;
+  margin-bottom: 14pt;
+}
+
+.stat-card {
+  flex: 1;
+  border: 1px solid var(--border);
+  padding: 8pt 10pt;
+  background: var(--surface);
+}
+
+.stat-card .stat-value {
+  font-size: 14pt;
+  font-weight: 900;
+  color: var(--fg);
+  line-height: 1.1;
+}
+
+.stat-card .stat-label {
+  font-size: 6pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--fg-muted);
+  margin-top: 2pt;
+}
+
+.stat-card.brand {
+  border-color: rgba(128, 0, 32, 0.2);
+  background: rgba(128, 0, 32, 0.03);
+}
+
+.stat-card.brand .stat-value {
+  color: var(--brand-800);
+}
+
+.stat-card.emerald .stat-value {
+  color: var(--emerald);
+}
+
+.stat-card.rose .stat-value {
+  color: var(--rose);
+}
+
+.stat-card.purple .stat-value {
+  color: var(--purple);
+}
+
+.stat-card.sky .stat-value {
+  color: var(--sky);
+}
+
+/* ── Tables ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8pt;
+  margin-bottom: 14pt;
+}
+
+thead th {
+  background: var(--surface-soft);
+  border-bottom: 1.5px solid var(--border);
+  padding: 6pt 8pt;
+  font-size: 6.5pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--fg-muted);
+  text-align: left;
+}
+
+tbody td {
+  padding: 6pt 8pt;
+  border-bottom: 0.5px solid var(--border);
+  color: var(--fg);
+  vertical-align: top;
+  line-height: 1.4;
+}
+
+tbody tr:nth-child(even) {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+/* Score column right-aligned */
+.col-score {
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.col-center {
+  text-align: center;
+}
+
+/* ── Status Badges ── */
+.badge {
+  display: inline-block;
+  padding: 1.5pt 5pt;
+  font-size: 6pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.badge-correct {
+  background: var(--emerald-bg);
+  color: var(--emerald);
+  border: 0.5px solid rgba(5, 150, 105, 0.25);
+}
+
+.badge-incorrect {
+  background: var(--rose-bg);
+  color: var(--rose);
+  border: 0.5px solid rgba(225, 29, 72, 0.25);
+}
+
+.badge-partial {
+  background: var(--amber-bg);
+  color: var(--amber);
+  border: 0.5px solid rgba(217, 119, 6, 0.25);
+}
+
+/* Grade letter badges */
+.grade-badge {
+  display: inline-block;
+  padding: 2pt 6pt;
+  font-size: 8pt;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.grade-A { background: var(--emerald-bg); color: var(--emerald); border: 1px solid rgba(5, 150, 105, 0.3); }
+.grade-B { background: rgba(34, 197, 94, 0.08); color: #16a34a; border: 1px solid rgba(22, 163, 74, 0.3); }
+.grade-C { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(217, 119, 6, 0.3); }
+.grade-D { background: rgba(249, 115, 22, 0.08); color: #ea580c; border: 1px solid rgba(234, 88, 12, 0.3); }
+.grade-F { background: var(--rose-bg); color: var(--rose); border: 1px solid rgba(225, 29, 72, 0.3); }
+
+/* ── AI Feedback Section ── */
+.feedback-card {
+  border-left: 3pt solid var(--brand-800);
+  background: rgba(128, 0, 32, 0.02);
+  padding: 10pt 14pt;
+  margin-bottom: 14pt;
+  font-size: 8pt;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.feedback-card h4 {
+  font-size: 7pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--brand-800);
+  margin-bottom: 6pt;
+}
+
+/* ── Insights Sections (class report) ── */
+.insight-block {
+  border: 1px solid var(--border);
+  padding: 10pt 14pt;
+  margin-bottom: 10pt;
+  background: var(--surface);
+}
+
+.insight-block h4 {
+  font-size: 7pt;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 6pt;
+  display: flex;
+  align-items: center;
+  gap: 4pt;
+}
+
+.insight-block h4 .accent-bar {
+  display: inline-block;
+  width: 3pt;
+  height: 10pt;
+  margin-right: 2pt;
+}
+
+.insight-block.strengths h4 { color: var(--emerald); }
+.insight-block.strengths h4 .accent-bar { background: var(--emerald); }
+.insight-block.weaknesses h4 { color: var(--amber); }
+.insight-block.weaknesses h4 .accent-bar { background: var(--amber); }
+.insight-block.general h4 { color: var(--brand-800); }
+.insight-block.general h4 .accent-bar { background: var(--brand-800); }
+
+.insight-block ul {
+  margin: 0;
+  padding-left: 14pt;
+  font-size: 8pt;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.insight-block ul li {
+  margin-bottom: 3pt;
+}
+
+.insight-block p {
+  font-size: 8pt;
+  color: #334155;
+  line-height: 1.6;
+}
+
+/* ── Cover Page (class report) ── */
+.cover-page {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 680pt;
+  text-align: center;
+  page-break-after: always;
+}
+
+.cover-page .cover-brand-mark {
+  width: 48pt;
+  height: 48pt;
+  background: var(--brand-800);
+  color: white;
+  font-weight: 900;
+  font-size: 22pt;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16pt;
+  letter-spacing: 0.05em;
+}
+
+.cover-page .cover-title {
+  font-size: 22pt;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-800);
+  margin-bottom: 6pt;
+}
+
+.cover-page .cover-subtitle {
+  font-size: 10pt;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-bottom: 24pt;
+}
+
+.cover-page .cover-meta-grid {
+  display: flex;
+  gap: 8pt;
+  margin-top: 12pt;
+}
+
+.cover-page .cover-meta-item {
+  border: 1px solid var(--border);
+  padding: 8pt 14pt;
+  min-width: 100pt;
+}
+
+.cover-page .cover-meta-item .meta-label {
+  font-size: 6pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--fg-muted);
+}
+
+.cover-page .cover-meta-item .meta-value {
+  font-size: 11pt;
+  font-weight: 800;
+  color: var(--fg);
+  margin-top: 2pt;
+}
+
+.cover-page .cover-divider {
+  width: 60pt;
+  height: 2.5pt;
+  background: var(--brand-800);
+  margin: 20pt 0;
+}
+
+.cover-page .cover-footer-text {
+  font-size: 7pt;
+  color: var(--fg-muted);
+  margin-top: 32pt;
+  letter-spacing: 0.1em;
+}
+
+/* ── Score Distribution Chart (Table-based for WeasyPrint rendering) ── */
+table.chart-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  margin-bottom: 14pt;
+}
+
+table.chart-table td {
+  border: none;
+  text-align: center;
+  padding: 0;
+  vertical-align: bottom;
+}
+
+tr.chart-counts td {
+  padding-top: 10pt;
+  padding-bottom: 4pt;
+  font-size: 8pt;
+  font-weight: 900;
+  color: var(--fg-muted);
+}
+
+tr.chart-bars td {
+  height: 60pt;
+  vertical-align: bottom;
+  padding: 0 10pt;
+}
+
+.chart-bar-wrap {
+  height: 60pt;
+  display: block;
+  position: relative;
+}
+
+.chart-bar {
+  display: block;
+  width: 100%;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  min-height: 2pt;
+}
+
+.chart-bar.bar-0-49   { background: #ef4444; }
+.chart-bar.bar-50-59  { background: #f97316; }
+.chart-bar.bar-60-69  { background: #eab308; }
+.chart-bar.bar-70-79  { background: #84cc16; }
+.chart-bar.bar-80-89  { background: #10b981; }
+.chart-bar.bar-90-100 { background: #800020; }
+
+tr.chart-labels td {
+  padding-top: 6pt;
+  padding-bottom: 8pt;
+  font-size: 7pt;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Rank Position Badges ── */
+.rank-badge {
+  display: inline-block;
+  padding: 2pt 5pt;
+  font-size: 7pt;
+  font-weight: 900;
+}
+
+.rank-1 {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+  border: 0.5px solid rgba(245, 158, 11, 0.4);
+}
+
+.rank-2 {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
+  border: 0.5px solid rgba(148, 163, 184, 0.4);
+}
+
+.rank-3 {
+  background: rgba(180, 83, 9, 0.12);
+  color: #92400e;
+  border: 0.5px solid rgba(180, 83, 9, 0.35);
+}
+
+/* ── Report Footer ── */
+.report-footer {
+  margin-top: 20pt;
+  padding-top: 8pt;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 6.5pt;
+  color: var(--fg-muted);
+}
+
+.report-footer .footer-brand {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+/* ── Utility Classes ── */
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.font-bold { font-weight: 700; }
+.font-black { font-weight: 900; }
+.mt-4 { margin-top: 4pt; }
+.mt-8 { margin-top: 8pt; }
+.mt-12 { margin-top: 12pt; }
+.mb-4 { margin-bottom: 4pt; }
+.mb-8 { margin-bottom: 8pt; }
+.mb-12 { margin-bottom: 12pt; }
+.page-break { page-break-before: always; }
+
+/* Question text column - allow wrapping */
+.col-question {
+  max-width: 180pt;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Student answer column */
+.col-answer {
+  max-width: 130pt;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-size: 7.5pt;
+  color: #334155;
+}
+
+/* Explanation column */
+.col-explanation {
+  max-width: 140pt;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  font-size: 7pt;
+  color: #475569;
+  line-height: 1.4;
+}

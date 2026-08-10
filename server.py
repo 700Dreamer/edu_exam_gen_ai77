@@ -8,6 +8,15 @@ import io
 from typing import Optional, List
 from pathlib import Path
 
+# Expose Homebrew C libraries (libgobject, libpango, libcairo) to cffi on macOS
+if sys.platform == "darwin":
+    _homebrew_libs = ["/opt/homebrew/lib", "/usr/local/lib"]
+    _existing = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+    _paths = [p for p in _homebrew_libs if os.path.exists(p)]
+    if _existing:
+        _paths.append(_existing)
+    os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = ":".join(_paths)
+
 # ── Load .env securely ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, ".env")
@@ -1904,7 +1913,120 @@ async def export_batch_csv(batch_id: str):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+# ── PDF Report Export Endpoints ──
+
+# In-memory tracker for background PDF generation jobs
+_pdf_generation_status: dict = {}
+
+@app.get("/api/v1/assessment/result/{result_id}/export-pdf")
+async def export_student_pdf(result_id: str):
+    """
+    Generates and streams a single student's PDF report.
+    Synchronous -- returns the PDF directly as a download.
+    """
+    from core.pdf_generator import generate_student_pdf
+
+    try:
+        pdf_bytes, filename = await generate_student_pdf(result_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        print(f"Error generating student PDF: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+    )
+
+
+async def _background_generate_class_report(batch_id: str, job_id: str):
+    """Background task to generate the class report ZIP."""
+    from core.pdf_generator import generate_class_report_zip
+
+    try:
+        _pdf_generation_status[job_id] = {"status": "generating", "progress": "Building class report and individual student PDFs..."}
+        zip_path, zip_filename = await generate_class_report_zip(batch_id)
+        _pdf_generation_status[job_id] = {
+            "status": "ready",
+            "download_url": f"/api/v1/assessment/batch/{batch_id}/download-report/{job_id}",
+            "filename": zip_filename,
+            "zip_path": zip_path
+        }
+    except Exception as e:
+        print(f"Error in background PDF generation for batch {batch_id}: {e}")
+        _pdf_generation_status[job_id] = {"status": "failed", "error": str(e)}
+
+
+@app.post("/api/v1/assessment/batch/{batch_id}/export-pdf")
+async def export_class_report_pdf(batch_id: str, background_tasks: BackgroundTasks):
+    """
+    Initiates background generation of a class report ZIP containing:
+      - ClassReport.pdf (class performance overview)
+      - Individual student PDFs for every graded student
+    Returns a job_id to poll for completion.
+    """
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+
+    async with async_session_maker() as session:
+        batch = await session.get(AssessmentBatch, batch_uuid)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+
+    job_id = uuid.uuid4().hex[:12]
+    _pdf_generation_status[job_id] = {"status": "generating", "progress": "Initializing report generation..."}
+
+    background_tasks.add_task(_background_generate_class_report, batch_id, job_id)
+
+    return {"status": "generating", "job_id": job_id}
+
+
+@app.get("/api/v1/assessment/batch/{batch_id}/report-status/{job_id}")
+async def report_generation_status(batch_id: str, job_id: str):
+    """Polls the status of a background PDF generation job."""
+    job = _pdf_generation_status.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Report generation job not found")
+
+    return {
+        "status": job["status"],
+        "progress": job.get("progress", ""),
+        "download_url": job.get("download_url", ""),
+        "filename": job.get("filename", ""),
+        "error": job.get("error", ""),
+    }
+
+
+@app.get("/api/v1/assessment/batch/{batch_id}/download-report/{job_id}")
+async def download_class_report(batch_id: str, job_id: str):
+    """Downloads the generated class report ZIP file."""
+    job = _pdf_generation_status.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Report job not found")
+    if job["status"] != "ready":
+        raise HTTPException(status_code=409, detail="Report is not ready yet")
+
+    zip_path = job.get("zip_path")
+    if not zip_path or not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="Report file not found on disk")
+
+    filename = job.get("filename", "Edulytics_Report.zip")
+
+    with open(zip_path, "rb") as f:
+        zip_bytes = f.read()
+
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+    )
+
 # ── Fast Single-Paper Regrade Endpoint ──
+
 
 @app.post("/api/v1/assessment/result/{result_id}/regrade")
 async def regrade_single_result(result_id: str):
