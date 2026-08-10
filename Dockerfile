@@ -28,7 +28,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl build-essential libgomp1 lsof wget unzip \
         libpango-1.0-0 libharfbuzz0b libpangoft2-1.0-0 \
-        libgdk-pixbuf2.0-0 libffi-dev shared-mime-info \
+        libffi-dev shared-mime-info \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
