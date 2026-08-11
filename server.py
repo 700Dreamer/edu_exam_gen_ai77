@@ -315,6 +315,139 @@ async def export_roster_csv(group_id: str):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
 
+
+@app.get("/api/v1/academic-group/roster-csv-template")
+async def download_roster_template_csv():
+    """
+    Provides a downloadable starter CSV template for student roster importing.
+    """
+    from fastapi.responses import StreamingResponse
+    import csv
+    import io as _io
+
+    output = _io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Student Full Name", "Index Number"])
+    writer.writerow(["John Doe", ""])
+    writer.writerow(["Jane Smith", "STU-2026-0042"])
+    writer.writerow(["Alex Johnson", ""])
+
+    output.seek(0)
+    return StreamingResponse(
+        _io.BytesIO(output.getvalue().encode('utf-8')),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=Student_Roster_Template.csv"}
+    )
+
+
+@app.post("/api/v1/academic-group/{group_id}/import-roster-csv")
+async def import_roster_csv(group_id: str, file: UploadFile = File(...)):
+    """
+    Imports students into an Academic Group from a CSV file.
+    Recognizes flexible column headers: 'Student Full Name'/'Full Name' and 'Index Number'/'Index'.
+    Auto-generates unique system index numbers for empty index entries.
+    """
+    import csv
+    import io as _io
+
+    try:
+        g_uuid = uuid.UUID(group_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid group ID format")
+
+    contents = await file.read()
+    decoded = contents.decode("utf-8-sig", errors="replace")
+    
+    reader = csv.reader(_io.StringIO(decoded))
+    rows = [row for row in reader if any(field.strip() for field in row)]
+    
+    if not rows:
+        raise HTTPException(400, "The uploaded CSV file is empty.")
+
+    # Parse header row
+    header = [col.strip().lower() for col in rows[0]]
+    
+    name_idx = -1
+    index_idx = -1
+    
+    for i, col in enumerate(header):
+        if col in ["student full name", "full_name", "full name", "name", "student name", "student_name"]:
+            name_idx = i
+        elif col in ["index number", "index_number", "index", "student id", "student_id", "id"]:
+            index_idx = i
+            
+    start_row = 1
+    if name_idx == -1 and index_idx == -1:
+        name_idx = 1 if len(rows[0]) > 1 else 0
+        index_idx = 0 if len(rows[0]) > 1 else -1
+        start_row = 0
+
+    if name_idx == -1:
+        name_idx = 0
+
+    imported_students = []
+    errors = []
+    skipped = 0
+
+    async with async_session_maker() as session:
+        group = await session.get(AcademicGroup, g_uuid)
+        if not group:
+            raise HTTPException(404, "Class group not found")
+
+        ex_idx_q = select(Student.index_number).where(Student.index_number.isnot(None))
+        ex_res = await session.execute(ex_idx_q)
+        existing_indices = set(ex_res.scalars().all())
+
+        for row_num, row in enumerate(rows[start_row:], start=start_row + 1):
+            if not row or not any(cell.strip() for cell in row):
+                continue
+
+            full_name = row[name_idx].strip() if name_idx < len(row) else ""
+            if not full_name:
+                errors.append(f"Row {row_num}: Missing student name.")
+                skipped += 1
+                continue
+
+            raw_idx = row[index_idx].strip() if (index_idx != -1 and index_idx < len(row)) else ""
+            if raw_idx in ["—", "null", "none", "NULL", "NONE"]:
+                raw_idx = ""
+
+            if not raw_idx:
+                raw_idx = await generate_unique_index_number(session)
+                existing_indices.add(raw_idx)
+            else:
+                if raw_idx in existing_indices:
+                    coll_check = await session.execute(select(Student).where(Student.index_number == raw_idx))
+                    existing_stu = coll_check.scalar_one_or_none()
+                    if existing_stu:
+                        if existing_stu.academic_group_id == g_uuid:
+                            errors.append(f"Row {row_num}: '{full_name}' ({raw_idx}) is already enrolled in this class.")
+                            skipped += 1
+                            continue
+                        else:
+                            raw_idx = await generate_unique_index_number(session)
+                            existing_indices.add(raw_idx)
+
+            student = Student(
+                academic_group_id=g_uuid,
+                full_name=full_name,
+                index_number=raw_idx
+            )
+            session.add(student)
+            existing_indices.add(raw_idx)
+            imported_students.append({"full_name": full_name, "index_number": raw_idx})
+
+        await session.commit()
+
+    return {
+        "success": True,
+        "imported_count": len(imported_students),
+        "skipped_count": skipped,
+        "errors": errors,
+        "students": imported_students
+    }
+
+
 # ── Gradebook & Batch History Endpoints ──
 @app.get("/api/v1/assessment/batches")
 async def list_batches():

@@ -14,6 +14,7 @@ import AnalyticsView from "./components/AnalyticsView";
 import SchoolOnboardingView from "./components/SchoolOnboardingView";
 import SettingsView from "./components/SettingsView";
 import { Settings } from "lucide-react";
+import { authFetch } from "./lib/utils";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

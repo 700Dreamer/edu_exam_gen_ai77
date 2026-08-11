@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Users, Loader2, Trash2, Download } from "lucide-react";
-import { authFetch } from "../lib/utils";
+import { useState, useEffect, useRef } from "react";
+import { Users, Loader2, Trash2, Download, Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from "lucide-react";
+import { authFetch, cn, API_BASE } from "../lib/utils";
 
 export default function RosterView({ theme }: { theme: string }) {
   const [tenants, setTenants] = useState<any[]>([]);
@@ -19,6 +19,16 @@ export default function RosterView({ theme }: { theme: string }) {
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
   const [category, setCategory] = useState<"Primary" | "Secondary">("Primary");
+
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    imported_count: number;
+    skipped_count: number;
+    errors: string[];
+  } | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAddGroup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -120,7 +130,59 @@ export default function RosterView({ theme }: { theme: string }) {
 
   const handleExportRosterCSV = () => {
     if (!selectedGroup) return;
-    window.open(`/api/v1/academic-group/${selectedGroup}/export-roster-csv`, "_blank");
+    const url = API_BASE ? `${API_BASE}/api/v1/academic-group/${selectedGroup}/export-roster-csv` : `/api/v1/academic-group/${selectedGroup}/export-roster-csv`;
+    window.open(url, "_blank");
+  };
+
+  const handleDownloadTemplate = () => {
+    const url = API_BASE ? `${API_BASE}/api/v1/academic-group/roster-csv-template` : `/api/v1/academic-group/roster-csv-template`;
+    window.open(url, "_blank");
+  };
+
+  const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedGroup) return;
+
+    setIsImporting(true);
+    setImportResult(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await authFetch(`/api/v1/academic-group/${selectedGroup}/import-roster-csv`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setImportResult(data);
+        const freshRes = await authFetch(`/api/v1/academic-group/${selectedGroup}/students`);
+        if (freshRes.ok) {
+          const freshStudents = await freshRes.json();
+          setStudents(freshStudents);
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setImportResult({
+          success: false,
+          imported_count: 0,
+          skipped_count: 0,
+          errors: [errData.detail || "Failed to parse or process the uploaded CSV file."],
+        });
+      }
+    } catch (err) {
+      setImportResult({
+        success: false,
+        imported_count: 0,
+        skipped_count: 0,
+        errors: ["Network error while importing CSV file."],
+      });
+    } finally {
+      setIsImporting(false);
+      if (e.target) e.target.value = "";
+    }
   };
 
   return (
@@ -269,21 +331,87 @@ export default function RosterView({ theme }: { theme: string }) {
           </div>
         </div>
 
+        {/* Hidden CSV file input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept=".csv"
+          onChange={handleCSVImport}
+          className="hidden"
+        />
+
+        {/* Import Result Notification Banner */}
+        {importResult && (
+          <div className={cn(
+            "p-4 border border-border-main flex items-start justify-between gap-3 text-xs",
+            importResult.success ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700" : "bg-red-500/10 border-red-500/30 text-red-700"
+          )}>
+            <div className="flex items-start gap-2.5">
+              {importResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+              )}
+              <div className="space-y-1">
+                <p className="font-bold">
+                  {importResult.success
+                    ? `Successfully imported ${importResult.imported_count} student(s).`
+                    : "CSV Import encountered errors."}
+                  {importResult.skipped_count > 0 && ` (${importResult.skipped_count} row(s) skipped)`}
+                </p>
+                {importResult.errors.length > 0 && (
+                  <ul className="list-disc list-inside space-y-0.5 text-[11px] opacity-90">
+                    {importResult.errors.map((err, i) => (
+                      <li key={i}>{err}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setImportResult(null)}
+              className="text-foreground/50 hover:text-foreground p-0.5 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Student Table */}
         <div className="bg-surface border border-border-main rounded-none shadow-none overflow-hidden">
-          <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center">
+          <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex flex-wrap justify-between items-center gap-3">
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-bold text-foreground">Enrolled Students</h3>
               <span className="text-xs font-black bg-brand-500/10 text-brand-600 px-3 py-1 rounded-none">{students.length} Total</span>
             </div>
-            {selectedGroup && students.length > 0 && (
-              <button
-                onClick={handleExportRosterCSV}
-                className="px-3.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-none"
-                title="Export class roster to CSV file"
-              >
-                <Download className="w-3.5 h-3.5" /> Export Roster CSV
-              </button>
+            {selectedGroup && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadTemplate}
+                  className="px-3 py-1.5 bg-surface border border-border-main text-foreground/70 hover:text-foreground text-xs font-bold rounded-none hover:bg-surface-soft transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Download CSV Starter Template"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" /> CSV Template
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isImporting}
+                  className="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer flex items-center gap-1.5 shadow-none"
+                  title="Import student roster from CSV file"
+                >
+                  {isImporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                  Import CSV
+                </button>
+                {students.length > 0 && (
+                  <button
+                    onClick={handleExportRosterCSV}
+                    className="px-3.5 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer flex items-center gap-1.5 shadow-none"
+                    title="Export class roster to CSV file"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Export Roster CSV
+                  </button>
+                )}
+              </div>
             )}
           </div>
           {students.length === 0 ? (
