@@ -113,6 +113,11 @@ export default function Home() {
 
     // Fetch initial tenants and groups
     const loadGlobalContext = async () => {
+      const token = localStorage.getItem("edulytics_token");
+      if (!token) {
+        window.location.href = "/login";
+        return;
+      }
       try {
         const res = await authFetch("/api/v1/tenant/list");
         if (res.ok) {
@@ -137,6 +142,15 @@ export default function Home() {
     };
 
     loadGlobalContext();
+    
+    const handleLogout = () => {
+      window.location.href = "/login";
+    };
+    window.addEventListener("edulytics_logout", handleLogout);
+    
+    return () => {
+      window.removeEventListener("edulytics_logout", handleLogout);
+    };
   }, []);
 
   useEffect(() => {

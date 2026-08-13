@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Settings, Type, Palette, Check, RotateCcw } from "lucide-react";
-import { cn } from "../lib/utils";
+import { useState, useEffect } from "react";
+import { Settings, Type, Palette, Check, RotateCcw, LogOut, ShieldAlert } from "lucide-react";
+import { cn, authFetch } from "../lib/utils";
 
 export default function SettingsView({
   theme,
@@ -15,6 +15,22 @@ export default function SettingsView({
   fontSize: 'small' | 'medium' | 'large';
   setFontSize: (s: 'small' | 'medium' | 'large') => void;
 }) {
+  const [userRole, setUserRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchMe = async () => {
+      try {
+        const res = await authFetch("/api/v1/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          setUserRole(data.role);
+        }
+      } catch (e) {
+        console.error("Failed to fetch user role");
+      }
+    };
+    fetchMe();
+  }, []);
   const fontOptions = [
     {
       key: "small",
@@ -150,6 +166,37 @@ export default function SettingsView({
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Account & Access Card */}
+        <div className="bg-surface border border-border-main p-6 space-y-6">
+          <div className="flex items-center gap-2 border-b border-border-main/60 pb-3">
+            <LogOut className="w-5 h-5 text-brand-500" />
+            <h2 className="text-sm font-extrabold uppercase tracking-wider text-foreground">Account &amp; Access</h2>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  // The frontend routing we built earlier will catch this and redirect
+                  window.dispatchEvent(new Event("edulytics_logout"));
+                }
+              }}
+              className="flex items-center gap-2 px-6 py-2.5 bg-red-600/10 text-red-600 border border-red-600/20 text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-all cursor-pointer"
+            >
+              <LogOut className="w-4 h-4" /> Sign Out
+            </button>
+
+            {userRole === "master" && (
+              <a
+                href="/master-dashboard"
+                className="flex items-center gap-2 px-6 py-2.5 bg-brand-600/10 text-brand-600 border border-brand-600/20 text-xs font-bold uppercase tracking-wider hover:bg-brand-600 hover:text-white transition-all"
+              >
+                <ShieldAlert className="w-4 h-4" /> Master Console
+              </a>
+            )}
           </div>
         </div>
 

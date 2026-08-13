@@ -2615,6 +2615,16 @@ def compile_pdf(files: List[UploadFile] = File(...)):
         headers={"Content-Disposition": "attachment; filename=compiled_exam.pdf"}
     )
 
+from core.auth import fastapi_users, auth_backend
+from core.master_routes import router as master_router
+
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend), prefix="/api/v1/auth/jwt", tags=["auth"]
+)
+app.include_router(
+    master_router, prefix="/api/v1", tags=["master"]
+)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

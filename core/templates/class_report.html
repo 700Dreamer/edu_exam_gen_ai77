@@ -7,128 +7,154 @@
 <body>
 
   <!-- ═══════════════════════════════════════════
-       COVER PAGE
+       COVER PAGE — Faithful to Photoshop Design
   ══════════════════════════════════════════════ -->
   <div class="cover-page">
 
-    <!-- Top Brand Bar -->
-    <div class="cover-top-bar">
-      <div class="cover-brand-row">
-        <div class="cover-logo-box">E</div>
-        <div class="cover-brand-text">
-          <div class="cover-brand-name">EDULYTICS</div>
-          <div class="cover-brand-tagline">Examination &amp; Assessment Platform</div>
+    <!-- Diamond accent bullet + Logo row -->
+    <div class="cv-header">
+      <div class="cv-diamond">&#9670;</div>
+      <div class="cv-logo-row">
+        <div class="cv-logo-box">E</div>
+        <div class="cv-logo-text">
+          <div class="cv-brand-name">EDULYTICS</div>
+          <div class="cv-brand-tagline">Examination &amp; Assessment Platform</div>
         </div>
-      </div>
-      <div class="cover-date-box">
-        <div class="cover-date-value">{{ exam_date|upper }}</div>
-        <div class="cover-date-sub">Generated Report</div>
       </div>
     </div>
 
-    <!-- Thin brand rule under top bar -->
-    <div class="cover-top-rule"></div>
-
-    <!-- Large Title Area -->
-    <div class="cover-title-area">
-      <div class="cover-main-title">CLASS PERFORMANCE<br>REPORT</div>
-      <div class="cover-main-subtitle">EXAMINATION RESULTS &amp; ANALYTICS</div>
-    </div>
-
-    <!-- Spacer to push class band toward lower third -->
-    <div class="cover-spacer"></div>
-
-    <!-- Class Info Band (full-width dark burgundy) -->
-    <div class="cover-class-band">
-      <!-- Left: Icon + class details -->
-      <div class="cover-band-left">
-        <div class="cover-band-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 3L1 9l11 6 11-6-11-6z" fill="rgba(255,255,255,0.9)"/>
-            <path d="M5 11.5v4.5c0 1.5 3.1 3 7 3s7-1.5 7-3v-4.5" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="1.5" stroke-linecap="round"/>
-          </svg>
+    <!-- Full-width burgundy rule with stacked-line decoration on right -->
+    <div class="cv-rule-row">
+      <div class="cv-rule-line"></div>
+      <div class="cv-rule-deco">
+        <div class="cv-deco-lines">
+          <div class="cv-deco-line"></div>
+          <div class="cv-deco-line"></div>
+          <div class="cv-deco-line"></div>
         </div>
-        <div class="cover-band-details">
-          <div class="cover-band-sub-label">CLASS</div>
-          <div class="cover-band-class">{{ level }} {{ stream }}</div>
-        </div>
-      </div>
-      <!-- Vertical divider -->
-      <div class="cover-band-vdivider"></div>
-      <!-- Right: subject -->
-      <div class="cover-band-right">
-        <div class="cover-band-sub-label">SUBJECT</div>
-        <div class="cover-band-subject">{{ subject }}</div>
+        <div class="cv-deco-sqr"></div>
       </div>
     </div>
 
-    <!-- 4-Column Metadata Strip -->
-    <table class="cover-meta-table">
-      <tr>
-        <td class="cover-meta-cell">
-          <div class="cover-meta-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="cover-meta-label">INSTITUTION</div>
-          <div class="cover-meta-val">{{ school_name }}</div>
-        </td>
-        <td class="cover-meta-cell cover-meta-divider">
-          <div class="cover-meta-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="9" cy="7" r="4" stroke="#800020" stroke-width="1.5"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="cover-meta-label">ASSESSMENT</div>
-          <div class="cover-meta-val">{{ exam_type }}</div>
-        </td>
-        <td class="cover-meta-cell cover-meta-divider">
-          <div class="cover-meta-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="3" y="4" width="18" height="18" rx="2" stroke="#800020" stroke-width="1.5"/>
-              <path d="M16 2v4M8 2v4M3 10h18" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="cover-meta-label">ASSESSMENT DATE</div>
-          <div class="cover-meta-val">{{ exam_date }}</div>
-        </td>
-        <td class="cover-meta-cell cover-meta-divider">
-          <div class="cover-meta-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
-              <circle cx="9" cy="7" r="4" stroke="#800020" stroke-width="1.5"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="cover-meta-label">STUDENTS EVALUATED</div>
-          <div class="cover-meta-val">{{ total_students }}</div>
-        </td>
-      </tr>
-    </table>
+    <!-- School name -->
+    <div class="cv-school">{{ school_name|upper }}</div>
 
-    <!-- Dark Footer Bar -->
-    <div class="cover-footer-bar">
-      <div class="cover-footer-brand-row">
-        <div class="cover-footer-logo-box">E</div>
-        <div>
-          <div class="cover-footer-brand">EDULYTICS</div>
-          <div class="cover-footer-tagline">Examination &amp; Assessment Platform</div>
-        </div>
+    <!-- Two-line title: smaller line + massive REPORT -->
+    <div class="cv-title-block">
+      <div class="cv-title-top">CLASS PERFORMANCE</div>
+      <div class="cv-title-main">REPORT</div>
+    </div>
+
+    <!-- Mid spacer with diagonal square grid (bottom-right accent) -->
+    <div class="cv-mid-space">
+      <div class="cv-deco-grid">
+        <svg viewBox="0 0 112 94" xmlns="http://www.w3.org/2000/svg" width="112" height="94">
+          <!-- Row 1: 6 squares (densest, top) -->
+          <rect x="0"  y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <rect x="18" y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <rect x="36" y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <rect x="54" y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <rect x="72" y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <rect x="90" y="0"  width="14" height="14" rx="1.5" fill="#800020" opacity="0.22"/>
+          <!-- Row 2: 5 squares -->
+          <rect x="18" y="20" width="14" height="14" rx="1.5" fill="#800020" opacity="0.17"/>
+          <rect x="36" y="20" width="14" height="14" rx="1.5" fill="#800020" opacity="0.17"/>
+          <rect x="54" y="20" width="14" height="14" rx="1.5" fill="#800020" opacity="0.17"/>
+          <rect x="72" y="20" width="14" height="14" rx="1.5" fill="#800020" opacity="0.17"/>
+          <rect x="90" y="20" width="14" height="14" rx="1.5" fill="#800020" opacity="0.17"/>
+          <!-- Row 3: 4 squares -->
+          <rect x="36" y="40" width="14" height="14" rx="1.5" fill="#800020" opacity="0.12"/>
+          <rect x="54" y="40" width="14" height="14" rx="1.5" fill="#800020" opacity="0.12"/>
+          <rect x="72" y="40" width="14" height="14" rx="1.5" fill="#800020" opacity="0.12"/>
+          <rect x="90" y="40" width="14" height="14" rx="1.5" fill="#800020" opacity="0.12"/>
+          <!-- Row 4: 3 squares -->
+          <rect x="54" y="60" width="14" height="14" rx="1.5" fill="#800020" opacity="0.08"/>
+          <rect x="72" y="60" width="14" height="14" rx="1.5" fill="#800020" opacity="0.08"/>
+          <rect x="90" y="60" width="14" height="14" rx="1.5" fill="#800020" opacity="0.08"/>
+          <!-- Row 5: 2 squares (lightest, bottom) -->
+          <rect x="72" y="80" width="14" height="14" rx="1.5" fill="#800020" opacity="0.05"/>
+          <rect x="90" y="80" width="14" height="14" rx="1.5" fill="#800020" opacity="0.05"/>
+        </svg>
       </div>
-      <div class="cover-footer-center">
-        Confidential &mdash; For Internal Use Only
+    </div>
+
+    <!-- Dark burgundy rounded card -->
+    <div class="cv-card">
+
+      <!-- Class + Stream pill -->
+      <div class="cv-class-pill">
+        <span class="cv-class-name">{{ level }}</span>
+        <span class="cv-class-stream">&nbsp; {{ stream }}</span>
       </div>
-      <div class="cover-footer-page">
-        <span class="cover-footer-page-label">PAGE</span>
-        <span class="cover-footer-page-num">01</span>
+
+      <!-- 4-column metadata white box -->
+      <table class="cv-meta-box">
+        <tr>
+          <td class="cv-meta-col">
+            <div class="cv-meta-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="14,2 14,8 20,8" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <line x1="16" y1="13" x2="8" y2="13" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
+                <line x1="16" y1="17" x2="8" y2="17" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="cv-meta-label">SUBJECT</div>
+            <div class="cv-meta-val">{{ subject }}</div>
+          </td>
+          <td class="cv-meta-col cv-meta-sep">
+            <div class="cv-meta-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="9" cy="7" r="4" stroke="#800020" stroke-width="1.5"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="cv-meta-label">STUDENTS EVALUATED</div>
+            <div class="cv-meta-val">{{ total_students }}</div>
+          </td>
+          <td class="cv-meta-col cv-meta-sep">
+            <div class="cv-meta-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="14,2 14,8 20,8" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="9,15 11,17 15,13" stroke="#800020" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="cv-meta-label">ASSESSMENT</div>
+            <div class="cv-meta-val">{{ exam_type }}</div>
+          </td>
+          <td class="cv-meta-col cv-meta-sep">
+            <div class="cv-meta-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="3" y="4" width="18" height="18" rx="2" stroke="#800020" stroke-width="1.5"/>
+                <path d="M16 2v4M8 2v4M3 10h18" stroke="#800020" stroke-width="1.5" stroke-linecap="round"/>
+                <circle cx="12" cy="16" r="1.2" fill="#800020"/>
+              </svg>
+            </div>
+            <div class="cv-meta-label">ASSESSMENT DATE</div>
+            <div class="cv-meta-val">{{ exam_date }}</div>
+          </td>
+        </tr>
+      </table>
+
+    </div><!-- end cv-card -->
+
+
+    <!-- Dark charcoal footer strip -->
+    <div class="cv-footer">
+      <div class="cv-footer-brand">EDULYTICS</div>
+      <div class="cv-footer-center">Confidential &mdash; For Internal Use Only</div>
+      <div class="cv-footer-page">
+        <span class="cv-fp-label">PAGE</span>
+        <span class="cv-fp-num">01</span>
       </div>
     </div>
 
   </div>
   <!-- END COVER PAGE -->
+
+
 
   <!-- Page 2: Score Distribution & Class Stats -->
   <div class="report-header">
@@ -288,16 +314,7 @@
   </div>
   {% endif %}
 
-  {% if insights_weaknesses %}
-  <div class="insight-block weaknesses">
-    <h4><span class="accent-bar"></span>Areas for Improvement</h4>
-    <ul>
-      {% for item in insights_weaknesses %}
-      <li>{{ item }}</li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
+
 
   {% endif %}
 

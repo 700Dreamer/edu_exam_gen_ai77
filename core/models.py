@@ -137,3 +137,14 @@ async def create_db_and_tables():
 async def get_async_session() -> AsyncSession:
     async with async_session_maker() as session:
         yield session
+
+class Invitation(Base):
+    """Represents a time-bound, single-use invitation link for account creation."""
+    __tablename__ = "invitation"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(50), default="staff", nullable=False)
+    invited_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
