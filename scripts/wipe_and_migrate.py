@@ -78,19 +78,32 @@ async def wipe_and_migrate():
         await copy(Tenant,          "Tenants")
         await copy(AcademicGroup,   "Academic Groups")
 
-        # Students: sanitize empty index_number strings -> None
-        # SQLite allows multiple empty strings in a unique column; PostgreSQL does not.
-        print("  Students: sanitizing index_number...")
+        # Students: deduplicate index_number values before inserting.
+        # SQLite may have allowed the same index_number across different groups;
+        # PostgreSQL enforces a strict global UNIQUE constraint on the column.
+        # Strategy: first student to claim an index_number keeps it; all others get NULL.
+        print("  Students: deduplicating index_number values...")
         res = await src.execute(select(Student))
         students = res.scalars().all()
+        seen_index_numbers: set = set()
         count = 0
+        dupes = 0
         for stu in students:
+            # Normalize empty strings to None
             if stu.index_number is not None and stu.index_number.strip() == "":
                 stu.index_number = None
+            # Deduplicate — null out any index_number already claimed
+            if stu.index_number is not None:
+                if stu.index_number in seen_index_numbers:
+                    print(f"    Duplicate index_number='{stu.index_number}' for '{stu.full_name}' -> setting to NULL")
+                    stu.index_number = None
+                    dupes += 1
+                else:
+                    seen_index_numbers.add(stu.index_number)
             await dst.merge(stu)
             count += 1
         await dst.commit()
-        print(f"  Students: {count} records migrated")
+        print(f"  Students: {count} records migrated ({dupes} duplicate index numbers nulled)")
 
         await copy(Invitation,      "Invitations")
         await copy(AssessmentBatch, "Assessment Batches")
