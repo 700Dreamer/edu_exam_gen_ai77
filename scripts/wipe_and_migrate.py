@@ -106,9 +106,52 @@ async def wipe_and_migrate():
         print(f"  Students: {count} records migrated ({dupes} duplicate index numbers nulled)")
 
         await copy(Invitation,      "Invitations")
-        await copy(AssessmentBatch, "Assessment Batches")
-        await copy(StudentResult,   "Student Results")
-        await copy(BatchTask,       "Batch Tasks")
+
+        # AssessmentBatches: track valid IDs to prevent Foreign Key violations for orphaned results
+        print("  Assessment Batches: migrating...")
+        res = await src.execute(select(AssessmentBatch))
+        batches = res.scalars().all()
+        valid_batch_ids = set()
+        count = 0
+        for b in batches:
+            await dst.merge(b)
+            valid_batch_ids.add(b.id)
+            count += 1
+        await dst.commit()
+        print(f"  Assessment Batches: {count} records migrated")
+
+        # StudentResults: filter out orphans where batch_id doesn't exist
+        print("  Student Results: migrating and dropping orphans...")
+        res = await src.execute(select(StudentResult))
+        results = res.scalars().all()
+        valid_result_ids = set()
+        count = 0
+        orphans = 0
+        for r in results:
+            if r.batch_id not in valid_batch_ids:
+                orphans += 1
+                continue
+            await dst.merge(r)
+            valid_result_ids.add(r.id)
+            count += 1
+        await dst.commit()
+        print(f"  Student Results: {count} records migrated ({orphans} orphaned records dropped)")
+
+        # BatchTasks: filter out orphans where batch_id or student_result_id doesn't exist
+        print("  Batch Tasks: migrating and dropping orphans...")
+        res = await src.execute(select(BatchTask))
+        tasks = res.scalars().all()
+        count = 0
+        orphans = 0
+        for t in tasks:
+            if t.batch_id not in valid_batch_ids or t.student_result_id not in valid_result_ids:
+                orphans += 1
+                continue
+            await dst.merge(t)
+            count += 1
+        await dst.commit()
+        print(f"  Batch Tasks: {count} records migrated ({orphans} orphaned records dropped)")
+
         await copy(AuditLog,        "Audit Logs")
 
     print("-" * 60)
