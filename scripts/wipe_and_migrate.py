@@ -77,7 +77,21 @@ async def wipe_and_migrate():
         await copy(User,            "Users")
         await copy(Tenant,          "Tenants")
         await copy(AcademicGroup,   "Academic Groups")
-        await copy(Student,         "Students")
+
+        # Students: sanitize empty index_number strings -> None
+        # SQLite allows multiple empty strings in a unique column; PostgreSQL does not.
+        print("  Students: sanitizing index_number...")
+        res = await src.execute(select(Student))
+        students = res.scalars().all()
+        count = 0
+        for stu in students:
+            if stu.index_number is not None and stu.index_number.strip() == "":
+                stu.index_number = None
+            await dst.merge(stu)
+            count += 1
+        await dst.commit()
+        print(f"  Students: {count} records migrated")
+
         await copy(Invitation,      "Invitations")
         await copy(AssessmentBatch, "Assessment Batches")
         await copy(StudentResult,   "Student Results")
