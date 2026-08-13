@@ -48,13 +48,10 @@ if [ "$DATA_DIR" != "/app" ]; then
     [ -f "$DATA_DIR/edulytics_history.db" ] && ln -sf $DATA_DIR/edulytics_history.db /app/edulytics_history.db
 fi
 
-# ── Auto-Migrate SQLite (Railway Volume) -> PostgreSQL ──
-if [ -n "$DATABASE_URL" ] && [ -f "/app/scripts/wipe_and_migrate.py" ] && [ -f "$DATA_DIR/edulytics_history.db" ]; then
-    echo "Running wipe-and-migrate: $DATA_DIR/edulytics_history.db -> PostgreSQL..."
-    python3 /app/scripts/wipe_and_migrate.py
-    echo "Migration done."
-else
-    echo "Skipping migration (DATABASE_URL not set, script missing, or no SQLite volume db found)."
+# ── Auto-Migrate SQLite to PostgreSQL if DATABASE_URL is present ──
+if [ -n "$DATABASE_URL" ] && [ -f "/app/scripts/migrate_sqlite_to_pg.py" ]; then
+    echo "🔄 Running SQLite -> PostgreSQL data migration..."
+    python3 /app/scripts/migrate_sqlite_to_pg.py || echo "⚠️ Migration completed with warnings."
 fi
 # ─────────────────────────────────────────
 
