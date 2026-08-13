@@ -56,14 +56,6 @@ export default function MasterDashboard() {
     };
   }, [router]);
 
-  if (!isAuthorized) {
-    return (
-      <div className="min-h-screen bg-surface-soft flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
-      </div>
-    );
-  }
-
   const fetchUsers = async () => {
     try {
       const res = await authFetch("/api/v1/master/users");
@@ -136,6 +128,16 @@ export default function MasterDashboard() {
       console.error(e);
     }
   };
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-surface-soft flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+
 
   return (
     <div className="flex min-h-screen bg-surface-soft text-foreground font-outfit">

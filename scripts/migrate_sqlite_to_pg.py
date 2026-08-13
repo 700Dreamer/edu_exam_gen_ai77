@@ -58,8 +58,8 @@ async def migrate():
 
     async with sqlite_session_maker() as sqlite_session, pg_session_maker() as pg_session:
 
-        # Helper function to migrate a table model
         async def copy_records(model_class, model_name):
+            from sqlalchemy.orm import class_mapper
             print(f"      Migrating {model_name}...")
             res = await sqlite_session.execute(select(model_class))
             items = res.scalars().all()
@@ -69,8 +69,12 @@ async def migrate():
 
             count = 0
             for item in items:
-                # Merge instance into target PostgreSQL session
-                await pg_session.merge(item)
+                # Convert the object to a clean dictionary of its column values
+                mapper = class_mapper(model_class)
+                data = {c.key: getattr(item, c.key) for c in mapper.column_attrs}
+                
+                # Merge using the dictionary to avoid cross-session issues
+                await pg_session.merge(model_class(**data))
                 count += 1
 
             await pg_session.commit()
