@@ -3,6 +3,9 @@ import os
 import uuid
 import asyncio
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add project root to path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
