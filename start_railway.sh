@@ -47,6 +47,12 @@ if [ "$DATA_DIR" != "/app" ]; then
     fi
     [ -f "$DATA_DIR/edulytics_history.db" ] && ln -sf $DATA_DIR/edulytics_history.db /app/edulytics_history.db
 fi
+
+# ── Auto-Migrate SQLite to PostgreSQL if DATABASE_URL is present ──
+if [ -n "$DATABASE_URL" ] && [ -f "/app/scripts/migrate_sqlite_to_pg.py" ]; then
+    echo "🔄 Running SQLite -> PostgreSQL data migration..."
+    python3 /app/scripts/migrate_sqlite_to_pg.py || echo "⚠️ Migration completed with warnings."
+fi
 # ─────────────────────────────────────────
 
 echo "Starting FastAPI backend on internal port 8000..."

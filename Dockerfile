@@ -43,6 +43,7 @@ COPY server.py main.py build_vector_db.py extract_data.py start_railway.sh ./
 COPY core/ ./core/
 COPY ui/  ./ui/
 COPY config/ ./config/
+COPY scripts/ ./scripts/
 
 # Ensure startup script is executable
 RUN chmod +x start_railway.sh

@@ -17,6 +17,9 @@ from core.models import (
 # SQLite Source Engine
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SQLITE_PATH = os.path.join(BASE_DIR, "edulytics_history.db")
+if not os.path.exists(SQLITE_PATH) and os.path.exists("/app/data_volume/edulytics_history.db"):
+    SQLITE_PATH = "/app/data_volume/edulytics_history.db"
+
 SQLITE_URL = f"sqlite+aiosqlite:///{SQLITE_PATH}"
 
 sqlite_engine = create_async_engine(SQLITE_URL)
