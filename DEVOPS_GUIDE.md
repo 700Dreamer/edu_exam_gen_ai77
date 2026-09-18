@@ -10,7 +10,7 @@ Edulytics AI consists of two main services:
 1.  **Backend (FastAPI)**: Handles AI logic, vector search (ChromaDB), and data extraction.
 2.  **Frontend (Next.js)**: The user interface.
 
-In production (Railway), both services run inside a **single container** to simplify routing and reduce costs.
+In production (Railway), both services run inside a **single container** to simplify routing and reduce costs..
 
 ----
 

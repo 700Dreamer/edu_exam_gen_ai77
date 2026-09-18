@@ -126,7 +126,7 @@ def ingest_nursery_papers():
         ids=ids
     )
     
-    print("✅ Ingestion complete.")
+    print("✅ Ingestion complete!")
 
 if __name__ == "__main__":
     ingest_nursery_papers()
