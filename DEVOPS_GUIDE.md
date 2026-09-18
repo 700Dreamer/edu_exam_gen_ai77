@@ -12,7 +12,7 @@ Edulytics AI consists of two main services:
 
 In production (Railway), both services run inside a **single container** to simplify routing and reduce costs.
 
----
+----
 
 ## 📂 Critical Files (Do Not Modify Without Caution)
 
