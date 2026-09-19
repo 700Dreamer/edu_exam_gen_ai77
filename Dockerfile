@@ -6,9 +6,9 @@ FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 
 # Copy package files and install dependencies
-COPY frontend/package.json frontend/package-lock.json* frontend/pnpm-lock.yaml* ./
+COPY frontend/package.json frontend/package-lock.json* frontend/pnpm-lock.yaml* frontend/pnpm-workspace.yaml* ./
 RUN if [ -f pnpm-lock.yaml ]; then \
-        npm install -g pnpm && pnpm install --no-frozen-lockfile; \
+        npm install -g pnpm && pnpm config set strict-dep-builds false && pnpm install --no-frozen-lockfile; \
     else \
         npm ci; \
     fi

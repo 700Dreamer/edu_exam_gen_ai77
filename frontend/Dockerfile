@@ -3,10 +3,10 @@
 # ── Stage 1: Install dependencies ────────────────────────────────────────────
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* pnpm-lock.yaml* ./
+COPY package.json package-lock.json* pnpm-lock.yaml* pnpm-workspace.yaml* ./
 # Prefer npm (lock file is present); falls back to pnpm if only pnpm-lock exists
 RUN if [ -f pnpm-lock.yaml ]; then \
-        npm install -g pnpm && pnpm install --no-frozen-lockfile; \
+        npm install -g pnpm && pnpm config set strict-dep-builds false && pnpm install --no-frozen-lockfile; \
     else \
         npm ci; \
     fi
