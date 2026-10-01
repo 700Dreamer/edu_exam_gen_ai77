@@ -1,6 +1,6 @@
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import String, DateTime, ForeignKey, JSON
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 import uuid
@@ -39,6 +39,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+
+    user: Mapped[Optional["User"]] = relationship("User", foreign_keys=[user_id])
 
 class Tenant(Base):
     """Represents a School or Institution."""
@@ -148,3 +150,5 @@ class Invitation(Base):
     invited_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    inviter: Mapped[Optional["User"]] = relationship("User", foreign_keys=[invited_by])

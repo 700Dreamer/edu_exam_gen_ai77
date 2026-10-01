@@ -134,16 +134,21 @@ async def register_via_invite(
         is_verified=True,
         role=invite.role
     )
-    session.add(new_user)
-    
-    # 4. Mark token used
-    invite.used_at = datetime.utcnow()
-    
-    # 5. Audit log (User themselves)
-    log = AuditLog(user_id=new_user.id, action="registered_via_invite", details={"email": new_user.email})
-    session.add(log)
-    
-    await session.commit()
+    try:
+        session.add(new_user)
+        await session.flush()
+        
+        # 4. Mark token used
+        invite.used_at = datetime.utcnow()
+        
+        # 5. Audit log (User themselves)
+        log = AuditLog(user_id=new_user.id, action="registered_via_invite", details={"email": new_user.email})
+        session.add(log)
+        
+        await session.commit()
+    except Exception as e:
+        await session.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create account: {str(e)}")
     
     return {"status": "success", "message": "Account created successfully!"}
 
