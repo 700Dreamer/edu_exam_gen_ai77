@@ -77,13 +77,13 @@ export default function GradebookView({
       if (saved) {
         setOpenedBatchIds(new Set(JSON.parse(saved)));
       }
-    } catch (e) {}
+    } catch (e) { }
     try {
       const savedLive = localStorage.getItem("edulytics-run-live-mode");
       if (savedLive === "off" || savedLive === "auto" || savedLive === "30s") {
         setRunLiveMode(savedLive);
       }
-    } catch (e) {}
+    } catch (e) { }
     fetchBatches();
   }, []);
 
@@ -93,7 +93,7 @@ export default function GradebookView({
       next.add(batchId);
       try {
         localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
@@ -104,7 +104,7 @@ export default function GradebookView({
       next.delete(batchId);
       try {
         localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
@@ -115,14 +115,14 @@ export default function GradebookView({
       batches.forEach(b => { if (b.status === "Completed") next.add(b.id); });
       try {
         localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
 
   const handleRunLiveModeChange = (mode: RunLiveMode) => {
     setRunLiveMode(mode);
-    try { localStorage.setItem("edulytics-run-live-mode", mode); } catch (e) {}
+    try { localStorage.setItem("edulytics-run-live-mode", mode); } catch (e) { }
   };
 
   const handleRegradeSingleResult = async () => {
@@ -1103,14 +1103,14 @@ export default function GradebookView({
       <div className="bg-surface border border-border-main p-6 space-y-4 font-outfit relative">
         <div className="flex justify-between items-center border-b border-border-main/50 pb-3">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 bg-brand-600 rounded-full animate-pulse" />
+            <div className="w-2.5 h-2.5 bg-foreground/40 rounded-full animate-pulse" />
             <h4 className="text-xs font-bold uppercase tracking-widest text-foreground/60">General AI Recommendation & Insights</h4>
           </div>
           <button
             type="button"
             onClick={() => fetchInsights(true)}
             disabled={loadingInsights}
-            className="flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700 disabled:opacity-50 cursor-pointer"
+            className="flex items-center gap-1.5 text-xs font-semibold text-foreground/70 hover:text-foreground disabled:opacity-50 cursor-pointer"
             title="Retry / Regenerate Insights"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", loadingInsights && "animate-spin")} />
@@ -1120,7 +1120,7 @@ export default function GradebookView({
 
         {loadingInsights ? (
           <div className="py-12 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
+            <Loader2 className="w-6 h-6 animate-spin text-foreground/40" />
             <span className="text-xs text-foreground/50 italic">Generating general batch recommendations and learning insights...</span>
           </div>
         ) : insights ? (
@@ -1322,336 +1322,186 @@ export default function GradebookView({
         ) : !selectedBatch ? (
           /* List of Batches */
           <div className="bg-surface border border-border-main rounded-[10px] shadow-none overflow-hidden flex flex-col">
-                {/* Dashboard Toolbar Header */}
-                <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-surface-soft rounded-[6px]">
-                      <Layers className="w-4 h-4 text-foreground/60" />
-                    </div>
-                    <div>
-                      <h3 className="text-[11px] font-semibold text-foreground/60 tracking-[0.18em] uppercase">
-                        Grading Runs <span className="text-foreground/40">&middot; {batches.length} {batches.length === 1 ? "Run" : "Runs"}</span>
-                      </h3>
-                      <p className="text-[11px] text-foreground/45 mt-0.5">
-                        Completed and active assessment evaluations
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={batchSearch}
-                        onChange={(e) => setBatchSearch(e.target.value)}
-                        placeholder="Filter runs..."
-                        className="pl-8 pr-7 py-1.5 text-xs bg-surface-soft border border-transparent text-foreground placeholder:text-foreground/40 rounded-[6px] focus:outline-none focus:bg-surface focus:border-border-main w-44 sm:w-56 transition-all"
-                      />
-                      {batchSearch && (
-                        <button
-                          onClick={() => setBatchSearch("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-0.5 cursor-pointer"
-                          title="Clear filter"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-
-                    <button
-                      onClick={handleRefreshBatches}
-                      disabled={isRefreshingBatches}
-                      className="p-2 bg-surface-soft hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-all rounded-[6px] cursor-pointer disabled:opacity-50"
-                      title="Refresh runs"
-                      aria-label="Refresh runs"
-                    >
-                      <RefreshCw className={cn("w-3.5 h-3.5", isRefreshingBatches && "animate-spin")} />
-                    </button>
-                  </div>
+            {/* Dashboard Toolbar Header */}
+            <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-surface-soft rounded-[6px]">
+                  <Layers className="w-4 h-4 text-foreground/60" />
                 </div>
-
-                {batches.length === 0 ? (
-                  <div className="p-12 text-center text-xs text-foreground/40 italic">
-                    No assessment batches found. Execute an Orchestration from the Grading Pipeline page.
-                  </div>
-                ) : filteredBatches.length === 0 ? (
-                  <div className="p-12 text-center text-xs text-foreground/60 space-y-2">
-                    <p>No grading runs match the current filters.</p>
-                    <button
-                      onClick={clearRunFilters}
-                      className="px-3 py-1 bg-surface border border-border-main text-xs font-semibold hover:bg-surface-soft text-brand-600 rounded-[5px] cursor-pointer"
-                    >
-                      Clear filters
-                    </button>
-                  </div>
-                ) : (
-                  /* Scrollable Table Viewport */
-                  <div className="overflow-x-auto overflow-y-auto max-h-[520px] relative scrollbar-thin">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead className="sticky top-0 z-10 bg-surface-soft/95 backdrop-blur-md border-b border-border-main shadow-xs">
-                        <tr className="text-foreground/50 font-bold uppercase tracking-wider text-[10px]">
-                          <th className="px-5 py-3">School / Tenant</th>
-                          <th className="px-5 py-3">Class Stream</th>
-                          <th className="px-5 py-3">Subject</th>
-                          <th className="px-5 py-3">Evaluated</th>
-                          <th className="px-5 py-3">Status</th>
-                          <th className="px-5 py-3 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border-main/50">
-                        {filteredBatches.map(batch => (
-                          <tr key={batch.id} className="hover:bg-surface-soft/30 transition-colors group">
-                            <td className="px-5 py-3.5">
-                              <span className="font-bold text-foreground block text-xs">{batch.tenant_name}</span>
-                              {batch.exam_type && (
-                                <span className="text-[10px] text-foreground/45 block font-mono mt-0.5">{batch.exam_type}</span>
-                              )}
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <span className="px-2 py-0.5 text-[11px] font-semibold bg-surface-soft text-foreground/80 rounded-[4px] inline-block">
-                                {batch.level} - {batch.stream}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <span className="font-semibold text-brand-700 text-xs">{batch.subject}</span>
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
-                                <Clock className="w-3 h-3 text-foreground/40 shrink-0" />
-                                <span>{formatTimeAgo(batch.created_at)}</span>
-                              </div>
-                              <span className="text-[10px] font-mono text-foreground/45 block mt-0.5">
-                                {new Date(batch.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · {new Date(batch.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <div className="flex items-center gap-2">
-                                <span className={cn("px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider inline-block", getStatusColor(batch.status))}>
-                                  {batch.status}
-                                </span>
-                                {batch.status === "Completed" && !openedBatchIds.has(batch.id) && (
-                                  <span
-                                    className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex items-center gap-1"
-                                    title={`Evaluated ${formatTimeAgo(batch.created_at)}`}
-                                  >
-                                    <Clock className="w-2.5 h-2.5 text-emerald-500" />
-                                    {formatTimeAgo(batch.created_at)}
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-5 py-3.5 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => handleSelectBatch(batch)}
-                                  className="p-2 bg-surface-soft text-foreground/70 hover:text-foreground hover:bg-foreground/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
-                                  title="View Results"
-                                  aria-label="View Results"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleExportCSV(batch.id, batch.subject)}
-                                  className="p-2 bg-surface-soft text-foreground/70 hover:text-emerald-600 hover:bg-emerald-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
-                                  title="Export CSV"
-                                  aria-label="Export CSV"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteBatch(batch.id)}
-                                  className="p-2 bg-surface-soft text-foreground/50 hover:text-red-600 hover:bg-red-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
-                                  title="Delete batch"
-                                  aria-label="Delete batch"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* Bottom Summary Bar */}
-                {batches.length > 0 && (
-                  <div className="px-5 py-2.5 bg-surface-soft/40 border-t border-border-main flex items-center justify-between text-[11px] text-foreground/50">
-                    <span>
-                      Showing {filteredBatches.length} of {batches.length} grading {batches.length === 1 ? "run" : "runs"}
-                    </span>
-                    {hasActiveRunFilters && (
-                      <button
-                        onClick={clearRunFilters}
-                        className="text-brand-600 hover:underline cursor-pointer font-medium"
-                      >
-                        Clear filters
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-        ) : (
-          /* Studio Results Workspace */
-          <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
-            {/* Studio Top Workspace Bar */}
-            <div className="bg-surface border border-border-main rounded-[10px] px-4 py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3 shrink-0">
-              {/* Left: Navigation & Run Identity */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleBackToBatches}
-                  className="px-2.5 py-1.5 text-xs font-bold bg-surface border border-border-main rounded-[6px] hover:bg-surface-soft transition-all flex items-center gap-1.5 cursor-pointer text-foreground/80 hover:text-foreground"
-                  title="Return to Grading Runs list"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Runs</span>
-                </button>
-                <div className="h-4 w-px bg-border-main" />
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-foreground">
-                    {selectedBatch.tenant_name}
-                  </span>
-                  <span className="text-foreground/30 text-xs">/</span>
-                  <span className="text-xs text-foreground/70 font-semibold">
-                    {selectedBatch.level} {selectedBatch.stream}
-                  </span>
-                  <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-brand-500/10 text-brand-700 border border-brand-500/20 rounded-[4px]">
-                    {selectedBatch.subject}
-                  </span>
-                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-surface-soft border border-border-main rounded-[4px] text-foreground/60">
-                    {selectedBatch.mode === "answer_sheet" ? "Answer Sheet" : "Hybrid"} · {selectedBatch.exam_type}
-                  </span>
+                <div>
+                  <h3 className="text-[11px] font-semibold text-foreground/60 tracking-[0.18em] uppercase">
+                    Grading Runs <span className="text-foreground/40">&middot; {batches.length} {batches.length === 1 ? "Run" : "Runs"}</span>
+                  </h3>
+                  <p className="text-[11px] text-foreground/45 mt-0.5">
+                    Completed and active assessment evaluations
+                  </p>
                 </div>
               </div>
 
-              {/* Center: Stat Badges */}
-              <div className="hidden md:flex items-center gap-2">
-                <span className="px-2.5 py-1 bg-surface-soft/80 border border-border-main rounded-[4px] text-[11px] font-bold text-foreground/70 flex items-center gap-1.5">
-                  <Users className="w-3 h-3 text-foreground/50" />
-                  <span>{results.length} Students</span>
-                </span>
-                {classAverage !== null && (
-                  <span className="px-2.5 py-1 bg-surface-soft/80 border border-border-main rounded-[4px] text-[11px] font-bold text-foreground/70 flex items-center gap-1.5">
-                    <TrendingUp className="w-3 h-3 text-emerald-600" />
-                    <span>Avg: <strong className="text-foreground font-black">{classAverage}%</strong></span>
-                  </span>
-                )}
-              </div>
-
-              {/* Right: Actions */}
               <div className="flex items-center gap-2">
-                {distribution && (
-                  <button
-                    onClick={() => setIsDistributionOpen(prev => !prev)}
-                    className={cn(
-                      "px-3 py-1.5 text-xs font-bold border transition-all flex items-center gap-1.5 rounded-[6px] cursor-pointer",
-                      isDistributionOpen
-                        ? "bg-brand-600 text-white border-brand-600 shadow-xs"
-                        : "bg-surface border-border-main text-foreground/80 hover:bg-surface-soft"
-                    )}
-                    title="Toggle Score Distribution drawer"
-                  >
-                    <BarChart2 className="w-3.5 h-3.5" />
-                    <span>Distribution</span>
-                    <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", isDistributionOpen && "rotate-180")} />
-                  </button>
-                )}
-
-                {/* Export Menu Dropdown */}
                 <div className="relative">
-                  <button
-                    onClick={() => setExportMenuOpen(prev => !prev)}
-                    className="px-3 py-1.5 text-xs font-bold bg-surface border border-border-main hover:bg-surface-soft text-foreground/80 hover:text-foreground rounded-[6px] transition-all flex items-center gap-1.5 cursor-pointer"
-                    title="Export options"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Export</span>
-                    <ChevronDown className="w-3 h-3 text-foreground/40" />
-                  </button>
-
-                  {exportMenuOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setExportMenuOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-1.5 w-52 bg-surface border border-border-main rounded-[6px] shadow-xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
-                        <button
-                          onClick={() => {
-                            setExportMenuOpen(false);
-                            handleExportCSV(selectedBatch.id, selectedBatch.subject);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Export CSV Spreadsheet</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setExportMenuOpen(false);
-                            handleExportClassPdf(selectedBatch.id);
-                          }}
-                          disabled={pdfJobStatus === "generating"}
-                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                        >
-                          {pdfJobStatus === "generating" ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
-                          ) : (
-                            <FileDown className="w-3.5 h-3.5 text-brand-600" />
-                          )}
-                          <span>Export Class PDF Report</span>
-                        </button>
-                        {selectedResult && selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
-                          <button
-                            onClick={() => {
-                              setExportMenuOpen(false);
-                              handleExportStudentPdf(selectedResult.id);
-                            }}
-                            disabled={isExportingStudentPdf}
-                            className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50 border-t border-border-main/50"
-                          >
-                            {isExportingStudentPdf ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
-                            ) : (
-                              <FileText className="w-3.5 h-3.5 text-purple-600" />
-                            )}
-                            <span>Export Student PDF</span>
-                          </button>
-                        )}
-                      </div>
-                    </>
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={batchSearch}
+                    onChange={(e) => setBatchSearch(e.target.value)}
+                    placeholder="Filter runs..."
+                    className="pl-8 pr-7 py-1.5 text-xs bg-surface-soft border border-transparent text-foreground placeholder:text-foreground/40 rounded-[6px] focus:outline-none focus:bg-surface focus:border-border-main w-44 sm:w-56 transition-all"
+                  />
+                  {batchSearch && (
+                    <button
+                      onClick={() => setBatchSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-0.5 cursor-pointer"
+                      title="Clear filter"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   )}
                 </div>
 
-                {/* Re-Grade Batch */}
                 <button
-                  onClick={handleReGradeBatch}
-                  disabled={isReGrading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                  onClick={handleRefreshBatches}
+                  disabled={isRefreshingBatches}
+                  className="p-2 bg-surface-soft hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-all rounded-[6px] cursor-pointer disabled:opacity-50"
+                  title="Refresh runs"
+                  aria-label="Refresh runs"
                 >
-                  {isReGrading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Re-grading...</span>
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Re-Grade Batch</span>
-                    </>
-                  )}
+                  <RefreshCw className={cn("w-3.5 h-3.5", isRefreshingBatches && "animate-spin")} />
                 </button>
               </div>
             </div>
 
+            {batches.length === 0 ? (
+              <div className="p-12 text-center text-xs text-foreground/40 italic">
+                No assessment batches found. Execute an Orchestration from the Grading Pipeline page.
+              </div>
+            ) : filteredBatches.length === 0 ? (
+              <div className="p-12 text-center text-xs text-foreground/60 space-y-2">
+                <p>No grading runs match the current filters.</p>
+                <button
+                  onClick={clearRunFilters}
+                  className="px-3 py-1 bg-surface border border-border-main text-xs font-semibold hover:bg-surface-soft text-brand-600 rounded-[5px] cursor-pointer"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              /* Scrollable Table Viewport */
+              <div className="overflow-x-auto overflow-y-auto max-h-[520px] relative scrollbar-thin">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 z-10 bg-surface-soft/95 backdrop-blur-md border-b border-border-main shadow-xs">
+                    <tr className="text-foreground/50 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="px-5 py-3">School / Tenant</th>
+                      <th className="px-5 py-3">Class Stream</th>
+                      <th className="px-5 py-3">Subject</th>
+                      <th className="px-5 py-3">Evaluated</th>
+                      <th className="px-5 py-3">Status</th>
+                      <th className="px-5 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border-main/50">
+                    {filteredBatches.map(batch => (
+                      <tr key={batch.id} className="hover:bg-surface-soft/30 transition-colors group">
+                        <td className="px-5 py-3.5">
+                          <span className="font-bold text-foreground block text-xs">{batch.tenant_name}</span>
+                          {batch.exam_type && (
+                            <span className="text-[10px] text-foreground/45 block font-mono mt-0.5">{batch.exam_type}</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="px-2 py-0.5 text-[11px] font-semibold bg-surface-soft text-foreground/80 rounded-[4px] inline-block">
+                            {batch.level} - {batch.stream}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="font-semibold text-brand-700 text-xs">{batch.subject}</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                            <Clock className="w-3 h-3 text-foreground/40 shrink-0" />
+                            <span>{formatTimeAgo(batch.created_at)}</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-foreground/45 block mt-0.5">
+                            {new Date(batch.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · {new Date(batch.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider inline-block", getStatusColor(batch.status))}>
+                              {batch.status}
+                            </span>
+                            {batch.status === "Completed" && !openedBatchIds.has(batch.id) && (
+                              <span
+                                className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex items-center gap-1"
+                                title={`Evaluated ${formatTimeAgo(batch.created_at)}`}
+                              >
+                                <Clock className="w-2.5 h-2.5 text-emerald-500" />
+                                {formatTimeAgo(batch.created_at)}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleSelectBatch(batch)}
+                              className="p-2 bg-surface-soft text-foreground/70 hover:text-foreground hover:bg-foreground/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                              title="View Results"
+                              aria-label="View Results"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleExportCSV(batch.id, batch.subject)}
+                              className="p-2 bg-surface-soft text-foreground/70 hover:text-emerald-600 hover:bg-emerald-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                              title="Export CSV"
+                              aria-label="Export CSV"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteBatch(batch.id)}
+                              className="p-2 bg-surface-soft text-foreground/50 hover:text-red-600 hover:bg-red-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                              title="Delete batch"
+                              aria-label="Delete batch"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Bottom Summary Bar */}
+            {batches.length > 0 && (
+              <div className="px-5 py-2.5 bg-surface-soft/40 border-t border-border-main flex items-center justify-between text-[11px] text-foreground/50">
+                <span>
+                  Showing {filteredBatches.length} of {batches.length} grading {batches.length === 1 ? "run" : "runs"}
+                </span>
+                {hasActiveRunFilters && (
+                  <button
+                    onClick={clearRunFilters}
+                    className="text-brand-600 hover:underline cursor-pointer font-medium"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Studio Results Workspace */
+          <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
             {/* Collapsible Score Distribution Drawer */}
             {isDistributionOpen && distribution && (
               <div className="bg-surface border border-border-main rounded-[10px] p-4 shadow-sm animate-in slide-in-from-top-2 duration-200 shrink-0">
                 <div className="flex justify-between items-center pb-3 border-b border-border-main/50 mb-3">
                   <div className="flex items-center gap-2">
-                    <BarChart2 className="w-4 h-4 text-brand-600" />
+                    <BarChart2 className="w-4 h-4 text-foreground/70" />
                     <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
                       Class Score Distribution
                     </h4>
@@ -1670,33 +1520,57 @@ export default function GradebookView({
             {/* 3-Pane Studio Workspace */}
             <div className="grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
               {/* PANE 1: Left Roster & Question Navigator */}
-              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden">
-                {/* Segmented Tab Bar */}
-                <div className="p-1.5 bg-surface-soft/60 border-b border-border-main flex gap-1 shrink-0">
-                  <button
-                    onClick={() => setNavTab("students")}
-                    className={cn(
-                      "flex-1 py-1.5 text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                      navTab === "students"
-                        ? "bg-surface text-foreground shadow-xs border border-border-main/80"
-                        : "text-foreground/60 hover:text-foreground"
-                    )}
-                  >
-                    <User className="w-3.5 h-3.5" />
-                    <span>Students ({results.length})</span>
-                  </button>
-                  <button
-                    onClick={() => setNavTab("questions")}
-                    className={cn(
-                      "flex-1 py-1.5 text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer",
-                      navTab === "questions"
-                        ? "bg-surface text-foreground shadow-xs border border-border-main/80"
-                        : "text-foreground/60 hover:text-foreground"
-                    )}
-                  >
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    <span>Questions ({allBatchQuestions.length})</span>
-                  </button>
+              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-none flex flex-col h-full overflow-hidden">
+                {/* Left Panel Back Navigation & Title */}
+                <div className="p-3 border-b border-border-main/60 flex items-center justify-between gap-2 shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={handleBackToBatches}
+                      className="p-1.5 text-foreground/60 hover:text-foreground hover:bg-surface-soft rounded-[6px] border border-border-main/60 transition-all cursor-pointer shrink-0"
+                      title="Back to Grading Runs"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <div className="min-w-0">
+                      <h3 className="text-xs font-bold text-foreground truncate leading-tight">
+                        {selectedBatch.subject}
+                      </h3>
+                      <p className="text-[10px] text-foreground/45 truncate">
+                        {selectedBatch.tenant_name} · {selectedBatch.level} {selectedBatch.stream}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-wider bg-brand-500/10 text-brand-700 border border-brand-500/20 px-2 py-0.5 rounded-[4px] shrink-0">
+                    {selectedBatch.mode === "answer_sheet" ? "Answer Sheet" : "Hybrid"}
+                  </span>
+                </div>
+
+                {/* Segmented Tab Bar (Templates | Layers design) */}
+                <div className="p-3 pb-2.5 border-b border-border-main/60 shrink-0">
+                  <div className="p-1 bg-surface-soft rounded-[8px] flex items-center gap-1">
+                    <button
+                      onClick={() => setNavTab("students")}
+                      className={cn(
+                        "flex-1 py-1.5 text-xs rounded-[6px] transition-all text-center cursor-pointer",
+                        navTab === "students"
+                          ? "bg-white dark:bg-neutral-900 text-foreground font-semibold shadow-xs border border-border-main/50"
+                          : "text-foreground/60 hover:text-foreground font-medium bg-transparent"
+                      )}
+                    >
+                      Students
+                    </button>
+                    <button
+                      onClick={() => setNavTab("questions")}
+                      className={cn(
+                        "flex-1 py-1.5 text-xs rounded-[6px] transition-all text-center cursor-pointer",
+                        navTab === "questions"
+                          ? "bg-white dark:bg-neutral-900 text-foreground font-semibold shadow-xs border border-border-main/50"
+                          : "text-foreground/60 hover:text-foreground font-medium bg-transparent"
+                      )}
+                    >
+                      Questions
+                    </button>
+                  </div>
                 </div>
 
                 {navTab === "students" ? (
@@ -1738,7 +1612,7 @@ export default function GradebookView({
                     {/* Student List */}
                     {loading ? (
                       <div className="flex-1 flex items-center justify-center p-8">
-                        <Loader2 className="w-5 h-5 animate-spin text-brand-500" />
+                        <Loader2 className="w-5 h-5 animate-spin text-foreground/40" />
                       </div>
                     ) : filteredStudents.length === 0 ? (
                       <div className="flex-1 p-8 text-center text-xs text-foreground/40 italic flex flex-col items-center justify-center">
@@ -1804,17 +1678,17 @@ export default function GradebookView({
                               </div>
                               <div className="shrink-0 text-right">
                                 {r.needs_manual_review ? (
-                                  <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-[4px]">
+                                  <span className="text-[10px] font-extrabold uppercase text-amber-600 tracking-wider">
                                     Review
                                   </span>
                                 ) : score !== null ? (
                                   <span className={cn(
-                                    "text-xs font-black px-1.5 py-0.5 rounded-[4px] border",
+                                    "text-xs font-bold font-mono",
                                     score >= 70
-                                      ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                      ? "text-emerald-600"
                                       : score >= 50
-                                        ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
-                                        : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                                        ? "text-brand-600"
+                                        : "text-rose-600"
                                   )}>
                                     {score}%
                                   </span>
@@ -1854,12 +1728,12 @@ export default function GradebookView({
                                 Question {q.qNum}
                               </span>
                               <span className={cn(
-                                "text-[10px] font-black px-1.5 py-0.5 rounded-[4px] border",
+                                "text-xs font-bold font-mono",
                                 q.avgPercent >= 70
-                                  ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                  ? "text-emerald-600"
                                   : q.avgPercent >= 50
-                                    ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
-                                    : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                                    ? "text-brand-600"
+                                    : "text-rose-600"
                               )}>
                                 {q.avgPercent}% Avg
                               </span>
@@ -1913,12 +1787,12 @@ export default function GradebookView({
                             </h3>
                             {scoreVal !== null && !selectedResult.needs_manual_review && (
                               <span className={cn(
-                                "px-2 py-0.5 text-xs font-black rounded-[4px] border",
+                                "text-xs font-bold font-mono",
                                 scoreVal >= 70
-                                  ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                  ? "text-emerald-600"
                                   : scoreVal >= 50
-                                    ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
-                                    : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                                    ? "text-brand-600"
+                                    : "text-rose-600"
                               )}>
                                 {scoreVal}% · Grade {getLetterGrade(scoreVal)}
                               </span>
@@ -1937,7 +1811,7 @@ export default function GradebookView({
                             className="px-2.5 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold rounded-[6px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                             title="Re-run AI evaluation for this student script"
                           >
-                            {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                            {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" /> : <RefreshCw className="w-3.5 h-3.5 text-foreground/70" />}
                             <span>{isRegradingPaper ? "Evaluating..." : "Re-evaluate"}</span>
                           </button>
                         </div>
@@ -1996,9 +1870,9 @@ export default function GradebookView({
                         {/* MANUAL REVIEW NEEDED CENTER */}
                         {selectedResult.needs_manual_review ? (
                           <div className="bg-amber-500/5 border border-amber-500/30 rounded-[10px] p-6 space-y-4 text-left">
-                            <div className="flex items-center gap-2 text-amber-600">
-                              <AlertCircle className="w-5 h-5 shrink-0" />
-                              <h4 className="font-bold text-sm">Identity Resolution Center</h4>
+                            <div className="flex items-center gap-2 text-foreground/80">
+                              <AlertCircle className="w-5 h-5 shrink-0 text-foreground/70" />
+                              <h4 className="font-bold text-sm text-foreground">Identity Resolution Center</h4>
                             </div>
                             <p className="text-xs text-foreground/75 leading-relaxed">
                               The AI engine could not match this script with a registered student record.
@@ -2108,7 +1982,7 @@ export default function GradebookView({
                             {/* Full AI Feedback Report (HERO) */}
                             <div className="bg-surface rounded-[8px] border border-border-main/70 p-6 shadow-xs text-left">
                               <div className="flex items-center gap-2 pb-3 mb-4 border-b border-border-main/60">
-                                <Sparkles className="w-4 h-4 text-brand-600" />
+                                <Sparkles className="w-4 h-4 text-foreground/70" />
                                 <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
                                   AI Diagnostic & Feedback Report
                                 </h4>
@@ -2140,7 +2014,7 @@ export default function GradebookView({
                             }}
                             className="px-4 py-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-lg backdrop-blur-md text-xs font-bold text-foreground flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
                           >
-                            <Layers className="w-4 h-4 text-brand-600" />
+                            <Layers className="w-4 h-4 text-foreground/70" />
                             <span>View Scanned Paper ({paperCount} {paperCount === 1 ? "Page" : "Pages"})</span>
                           </button>
                         </div>
@@ -2151,209 +2025,313 @@ export default function GradebookView({
               </div>
 
               {/* PANE 3: Right Inspector */}
-              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-y-auto custom-scrollbar p-4 space-y-4">
-                {!selectedResult ? (
-                  <div className="space-y-4">
-                    <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-2">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
-                        Batch Summary
-                      </h4>
-                      <div className="space-y-1.5 text-xs text-foreground/70">
-                        <div className="flex justify-between">
-                          <span>Subject</span>
-                          <strong className="text-foreground">{selectedBatch.subject}</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Class</span>
-                          <strong className="text-foreground">{selectedBatch.level} {selectedBatch.stream}</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Exam Type</span>
-                          <strong className="text-foreground">{selectedBatch.exam_type}</strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Submissions</span>
-                          <strong className="text-foreground">{results.length}</strong>
-                        </div>
-                        {classAverage !== null && (
-                          <div className="flex justify-between pt-1 border-t border-border-main/50">
-                            <span>Class Average</span>
-                            <strong className="text-emerald-700">{classAverage}%</strong>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-none flex flex-col h-full overflow-hidden">
+                {/* Pinned Top Header: The 3 Batch Actions */}
+                <div className="p-3 border-b border-border-main/60 shrink-0 bg-surface">
+                  <div className="p-1 bg-surface-soft rounded-[8px] flex items-center gap-1.5">
+                    {/* Action 1: Re-Grade */}
+                    <button
+                      onClick={handleReGradeBatch}
+                      disabled={isReGrading}
+                      className="flex-1 py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title="Re-Grade Batch"
+                    >
+                      {isReGrading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70 shrink-0" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5 text-foreground/70 shrink-0" />
+                      )}
+                      <span className="truncate">Re-Grade</span>
+                    </button>
 
-                    {/* Class Insights */}
-                    <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
-                      <div className="p-3 bg-surface-soft/60 border-b border-border-main flex items-center gap-2">
-                        <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                        <h4 className="text-xs font-bold text-foreground">Class AI Insights</h4>
-                      </div>
-                      <div className="p-3">
-                        <BatchInsightsCard batchId={selectedBatch.id} />
-                      </div>
-                    </div>
-                  </div>
-                ) : (() => {
-                  const scoreVal = typeof selectedResult.total_score === "number" ? Math.round(selectedResult.total_score) : null;
-                  const letterGrade = scoreVal !== null ? getLetterGrade(scoreVal) : "—";
-                  const paperImages = selectedResult.paper_images_urls || {};
-                  const paperCount = Object.keys(paperImages).length;
+                    {/* Action 2: Export Menu */}
+                    <div className="relative flex-1">
+                      <button
+                        onClick={() => setExportMenuOpen(prev => !prev)}
+                        className="w-full py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[6px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        title="Export Options"
+                      >
+                        <Download className="w-3.5 h-3.5 text-foreground/70 shrink-0" />
+                        <span className="truncate">Export</span>
+                        <ChevronDown className="w-3 h-3 text-foreground/40 shrink-0" />
+                      </button>
 
-                  return (
-                    <div className="space-y-4">
-                      {/* Performance Snapshot Card */}
-                      <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50">
-                            Performance
-                          </span>
-                          <span className={cn(
-                            "px-2 py-0.5 text-[9px] font-bold uppercase rounded-[4px] border",
-                            selectedResult.needs_manual_review
-                              ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
-                              : "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
-                          )}>
-                            {selectedResult.needs_manual_review ? "Review Required" : "Evaluated"}
-                          </span>
-                        </div>
-
-                        <div className="flex items-baseline justify-between pt-1">
-                          <div>
-                            <span className="text-3xl font-black text-foreground">
-                              {scoreVal !== null ? `${scoreVal}%` : "—"}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="px-3 py-1 bg-brand-500/10 border border-brand-500/20 text-brand-700 text-sm font-black rounded-[4px]">
-                              Grade {letterGrade}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5 text-[11px] text-foreground/60 pt-2 border-t border-border-main/50">
-                          <div className="flex justify-between">
-                            <span>Student:</span>
-                            <strong className="text-foreground truncate max-w-[140px]">{selectedResult.student_name}</strong>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Index:</span>
-                            <span className="font-mono text-foreground">{selectedResult.index_number || "Unlinked"}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Exam Mode:</span>
-                            <span className="text-foreground">{selectedResult.mode || selectedBatch.mode || "Hybrid"}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Override Score Form */}
-                      <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">
-                          <Edit3 className="w-3 h-3 inline mr-1 text-brand-600" />
-                          Override Final Score
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            min="0"
-                            max="100"
-                            placeholder="0–100"
-                            value={overrideScore}
-                            onChange={e => setOverrideScore(e.target.value)}
-                            className="w-20 text-xs border border-border-main rounded-[6px] p-2 bg-surface-soft text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
+                      {exportMenuOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-30"
+                            onClick={() => setExportMenuOpen(false)}
                           />
-                          <button
-                            onClick={handleOverrideScore}
-                            disabled={!overrideScore || isOverriding}
-                            className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-                          >
-                            {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
-                            <span>Set Score</span>
-                          </button>
+                          <div className="absolute right-0 mt-1.5 w-52 bg-surface border border-border-main rounded-[6px] shadow-xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
+                            <button
+                              onClick={() => {
+                                setExportMenuOpen(false);
+                                handleExportCSV(selectedBatch.id, selectedBatch.subject);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer"
+                            >
+                              <Download className="w-3.5 h-3.5 text-foreground/70" />
+                              <span>Export CSV Spreadsheet</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                setExportMenuOpen(false);
+                                handleExportClassPdf(selectedBatch.id);
+                              }}
+                              disabled={pdfJobStatus === "generating"}
+                              className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                            >
+                              {pdfJobStatus === "generating" ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" />
+                              ) : (
+                                <FileDown className="w-3.5 h-3.5 text-foreground/70" />
+                              )}
+                              <span>Export Class PDF Report</span>
+                            </button>
+                            {selectedResult && selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
+                              <button
+                                onClick={() => {
+                                  setExportMenuOpen(false);
+                                  handleExportStudentPdf(selectedResult.id);
+                                }}
+                                disabled={isExportingStudentPdf}
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50 border-t border-border-main/50"
+                              >
+                                {isExportingStudentPdf ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" />
+                                ) : (
+                                  <FileText className="w-3.5 h-3.5 text-foreground/70" />
+                                )}
+                                <span>Export Student PDF</span>
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Action 3: Score Distribution */}
+                    <button
+                      onClick={() => setIsDistributionOpen(prev => !prev)}
+                      className={cn(
+                        "flex-1 py-1.5 px-2 text-xs font-semibold rounded-[6px] border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                        isDistributionOpen
+                          ? "bg-brand-600 text-white border-brand-600 shadow-xs"
+                          : "bg-surface hover:bg-surface-soft border-border-main/80 text-foreground"
+                      )}
+                      title="Toggle Score Distribution Drawer"
+                    >
+                      <BarChart2 className={cn("w-3.5 h-3.5 shrink-0", isDistributionOpen ? "text-white" : "text-foreground/70")} />
+                      <span className="truncate">Distribution</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Scrollable Inspector Body */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+                  {!selectedResult ? (
+                    <div className="space-y-4">
+                      <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                          Batch Summary
+                        </h4>
+                        <div className="space-y-1.5 text-xs text-foreground/70">
+                          <div className="flex justify-between">
+                            <span>Subject</span>
+                            <strong className="text-foreground">{selectedBatch.subject}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Class</span>
+                            <strong className="text-foreground">{selectedBatch.level} {selectedBatch.stream}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Exam Type</span>
+                            <strong className="text-foreground">{selectedBatch.exam_type}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Submissions</span>
+                            <strong className="text-foreground">{results.length}</strong>
+                          </div>
+                          {classAverage !== null && (
+                            <div className="flex justify-between pt-1 border-t border-border-main/50">
+                              <span>Class Average</span>
+                              <strong className="text-emerald-700">{classAverage}%</strong>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="space-y-2">
-                        {scoreVal !== null && !selectedResult.needs_manual_review && (
-                          <button
-                            onClick={() => handleExportStudentPdf(selectedResult.id)}
-                            disabled={isExportingStudentPdf}
-                            className="w-full py-2 bg-surface hover:bg-surface-soft border border-border-main text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
-                          >
-                            {isExportingStudentPdf ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
-                            ) : (
-                              <FileDown className="w-3.5 h-3.5 text-brand-600" />
-                            )}
-                            <span>{isExportingStudentPdf ? "Generating PDF..." : "Export Student PDF"}</span>
-                          </button>
-                        )}
-
-                        {paperCount > 0 && (
-                          <button
-                            onClick={() => {
-                              setShowPaperModal(true);
-                              setPaperModalPageIndex(0);
-                            }}
-                            className="w-full py-2 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
-                          >
-                            <Layers className="w-3.5 h-3.5 text-brand-600" />
-                            <span>Inspect Paper Pages ({paperCount})</span>
-                          </button>
-                        )}
+                      {/* Class Insights */}
+                      <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
+                        <div className="p-3 bg-surface-soft/60 border-b border-border-main flex items-center gap-2">
+                          <Sparkles className="w-3.5 h-3.5 text-foreground/70" />
+                          <h4 className="text-xs font-bold text-foreground">Class AI Insights</h4>
+                        </div>
+                        <div className="p-3">
+                          <BatchInsightsCard batchId={selectedBatch.id} />
+                        </div>
                       </div>
+                    </div>
+                  ) : (() => {
+                    const scoreVal = typeof selectedResult.total_score === "number" ? Math.round(selectedResult.total_score) : null;
+                    const letterGrade = scoreVal !== null ? getLetterGrade(scoreVal) : "—";
+                    const paperImages = selectedResult.paper_images_urls || {};
+                    const paperCount = Object.keys(paperImages).length;
 
-                      {/* Master Question Paper (Answer Sheet Mode) */}
-                      {selectedBatch.mode === "answer_sheet" && (
-                        <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
+                    return (
+                      <div className="space-y-4">
+                        {/* Performance Snapshot Card */}
+                        <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-3">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50">
-                              Master Question Paper
+                              Performance
                             </span>
-                            {selectedBatch.master_question_urls ? (
-                              <span className="text-[9px] font-bold uppercase text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-[4px]">
-                                Attached
-                              </span>
-                            ) : (
-                              <span className="text-[9px] font-bold uppercase text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-[4px]">
-                                Not Attached
-                              </span>
-                            )}
+                            <span className={cn(
+                              "px-2 py-0.5 text-[9px] font-bold uppercase rounded-[4px] border",
+                              selectedResult.needs_manual_review
+                                ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                                : "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+                            )}>
+                              {selectedResult.needs_manual_review ? "Review Required" : "Evaluated"}
+                            </span>
                           </div>
-                          <button
-                            onClick={() => setShowMasterUploadModal(true)}
-                            className="w-full py-1.5 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-brand-600" />
-                            <span>{selectedBatch.master_question_urls ? "Change Master Paper" : "Upload Master Paper"}</span>
-                          </button>
-                        </div>
-                      )}
 
-                      {/* Class Batch AI Insights Accordion */}
-                      <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
-                        <button
-                          onClick={() => setIsInsightsAccordionOpen(prev => !prev)}
-                          className="w-full p-3.5 flex items-center justify-between text-left hover:bg-surface-soft/60 transition-colors cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="w-4 h-4 text-brand-600" />
-                            <span className="text-xs font-bold text-foreground">Class AI Insights</span>
+                          <div className="flex items-baseline justify-between pt-1">
+                            <div>
+                              <span className="text-3xl font-black text-foreground">
+                                {scoreVal !== null ? `${scoreVal}%` : "—"}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="px-3 py-1 bg-brand-500/10 border border-brand-500/20 text-brand-700 text-sm font-black rounded-[4px]">
+                                Grade {letterGrade}
+                              </span>
+                            </div>
                           </div>
-                          <ChevronDown className={cn("w-3.5 h-3.5 text-foreground/40 transition-transform duration-200", isInsightsAccordionOpen && "rotate-180")} />
-                        </button>
-                        {isInsightsAccordionOpen && (
-                          <div className="p-3 border-t border-border-main bg-surface-soft/30 animate-in fade-in duration-200">
-                            <BatchInsightsCard batchId={selectedBatch.id} />
+
+                          <div className="space-y-1.5 text-[11px] text-foreground/60 pt-2 border-t border-border-main/50">
+                            <div className="flex justify-between">
+                              <span>Student:</span>
+                              <strong className="text-foreground truncate max-w-[140px]">{selectedResult.student_name}</strong>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Index:</span>
+                              <span className="font-mono text-foreground">{selectedResult.index_number || "Unlinked"}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Exam Mode:</span>
+                              <span className="text-foreground">{selectedResult.mode || selectedBatch.mode || "Hybrid"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Override Score Form */}
+                        <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
+                          <label className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">
+                            <Edit3 className="w-3 h-3 inline mr-1 text-foreground/60" />
+                            Override Final Score
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              placeholder="0–100"
+                              value={overrideScore}
+                              onChange={e => setOverrideScore(e.target.value)}
+                              className="w-20 text-xs border border-border-main rounded-[6px] p-2 bg-surface-soft text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
+                            />
+                            <button
+                              onClick={handleOverrideScore}
+                              disabled={!overrideScore || isOverriding}
+                              className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
+                              <span>Set Score</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="space-y-2">
+                          {scoreVal !== null && !selectedResult.needs_manual_review && (
+                            <button
+                              onClick={() => handleExportStudentPdf(selectedResult.id)}
+                              disabled={isExportingStudentPdf}
+                              className="w-full py-2 bg-surface hover:bg-surface-soft border border-border-main text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                            >
+                              {isExportingStudentPdf ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" />
+                              ) : (
+                                <FileDown className="w-3.5 h-3.5 text-foreground/70" />
+                              )}
+                              <span>{isExportingStudentPdf ? "Generating PDF..." : "Export Student PDF"}</span>
+                            </button>
+                          )}
+
+                          {paperCount > 0 && (
+                            <button
+                              onClick={() => {
+                                setShowPaperModal(true);
+                                setPaperModalPageIndex(0);
+                              }}
+                              className="w-full py-2 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                            >
+                              <Layers className="w-3.5 h-3.5 text-foreground/70" />
+                              <span>Inspect Paper Pages ({paperCount})</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Master Question Paper (Answer Sheet Mode) */}
+                        {selectedBatch.mode === "answer_sheet" && (
+                          <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50">
+                                Master Question Paper
+                              </span>
+                              {selectedBatch.master_question_urls ? (
+                                <span className="text-[9px] font-bold uppercase text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-[4px]">
+                                  Attached
+                                </span>
+                              ) : (
+                                <span className="text-[9px] font-bold uppercase text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-[4px]">
+                                  Not Attached
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setShowMasterUploadModal(true)}
+                              className="w-full py-1.5 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-foreground/70" />
+                              <span>{selectedBatch.master_question_urls ? "Change Master Paper" : "Upload Master Paper"}</span>
+                            </button>
                           </div>
                         )}
+
+                        {/* Class Batch AI Insights Accordion */}
+                        <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
+                          <button
+                            onClick={() => setIsInsightsAccordionOpen(prev => !prev)}
+                            className="w-full p-3.5 flex items-center justify-between text-left hover:bg-surface-soft/60 transition-colors cursor-pointer"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Sparkles className="w-4 h-4 text-foreground/70" />
+                              <span className="text-xs font-bold text-foreground">Class AI Insights</span>
+                            </div>
+                            <ChevronDown className={cn("w-3.5 h-3.5 text-foreground/40 transition-transform duration-200", isInsightsAccordionOpen && "rotate-180")} />
+                          </button>
+                          {isInsightsAccordionOpen && (
+                            <div className="p-3 border-t border-border-main bg-surface-soft/30 animate-in fade-in duration-200">
+                              <BatchInsightsCard batchId={selectedBatch.id} />
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>
@@ -2377,7 +2355,7 @@ export default function GradebookView({
                 {/* Modal Header */}
                 <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/60 flex items-center justify-between shrink-0">
                   <div className="flex items-center gap-3">
-                    <Layers className="w-4 h-4 text-brand-600" />
+                    <Layers className="w-4 h-4 text-foreground/70" />
                     <div>
                       <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
                         Scanned Paper — {selectedResult.student_name}
@@ -2488,7 +2466,7 @@ export default function GradebookView({
             <div className="bg-surface border border-border-main max-w-lg w-full p-6 space-y-5 shadow-2xl relative text-left">
               <div className="flex justify-between items-center border-b border-border-main pb-3">
                 <div className="flex items-center gap-2">
-                  <Upload className="w-5 h-5 text-brand-600" />
+                  <Upload className="w-5 h-5 text-foreground/70" />
                   <h3 className="text-sm font-extrabold uppercase tracking-wider text-foreground">
                     Upload Master Question Paper
                   </h3>
@@ -2508,7 +2486,7 @@ export default function GradebookView({
                 </p>
 
                 <div className="border-2 border-dashed border-border-main p-6 text-center space-y-2 hover:border-brand-500 transition-colors bg-surface-soft/40">
-                  <BookOpen className="w-8 h-8 mx-auto text-brand-600/60" />
+                  <BookOpen className="w-8 h-8 mx-auto text-foreground/40" />
                   <input
                     type="file"
                     multiple
@@ -2566,13 +2544,13 @@ export default function GradebookView({
         <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="bg-surface border border-border-main shadow-lg px-5 py-3 flex items-center gap-3 font-outfit max-w-md">
             {pdfJobStatus === "generating" && (
-              <Loader2 className="w-4 h-4 animate-spin text-brand-600 shrink-0" />
+              <Loader2 className="w-4 h-4 animate-spin text-foreground/70 shrink-0" />
             )}
             {pdfJobStatus === "ready" && (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <CheckCircle2 className="w-4 h-4 text-foreground/80 shrink-0" />
             )}
             {pdfJobStatus === "failed" && (
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-foreground/80 shrink-0" />
             )}
             <span className="text-xs font-bold text-foreground">{pdfToastMessage}</span>
             <button
