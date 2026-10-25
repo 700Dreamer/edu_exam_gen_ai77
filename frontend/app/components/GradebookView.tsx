@@ -526,7 +526,7 @@ export default function GradebookView({
 
           if (studentName) {
             gridDiv.innerHTML += `
-              <div class="bg-surface border border-border-main p-4 space-y-1">
+              <div class="p-4 space-y-1">
                 <span class="text-[9px] font-bold uppercase tracking-wider text-foreground/40">Student Name</span>
                 <p class="text-xs font-bold text-foreground truncate">${studentName}</p>
               </div>
@@ -534,7 +534,7 @@ export default function GradebookView({
           }
           if (subject) {
             gridDiv.innerHTML += `
-              <div class="bg-surface border border-border-main p-4 space-y-1">
+              <div class=" p-4 space-y-1">
                 <span class="text-[9px] font-bold uppercase tracking-wider text-foreground/40">Subject</span>
                 <p class="text-xs font-bold text-foreground">${subject}</p>
               </div>
@@ -542,7 +542,7 @@ export default function GradebookView({
           }
           if (totalScore) {
             gridDiv.innerHTML += `
-              <div class="bg-brand-500/5 border border-brand-500/20 p-4 space-y-1">
+              <div class=" p-4 space-y-1">
                 <span class="text-[9px] font-bold uppercase tracking-wider text-brand-600/80">Total Score</span>
                 <p class="text-xs font-extrabold text-brand-600">${totalScore}</p>
               </div>
@@ -1866,7 +1866,7 @@ export default function GradebookView({
                       )}
 
                       {/* Main Scrollable Canvas Content */}
-                      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-24">
+                      <div className=" flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-24">
                         {/* MANUAL REVIEW NEEDED CENTER */}
                         {selectedResult.needs_manual_review ? (
                           <div className="bg-amber-500/5 border border-amber-500/30 rounded-[10px] p-6 space-y-4 text-left">
@@ -1883,7 +1883,7 @@ export default function GradebookView({
                               )}
                             </p>
 
-                            <div className="h-44 bg-surface-soft border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
+                            <div className="h-44 bg-green-200 border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
                               {selectedResult.paper_images_urls?.page1 ? (
                                 <img
                                   src={selectedResult.paper_images_urls.page1}
@@ -1929,7 +1929,7 @@ export default function GradebookView({
                           <>
                             {/* Selected Single Question Detail Card */}
                             {activeItem && selectedItemKey !== "all" && (
-                              <div className="bg-surface-soft/40 border border-brand-500/25 rounded-[8px] p-4 space-y-3 shadow-xs">
+                              <div className=" border border-brand-500/25 rounded-[8px] p-4 space-y-3 shadow-xs">
                                 <div className="flex items-center justify-between border-b border-border-main/60 pb-2">
                                   <div className="flex items-center gap-2">
                                     <span className="text-xs font-black uppercase tracking-wider text-foreground">
