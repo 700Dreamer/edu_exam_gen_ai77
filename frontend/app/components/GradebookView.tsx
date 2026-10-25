@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Download, Loader2, FileCheck, AlertCircle, CheckCircle2, Trash2, Edit3, RefreshCw, ChevronLeft, ChevronRight,
-  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X, FileDown, Clock, Search
+  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X, FileDown, Clock, Search,
+  BarChart2, ChevronDown, ChevronUp, User, ArrowUpRight, Users, TrendingUp, Sparkles
 } from "lucide-react";
 import { cn, authFetch, formatTimeAgo } from "../lib/utils";
+import GradingRunsControlPanel, {
+  type RunStatusFilter, type RunSortOrder, type RunLiveMode
+} from "./GradingRunsControlPanel";
 
 export default function GradebookView({
   theme,
@@ -22,6 +26,11 @@ export default function GradebookView({
   const [batches, setBatches] = useState<any[]>([]);
   const [batchSearch, setBatchSearch] = useState("");
   const [isRefreshingBatches, setIsRefreshingBatches] = useState(false);
+  const [runStatusFilter, setRunStatusFilter] = useState<RunStatusFilter>("all");
+  const [runSortOrder, setRunSortOrder] = useState<RunSortOrder>("newest");
+  const [runLiveMode, setRunLiveMode] = useState<RunLiveMode>("auto");
+  const [batchesSyncedAt, setBatchesSyncedAt] = useState<Date | null>(null);
+  const [, setRelativeTimeTick] = useState(0);
   const [selectedBatch, setSelectedBatch] = useState<any | null>(null);
   const [batchLoadingError, setBatchLoadingError] = useState<string | null>(null);
   const [isDirectHydrating, setIsDirectHydrating] = useState<boolean>(false);
@@ -36,6 +45,15 @@ export default function GradebookView({
   const [showMasterUploadModal, setShowMasterUploadModal] = useState<boolean>(false);
   const [masterUploadFiles, setMasterUploadFiles] = useState<FileList | null>(null);
   const [isUploadingMaster, setIsUploadingMaster] = useState<boolean>(false);
+
+  // Studio Results Workspace States
+  const [navTab, setNavTab] = useState<"students" | "questions">("students");
+  const [studentSearchQuery, setStudentSearchQuery] = useState("");
+  const [showPaperModal, setShowPaperModal] = useState(false);
+  const [paperModalPageIndex, setPaperModalPageIndex] = useState(0);
+  const [isDistributionOpen, setIsDistributionOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [isInsightsAccordionOpen, setIsInsightsAccordionOpen] = useState(false);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [classStudents, setClassStudents] = useState<any[]>([]);
@@ -58,6 +76,12 @@ export default function GradebookView({
       const saved = localStorage.getItem("edulytics-opened-batches");
       if (saved) {
         setOpenedBatchIds(new Set(JSON.parse(saved)));
+      }
+    } catch (e) {}
+    try {
+      const savedLive = localStorage.getItem("edulytics-run-live-mode");
+      if (savedLive === "off" || savedLive === "auto" || savedLive === "30s") {
+        setRunLiveMode(savedLive);
       }
     } catch (e) {}
     fetchBatches();
@@ -83,6 +107,22 @@ export default function GradebookView({
       } catch (e) {}
       return next;
     });
+  };
+
+  const markAllBatchesAsOpened = () => {
+    setOpenedBatchIds(prev => {
+      const next = new Set(prev);
+      batches.forEach(b => { if (b.status === "Completed") next.add(b.id); });
+      try {
+        localStorage.setItem("edulytics-opened-batches", JSON.stringify(Array.from(next)));
+      } catch (e) {}
+      return next;
+    });
+  };
+
+  const handleRunLiveModeChange = (mode: RunLiveMode) => {
+    setRunLiveMode(mode);
+    try { localStorage.setItem("edulytics-run-live-mode", mode); } catch (e) {}
   };
 
   const handleRegradeSingleResult = async () => {
@@ -313,7 +353,7 @@ export default function GradebookView({
             items += `
               <li class="flex items-start gap-2.5 text-xs text-foreground/85 leading-relaxed py-1 text-left">
                 <span class="mt-0.5 shrink-0 flex items-center justify-center w-4 h-4 rounded-full ${type === "strength" ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"} font-bold text-[10px]">
-                  ${type === "strength" ? "✓" : "⚠"}
+                  ${type === "strength" ? "+" : "!"}
                 </span>
                 <span>${text}</span>
               </li>
@@ -576,6 +616,7 @@ export default function GradebookView({
       if (res.ok) {
         const data = await res.json();
         setBatches(Array.isArray(data) ? data : []);
+        setBatchesSyncedAt(new Date());
       }
     } catch (e) {
       console.error("Failed to fetch batches:", e);
@@ -590,6 +631,24 @@ export default function GradebookView({
       setIsRefreshingBatches(false);
     }
   };
+
+  const hasActiveRuns = batches.some(b => b.status === "Processing" || b.status === "Queued");
+
+  // Live sync for the runs list. Auto polls only while runs are queued or processing.
+  useEffect(() => {
+    if (selectedBatch || runLiveMode === "off") return;
+    const intervalMs = runLiveMode === "30s" ? 30000 : hasActiveRuns ? 10000 : null;
+    if (!intervalMs) return;
+    const id = setInterval(() => { fetchBatches(); }, intervalMs);
+    return () => clearInterval(id);
+  }, [runLiveMode, hasActiveRuns, selectedBatch]);
+
+  // Keep relative "time ago" labels fresh on the runs list only
+  useEffect(() => {
+    if (selectedBatch) return;
+    const id = setInterval(() => setRelativeTimeTick(t => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [selectedBatch]);
 
   const loadBatchById = useCallback(async (batchId: string, targetStudentId?: string | null) => {
     setLoading(true);
@@ -637,7 +696,11 @@ export default function GradebookView({
         const matched = loadedResults.find((r: any) => r.id === desiredStudentId);
         if (matched) {
           setSelectedResult(matched);
+        } else {
+          setSelectedResult(loadedResults[0]);
         }
+      } else if (loadedResults.length > 0) {
+        setSelectedResult(loadedResults[0]);
       }
     } catch (err) {
       console.error("Error loading batch by ID:", err);
@@ -694,7 +757,14 @@ export default function GradebookView({
         authFetch(`/api/v1/assessment/batch/${batch.id}/results`),
         authFetch(`/api/v1/analytics/score-distribution/${batch.id}`)
       ]);
-      if (rRes.ok) setResults(await rRes.json());
+      if (rRes.ok) {
+        const rData = await rRes.json();
+        const loadedResults = Array.isArray(rData) ? rData : [];
+        setResults(loadedResults);
+        if (loadedResults.length > 0 && !selectedResult) {
+          setSelectedResult(loadedResults[0]);
+        }
+      }
       if (dRes.ok) setDistribution(await dRes.json());
     } catch (e) { }
     finally { setLoading(false); }
@@ -1086,71 +1156,140 @@ export default function GradebookView({
     );
   };
 
-  const filteredBatches = batches.filter(batch => {
-    if (!batchSearch.trim()) return true;
-    const q = batchSearch.toLowerCase();
-    return (
-      (batch.tenant_name && batch.tenant_name.toLowerCase().includes(q)) ||
-      (batch.subject && batch.subject.toLowerCase().includes(q)) ||
-      (batch.level && batch.level.toLowerCase().includes(q)) ||
-      (batch.stream && batch.stream.toLowerCase().includes(q)) ||
-      (batch.status && batch.status.toLowerCase().includes(q)) ||
-      (batch.exam_type && batch.exam_type.toLowerCase().includes(q))
-    );
-  });
+  const runStatusMap: Record<RunStatusFilter, string | null> = {
+    all: null, queued: "Queued", processing: "Processing", completed: "Completed"
+  };
+
+  const filteredBatches = batches
+    .filter(batch => {
+      const wantedStatus = runStatusMap[runStatusFilter];
+      if (wantedStatus && batch.status !== wantedStatus) return false;
+      if (!batchSearch.trim()) return true;
+      const q = batchSearch.toLowerCase();
+      return (
+        (batch.tenant_name && batch.tenant_name.toLowerCase().includes(q)) ||
+        (batch.subject && batch.subject.toLowerCase().includes(q)) ||
+        (batch.level && batch.level.toLowerCase().includes(q)) ||
+        (batch.stream && batch.stream.toLowerCase().includes(q)) ||
+        (batch.status && batch.status.toLowerCase().includes(q)) ||
+        (batch.exam_type && batch.exam_type.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      if (runSortOrder === "subject") {
+        return (a.subject || "").localeCompare(b.subject || "");
+      }
+      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return runSortOrder === "oldest" ? diff : -diff;
+    });
+
+  const hasActiveRunFilters = batchSearch.trim() !== "" || runStatusFilter !== "all";
+  const clearRunFilters = () => {
+    setBatchSearch("");
+    setRunStatusFilter("all");
+  };
+
+  const getLetterGrade = (score: number | null | undefined): string => {
+    if (score === null || score === undefined) return "—";
+    if (score >= 90) return "A+";
+    if (score >= 80) return "A";
+    if (score >= 75) return "B+";
+    if (score >= 70) return "B";
+    if (score >= 65) return "C+";
+    if (score >= 60) return "C";
+    if (score >= 50) return "D";
+    return "F";
+  };
+
+  const getInitials = (name: string): string => {
+    if (!name) return "ST";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const allBatchQuestions = useMemo(() => {
+    if (!results || results.length === 0) return [];
+    const qMap = new Map<string, { qNum: string; maxScore: number; scores: number[]; qText: string }>();
+    results.forEach(r => {
+      const qs = parseResultQuestions(r.raw_extracted_html || "");
+      qs.forEach((q: any) => {
+        if (!qMap.has(q.qNum)) {
+          qMap.set(q.qNum, { qNum: q.qNum, maxScore: q.maxScore || 5, scores: [], qText: q.qText || "" });
+        }
+        const entry = qMap.get(q.qNum)!;
+        entry.scores.push(typeof q.scoreAwarded === "number" ? q.scoreAwarded : 0);
+        if (!entry.qText && q.qText) entry.qText = q.qText;
+      });
+    });
+    return Array.from(qMap.values()).map(item => {
+      const avgScore = item.scores.length > 0
+        ? (item.scores.reduce((a, b) => a + b, 0) / item.scores.length)
+        : 0;
+      const avgPercent = item.maxScore > 0 ? Math.round((avgScore / item.maxScore) * 100) : 0;
+      return {
+        ...item,
+        avgScore: Math.round(avgScore * 10) / 10,
+        avgPercent,
+        attemptCount: item.scores.length
+      };
+    }).sort((a, b) => {
+      const numA = parseInt(a.qNum.replace(/\D/g, "") || "0");
+      const numB = parseInt(b.qNum.replace(/\D/g, "") || "0");
+      return numA - numB;
+    });
+  }, [results]);
+
+  const validScores = useMemo(() => {
+    return results
+      .map(r => r.total_score)
+      .filter((s): s is number => typeof s === "number" && !isNaN(s));
+  }, [results]);
+
+  const classAverage = useMemo(() => {
+    return validScores.length > 0
+      ? Math.round(validScores.reduce((a, b) => a + b, 0) / validScores.length)
+      : null;
+  }, [validScores]);
+
+  const filteredStudents = useMemo(() => {
+    return results.filter(r => {
+      if (selectedBucket && !isScoreInBucket(r.total_score, selectedBucket)) {
+        return false;
+      }
+      if (!studentSearchQuery.trim()) return true;
+      const q = studentSearchQuery.toLowerCase();
+      return (
+        (r.student_name && r.student_name.toLowerCase().includes(q)) ||
+        (r.index_number && r.index_number.toLowerCase().includes(q))
+      );
+    });
+  }, [results, selectedBucket, studentSearchQuery]);
 
   return (
-    <div className="flex-1 bg-surface-soft/30 text-foreground p-8 overflow-y-auto font-outfit relative">
-      <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className={cn(
+      "flex-1 text-foreground font-outfit relative flex flex-col transition-colors duration-300",
+      selectedBatch ? "p-3 sm:p-4 overflow-hidden h-[calc(100vh-62px)]" : "p-8 overflow-y-auto bg-surface-soft/30"
+    )}>
+      <div className={cn(
+        "animate-in fade-in duration-300 flex-1 flex flex-col",
+        selectedBatch ? "w-full max-w-[1720px] mx-auto overflow-hidden h-full gap-3" : "max-w-5xl mx-auto space-y-8"
+      )}>
 
-        {/* Header or back navigation */}
-        <div className="flex justify-between items-center border-b border-border-main pb-4">
-          <div className="flex items-center gap-3">
-            {selectedBatch && (
-              <button
-                onClick={handleBackToBatches}
-                className="p-1.5 text-foreground/50 hover:text-foreground hover:bg-surface-soft border border-border-main transition-all cursor-pointer rounded-none"
-                title="Back to Grading Runs"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-            )}
-            <div>
-              <div className="flex items-center gap-1.5 text-xs text-foreground/50 font-medium">
-                <span
-                  onClick={selectedBatch ? handleBackToBatches : undefined}
-                  className={cn(selectedBatch && "hover:text-foreground cursor-pointer underline-offset-4 hover:underline")}
-                >
-                  Grading Runs
-                </span>
-                {selectedBatch && (
-                  <>
-                    <span>/</span>
-                    <span className="text-foreground font-semibold">
-                      {selectedBatch.subject} — {selectedBatch.level} {selectedBatch.stream}
-                    </span>
-                  </>
-                )}
+        {/* Header (Runs List Only) */}
+        {!selectedBatch && (
+          <div className="flex justify-between items-center border-b border-border-main pb-4">
+            <div className="flex items-center gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 text-xs text-foreground/50 font-medium">
+                  <span>Grading Runs</span>
+                </div>
+                <h2 className="text-xl font-bold tracking-tight mt-0.5">Gradebook & Batch History</h2>
+                <p className="text-xs text-foreground/60 mt-0.5">Review automatic grading stats and individual results</p>
               </div>
-              <h2 className="text-xl font-bold tracking-tight mt-0.5">
-                {selectedBatch ? `${selectedBatch.subject} Assessment Results` : "Gradebook & Batch History"}
-              </h2>
-              <p className="text-xs text-foreground/60 mt-0.5">
-                {selectedBatch
-                  ? `${selectedBatch.tenant_name} | ${selectedBatch.exam_type} | ${results.length} Students Evaluated`
-                  : "Review automatic grading stats and individual results"}
-              </p>
             </div>
           </div>
-          {selectedBatch && (
-            <button
-              onClick={handleBackToBatches}
-              className="px-4 py-2 text-xs font-bold bg-surface border border-border-main rounded-none hover:bg-surface-soft transition-colors cursor-pointer"
-            >
-              Back to Batches
-            </button>
-          )}
-        </div>
+        )}
 
         {/* Not Found State */}
         {batchLoadingError && !selectedBatch && (
@@ -1238,12 +1377,12 @@ export default function GradebookView({
                   </div>
                 ) : filteredBatches.length === 0 ? (
                   <div className="p-12 text-center text-xs text-foreground/60 space-y-2">
-                    <p>No grading runs match &quot;{batchSearch}&quot;.</p>
+                    <p>No grading runs match the current filters.</p>
                     <button
-                      onClick={() => setBatchSearch("")}
+                      onClick={clearRunFilters}
                       className="px-3 py-1 bg-surface border border-border-main text-xs font-semibold hover:bg-surface-soft text-brand-600 rounded-[5px] cursor-pointer"
                     >
-                      Clear filter
+                      Clear filters
                     </button>
                   </div>
                 ) : (
@@ -1343,660 +1482,1005 @@ export default function GradebookView({
                     <span>
                       Showing {filteredBatches.length} of {batches.length} grading {batches.length === 1 ? "run" : "runs"}
                     </span>
-                    {batchSearch && (
+                    {hasActiveRunFilters && (
                       <button
-                        onClick={() => setBatchSearch("")}
+                        onClick={clearRunFilters}
                         className="text-brand-600 hover:underline cursor-pointer font-medium"
                       >
-                        Clear filter
+                        Clear filters
                       </button>
                     )}
                   </div>
                 )}
               </div>
         ) : (
-          /* Detailed Batch Results */
-          <div className="space-y-6">
-            {/* Score Distribution Chart */}
-            {distribution && <ScoreChart dist={distribution} />}
+          /* Studio Results Workspace */
+          <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-hidden">
+            {/* Studio Top Workspace Bar */}
+            <div className="bg-surface border border-border-main rounded-[10px] px-4 py-2.5 shadow-xs flex flex-wrap items-center justify-between gap-3 shrink-0">
+              {/* Left: Navigation & Run Identity */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleBackToBatches}
+                  className="px-2.5 py-1.5 text-xs font-bold bg-surface border border-border-main rounded-[6px] hover:bg-surface-soft transition-all flex items-center gap-1.5 cursor-pointer text-foreground/80 hover:text-foreground"
+                  title="Return to Grading Runs list"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Runs</span>
+                </button>
+                <div className="h-4 w-px bg-border-main" />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-foreground">
+                    {selectedBatch.tenant_name}
+                  </span>
+                  <span className="text-foreground/30 text-xs">/</span>
+                  <span className="text-xs text-foreground/70 font-semibold">
+                    {selectedBatch.level} {selectedBatch.stream}
+                  </span>
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-brand-500/10 text-brand-700 border border-brand-500/20 rounded-[4px]">
+                    {selectedBatch.subject}
+                  </span>
+                  <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-surface-soft border border-border-main rounded-[4px] text-foreground/60">
+                    {selectedBatch.mode === "answer_sheet" ? "Answer Sheet" : "Hybrid"} · {selectedBatch.exam_type}
+                  </span>
+                </div>
+              </div>
 
-            {/* General AI Recommendations & Insights */}
-            {selectedBatch && <BatchInsightsCard batchId={selectedBatch.id} />}
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={handleReGradeBatch}
-                disabled={isReGrading}
-                className="flex items-center gap-2 px-4 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer shadow-none"
-              >
-                {isReGrading ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Re-grading...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5" /> Re-Grade Batch
-                  </>
+              {/* Center: Stat Badges */}
+              <div className="hidden md:flex items-center gap-2">
+                <span className="px-2.5 py-1 bg-surface-soft/80 border border-border-main rounded-[4px] text-[11px] font-bold text-foreground/70 flex items-center gap-1.5">
+                  <Users className="w-3 h-3 text-foreground/50" />
+                  <span>{results.length} Students</span>
+                </span>
+                {classAverage !== null && (
+                  <span className="px-2.5 py-1 bg-surface-soft/80 border border-border-main rounded-[4px] text-[11px] font-bold text-foreground/70 flex items-center gap-1.5">
+                    <TrendingUp className="w-3 h-3 text-emerald-600" />
+                    <span>Avg: <strong className="text-foreground font-black">{classAverage}%</strong></span>
+                  </span>
                 )}
-              </button>
-              <button
-                onClick={() => handleExportCSV(selectedBatch.id, selectedBatch.subject)}
-                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer shadow-none"
-              >
-                <Download className="w-3.5 h-3.5" /> Export CSV
-              </button>
-              <button
-                onClick={() => handleExportClassPdf(selectedBatch.id)}
-                disabled={pdfJobStatus === "generating"}
-                className="flex items-center gap-2 px-4 py-2 bg-brand-800 text-white text-xs font-bold rounded-none hover:bg-brand-900 disabled:opacity-50 transition-all cursor-pointer shadow-none"
-                title="Generate class performance report + individual student PDFs as a ZIP download"
-              >
-                {pdfJobStatus === "generating" ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating PDF...</>
-                ) : (
-                  <><FileDown className="w-3.5 h-3.5" /> Export PDF Report</>
+              </div>
+
+              {/* Right: Actions */}
+              <div className="flex items-center gap-2">
+                {distribution && (
+                  <button
+                    onClick={() => setIsDistributionOpen(prev => !prev)}
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-bold border transition-all flex items-center gap-1.5 rounded-[6px] cursor-pointer",
+                      isDistributionOpen
+                        ? "bg-brand-600 text-white border-brand-600 shadow-xs"
+                        : "bg-surface border-border-main text-foreground/80 hover:bg-surface-soft"
+                    )}
+                    title="Toggle Score Distribution drawer"
+                  >
+                    <BarChart2 className="w-3.5 h-3.5" />
+                    <span>Distribution</span>
+                    <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", isDistributionOpen && "rotate-180")} />
+                  </button>
                 )}
-              </button>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Student Results Table */}
-              <div className={cn(
-                "lg:col-span-1 bg-surface border border-border-main rounded-none shadow-none overflow-hidden self-start transition-all duration-300",
-                isSidebarCollapsed ? "hidden" : "block"
-              )}>
-                <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50">
-                  <h3 className="text-sm font-bold text-foreground">{selectedBatch.tenant_name} — {selectedBatch.level} {selectedBatch.stream}</h3>
-                  <p className="text-[10px] text-foreground/50 mt-1 font-semibold">{selectedBatch.subject} | {selectedBatch.exam_type}</p>
+
+                {/* Export Menu Dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setExportMenuOpen(prev => !prev)}
+                    className="px-3 py-1.5 text-xs font-bold bg-surface border border-border-main hover:bg-surface-soft text-foreground/80 hover:text-foreground rounded-[6px] transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Export options"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Export</span>
+                    <ChevronDown className="w-3 h-3 text-foreground/40" />
+                  </button>
+
+                  {exportMenuOpen && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setExportMenuOpen(false)}
+                      />
+                      <div className="absolute right-0 mt-1.5 w-52 bg-surface border border-border-main rounded-[6px] shadow-xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
+                        <button
+                          onClick={() => {
+                            setExportMenuOpen(false);
+                            handleExportCSV(selectedBatch.id, selectedBatch.subject);
+                          }}
+                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Export CSV Spreadsheet</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setExportMenuOpen(false);
+                            handleExportClassPdf(selectedBatch.id);
+                          }}
+                          disabled={pdfJobStatus === "generating"}
+                          className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          {pdfJobStatus === "generating" ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+                          ) : (
+                            <FileDown className="w-3.5 h-3.5 text-brand-600" />
+                          )}
+                          <span>Export Class PDF Report</span>
+                        </button>
+                        {selectedResult && selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
+                          <button
+                            onClick={() => {
+                              setExportMenuOpen(false);
+                              handleExportStudentPdf(selectedResult.id);
+                            }}
+                            disabled={isExportingStudentPdf}
+                            className="w-full text-left px-3.5 py-2 text-xs font-medium text-foreground hover:bg-surface-soft flex items-center gap-2 cursor-pointer disabled:opacity-50 border-t border-border-main/50"
+                          >
+                            {isExportingStudentPdf ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+                            ) : (
+                              <FileText className="w-3.5 h-3.5 text-purple-600" />
+                            )}
+                            <span>Export Student PDF</span>
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
 
-                {loading ? (
-                  <div className="p-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-brand-500" /></div>
-                ) : results.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-foreground/40 italic">No uploads processed in this batch.</div>
-                ) : (
-                  <div className="divide-y divide-border-main/50 max-h-[500px] overflow-y-auto custom-scrollbar">
-                    {results
-                      .filter(r => !selectedBucket || isScoreInBucket(r.total_score, selectedBucket))
-                      .map(r => (
-                      <div
-                        key={r.id}
-                        onClick={() => {
-                          setSelectedResult(r);
-                          setResolutionStudentId("");
-                          setSelectedItemKey("all");
-                          setMasterPageIndex(0);
-                          const resMode = r.mode || selectedBatch?.mode || "hybrid";
-                          if (resMode === "answer_sheet") {
-                            setActiveDetailTab("inspector");
-                          } else {
-                            setActiveDetailTab("report");
-                          }
-                          updateUrlParams({ student: r.id }, true);
-                        }}
-                        className={cn(
-                          "p-4 cursor-pointer hover:bg-surface-soft/30 transition-all flex justify-between items-center",
-                          selectedResult?.id === r.id ? "bg-brand-50/40 border-l-4 border-brand-600 pl-3" : ""
+                {/* Re-Grade Batch */}
+                <button
+                  onClick={handleReGradeBatch}
+                  disabled={isReGrading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all cursor-pointer shadow-xs"
+                >
+                  {isReGrading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Re-grading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Re-Grade Batch</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Collapsible Score Distribution Drawer */}
+            {isDistributionOpen && distribution && (
+              <div className="bg-surface border border-border-main rounded-[10px] p-4 shadow-sm animate-in slide-in-from-top-2 duration-200 shrink-0">
+                <div className="flex justify-between items-center pb-3 border-b border-border-main/50 mb-3">
+                  <div className="flex items-center gap-2">
+                    <BarChart2 className="w-4 h-4 text-brand-600" />
+                    <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                      Class Score Distribution
+                    </h4>
+                  </div>
+                  <button
+                    onClick={() => setIsDistributionOpen(false)}
+                    className="text-foreground/40 hover:text-foreground p-1 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <ScoreChart dist={distribution} />
+              </div>
+            )}
+
+            {/* 3-Pane Studio Workspace */}
+            <div className="grid grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+              {/* PANE 1: Left Roster & Question Navigator */}
+              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden">
+                {/* Segmented Tab Bar */}
+                <div className="p-1.5 bg-surface-soft/60 border-b border-border-main flex gap-1 shrink-0">
+                  <button
+                    onClick={() => setNavTab("students")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      navTab === "students"
+                        ? "bg-surface text-foreground shadow-xs border border-border-main/80"
+                        : "text-foreground/60 hover:text-foreground"
+                    )}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>Students ({results.length})</span>
+                  </button>
+                  <button
+                    onClick={() => setNavTab("questions")}
+                    className={cn(
+                      "flex-1 py-1.5 text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                      navTab === "questions"
+                        ? "bg-surface text-foreground shadow-xs border border-border-main/80"
+                        : "text-foreground/60 hover:text-foreground"
+                    )}
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                    <span>Questions ({allBatchQuestions.length})</span>
+                  </button>
+                </div>
+
+                {navTab === "students" ? (
+                  <>
+                    {/* Search & Filter Bar */}
+                    <div className="p-2.5 border-b border-border-main bg-surface shrink-0 space-y-2">
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={studentSearchQuery}
+                          onChange={(e) => setStudentSearchQuery(e.target.value)}
+                          placeholder="Search student or index..."
+                          className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-soft/60 border border-border-main rounded-[6px] text-foreground placeholder:text-foreground/40 outline-none focus:ring-1 focus:ring-brand-500 transition-all"
+                        />
+                        {studentSearchQuery && (
+                          <button
+                            onClick={() => setStudentSearchQuery("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
                         )}
-                      >
-                        <div>
-                          <h4 className="text-xs font-bold text-foreground">{r.student_name}</h4>
-                          <p className="text-[10px] text-foreground/40 font-mono mt-0.5">{r.index_number ? `Index: ${r.index_number}` : "No Index Linked"}</p>
-                        </div>
-                        <div className="text-right">
-                          {r.needs_manual_review ? (
-                            <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-none">Unresolved</span>
-                          ) : (
-                            <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2 py-0.5 rounded-none">{r.total_score !== null ? `${Math.min(100, Math.max(0, Math.round(r.total_score)))}%` : "—"}</span>
-                          )}
-                        </div>
                       </div>
-                    ))}
+
+                      {selectedBucket && (
+                        <div className="flex items-center justify-between text-[10px] bg-brand-500/10 text-brand-700 border border-brand-500/20 px-2 py-1 rounded-[4px]">
+                          <span>Bucket: {selectedBucket}</span>
+                          <button
+                            onClick={() => setSelectedBucket(null)}
+                            className="text-brand-700/60 hover:text-brand-700 cursor-pointer font-bold"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Student List */}
+                    {loading ? (
+                      <div className="flex-1 flex items-center justify-center p-8">
+                        <Loader2 className="w-5 h-5 animate-spin text-brand-500" />
+                      </div>
+                    ) : filteredStudents.length === 0 ? (
+                      <div className="flex-1 p-8 text-center text-xs text-foreground/40 italic flex flex-col items-center justify-center">
+                        <p>No students match your filter.</p>
+                        {(studentSearchQuery || selectedBucket) && (
+                          <button
+                            onClick={() => {
+                              setStudentSearchQuery("");
+                              setSelectedBucket(null);
+                            }}
+                            className="mt-2 text-brand-600 font-bold hover:underline cursor-pointer"
+                          >
+                            Reset filters
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-border-main/50">
+                        {filteredStudents.map((r) => {
+                          const isSelected = selectedResult?.id === r.id;
+                          const score = typeof r.total_score === "number" ? Math.round(r.total_score) : null;
+                          const initials = getInitials(r.student_name);
+                          return (
+                            <div
+                              key={r.id}
+                              onClick={() => {
+                                setSelectedResult(r);
+                                setResolutionStudentId("");
+                                setSelectedItemKey("all");
+                                setMasterPageIndex(0);
+                                const resMode = r.mode || selectedBatch?.mode || "hybrid";
+                                if (resMode === "answer_sheet") {
+                                  setActiveDetailTab("inspector");
+                                } else {
+                                  setActiveDetailTab("report");
+                                }
+                                updateUrlParams({ student: r.id }, true);
+                              }}
+                              className={cn(
+                                "p-3 cursor-pointer transition-all flex items-center justify-between gap-2.5",
+                                isSelected
+                                  ? "bg-brand-500/10 border-l-4 border-brand-600 pl-2"
+                                  : "hover:bg-surface-soft/60"
+                              )}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={cn(
+                                  "w-7 h-7 rounded-[6px] border flex items-center justify-center text-[10px] font-black shrink-0",
+                                  isSelected
+                                    ? "bg-brand-600 text-white border-brand-600"
+                                    : "bg-surface-soft border-border-main text-foreground/70"
+                                )}>
+                                  {initials}
+                                </div>
+                                <div className="min-w-0">
+                                  <h4 className="text-xs font-bold text-foreground truncate">
+                                    {r.student_name}
+                                  </h4>
+                                  <p className="text-[10px] text-foreground/45 font-mono truncate">
+                                    {r.index_number ? `Idx: ${r.index_number}` : "No Index Linked"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                {r.needs_manual_review ? (
+                                  <span className="text-[9px] font-black uppercase text-amber-600 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-[4px]">
+                                    Review
+                                  </span>
+                                ) : score !== null ? (
+                                  <span className={cn(
+                                    "text-xs font-black px-1.5 py-0.5 rounded-[4px] border",
+                                    score >= 70
+                                      ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                      : score >= 50
+                                        ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
+                                        : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                                  )}>
+                                    {score}%
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-foreground/40 font-mono">—</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Question Breakdown Navigator */
+                  <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                    {allBatchQuestions.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-foreground/40 italic">
+                        No question breakdown data extracted from results yet.
+                      </div>
+                    ) : (
+                      allBatchQuestions.map((q) => {
+                        const isSelected = selectedItemKey === q.qNum;
+                        return (
+                          <div
+                            key={q.qNum}
+                            onClick={() => setSelectedItemKey(q.qNum)}
+                            className={cn(
+                              "p-2.5 border rounded-[6px] transition-all cursor-pointer space-y-1.5",
+                              isSelected
+                                ? "bg-brand-500/10 border-brand-600 shadow-xs"
+                                : "bg-surface border-border-main hover:bg-surface-soft/60"
+                            )}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black text-foreground">
+                                Question {q.qNum}
+                              </span>
+                              <span className={cn(
+                                "text-[10px] font-black px-1.5 py-0.5 rounded-[4px] border",
+                                q.avgPercent >= 70
+                                  ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                  : q.avgPercent >= 50
+                                    ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
+                                    : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                              )}>
+                                {q.avgPercent}% Avg
+                              </span>
+                            </div>
+                            {q.qText && (
+                              <p className="text-[10px] text-foreground/60 line-clamp-2 leading-relaxed">
+                                {q.qText}
+                              </p>
+                            )}
+                            <div className="flex items-center justify-between text-[10px] text-foreground/45 pt-1 border-t border-border-main/40">
+                              <span>Max: {q.maxScore} marks</span>
+                              <span>{q.attemptCount} responses</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Individual Result Details Panel */}
-              <div className={cn(
-                "bg-surface border border-border-main rounded-none shadow-none overflow-hidden min-h-[400px] flex flex-col transition-all duration-300",
-                isSidebarCollapsed ? "lg:col-span-3" : "lg:col-span-2"
-              )}>
+              {/* PANE 2: Center Hero Canvas */}
+              <div className="col-span-12 lg:col-span-6 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden relative">
                 {!selectedResult ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40 p-12">
-                    <FileCheck className="w-16 h-16 mb-4 text-foreground/40" />
-                    <h4 className="text-sm font-bold text-foreground">Select Student</h4>
-                    <p className="text-xs text-foreground/60 mt-1">Select a student from the list on the left to display their graded exam paper and AI feedback.</p>
+                  <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 p-12 space-y-3">
+                    <FileCheck className="w-12 h-12 text-foreground/40" />
+                    <h4 className="text-sm font-bold text-foreground">Select a Student</h4>
+                    <p className="text-xs text-foreground/60 max-w-sm">
+                      Select any student from the left roster to view their graded exam paper, rubric breakdown, and AI diagnostic feedback.
+                    </p>
                   </div>
-                ) : (
-                  <div className="flex-1 flex flex-col h-[600px] overflow-hidden">
-                    {/* Top Panel Bar */}
-                    <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50 flex justify-between items-center shrink-0">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => setIsSidebarCollapsed(prev => !prev)}
-                          className="p-1.5 text-foreground/50 hover:text-foreground hover:bg-surface-soft/80 border border-border-main transition-all cursor-pointer rounded-none flex items-center justify-center shrink-0"
-                          title={isSidebarCollapsed ? "Expand Roster" : "Collapse Roster"}
-                        >
-                          {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-                        </button>
-                        <div>
-                          <h4 className="text-sm font-bold text-foreground">{selectedResult.student_name}</h4>
-                          <p className="text-[10px] text-foreground/40 font-mono mt-0.5">Result ID: {selectedResult.id}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={handleRegradeSingleResult}
-                          disabled={isRegradingPaper}
-                          className="px-3 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                          {isRegradingPaper ? "Re-evaluating Script..." : "Re-evaluate Script"}
-                        </button>
-                        {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
-                          <button
-                            onClick={() => handleExportStudentPdf(selectedResult.id)}
-                            disabled={isExportingStudentPdf}
-                            className="px-3 py-1.5 bg-brand-800 hover:bg-brand-900 text-white text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                            title="Download this student's grading report as a PDF"
-                          >
-                            {isExportingStudentPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
-                            {isExportingStudentPdf ? "Generating..." : "Export PDF"}
-                          </button>
-                        )}
-                        {selectedResult.total_score !== null && !selectedResult.needs_manual_review && (
-                          <div className="text-2xl font-black text-brand-600 bg-brand-500/10 px-4 py-1.5 rounded-none border border-brand-500/20 shadow-none">
-                            {Math.min(100, Math.max(0, Math.round(selectedResult.total_score)))}%
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                ) : (() => {
+                  const attemptedList: string[] = selectedResult.attempted_items?.items || [];
+                  const rawParsedQs = selectedResult.raw_extracted_html ? parseResultQuestions(selectedResult.raw_extracted_html) : [];
+                  const parsedQs = attemptedList.length > 0
+                    ? rawParsedQs.filter((q: any) => attemptedList.includes(q.qNum))
+                    : rawParsedQs;
+                  const activeItem = parsedQs.find((q: any) => q.qNum === selectedItemKey) || (selectedItemKey !== "all" && parsedQs.length > 0 ? parsedQs[0] : null);
+                  const paperImages = selectedResult.paper_images_urls || {};
+                  const paperCount = Object.keys(paperImages).length;
+                  const scoreVal = typeof selectedResult.total_score === "number" ? Math.round(selectedResult.total_score) : null;
 
-                    {/* Toggle Tabs (only if not in manual review) */}
-                    {!selectedResult.needs_manual_review && (() => {
-                      const resMode = selectedResult.mode || selectedBatch?.mode || "hybrid";
-                      return (
-                        <div className="flex border-b border-border-main bg-surface-soft/20 px-6 shrink-0 font-outfit">
-                          {resMode === "answer_sheet" && (
-                            <button
-                              onClick={() => setActiveDetailTab("inspector")}
-                              className={cn(
-                                "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4 flex items-center gap-1.5",
-                                activeDetailTab === "inspector"
-                                  ? "border-brand-600 text-brand-600 font-extrabold"
-                                  : "border-transparent text-foreground/50 hover:text-foreground"
-                              )}
-                            >
-                              <BookOpen className="w-3.5 h-3.5" />
-                              Dual Inspector
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setActiveDetailTab("report")}
-                            className={cn(
-                              "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer mr-4 flex items-center gap-1.5",
-                              activeDetailTab === "report"
-                                ? "border-brand-600 text-brand-600 font-extrabold"
-                                : "border-transparent text-foreground/50 hover:text-foreground"
+                  return (
+                    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+                      {/* Hero Header */}
+                      <div className="px-5 py-3 border-b border-border-main bg-surface-soft/40 flex items-center justify-between gap-3 shrink-0">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-foreground truncate">
+                              {selectedResult.student_name}
+                            </h3>
+                            {scoreVal !== null && !selectedResult.needs_manual_review && (
+                              <span className={cn(
+                                "px-2 py-0.5 text-xs font-black rounded-[4px] border",
+                                scoreVal >= 70
+                                  ? "text-emerald-700 bg-emerald-500/10 border-emerald-500/20"
+                                  : scoreVal >= 50
+                                    ? "text-brand-700 bg-brand-500/10 border-brand-500/20"
+                                    : "text-rose-700 bg-rose-500/10 border-rose-500/20"
+                              )}>
+                                {scoreVal}% · Grade {getLetterGrade(scoreVal)}
+                              </span>
                             )}
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                            Exam Report
-                          </button>
-                          <button
-                            onClick={() => setActiveDetailTab("paper")}
-                            className={cn(
-                              "px-4 py-3 text-[10px] font-black uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5",
-                              activeDetailTab === "paper"
-                                ? "border-brand-600 text-brand-600 font-extrabold"
-                                : "border-transparent text-foreground/50 hover:text-foreground"
-                            )}
-                          >
-                            <Layers className="w-3.5 h-3.5" />
-                            Scanned Paper
-                          </button>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Identity Resolution Form vs Regular Output */}
-                    {selectedResult.needs_manual_review ? (
-                      <div className="flex-1 p-6 flex flex-col justify-center items-center bg-amber-500/5 overflow-y-auto custom-scrollbar">
-                        <div className="w-full max-w-md bg-surface border border-amber-500/30 rounded-none p-6 shadow-none space-y-4 font-outfit text-left">
-                          <div className="flex items-center gap-2 text-amber-600 mb-2">
-                            <AlertCircle className="w-5 h-5" />
-                            <h4 className="font-bold text-sm">Identity Resolution Center</h4>
                           </div>
-                          <p className="text-xs text-foreground/75 leading-relaxed">
-                            The AI could not map this scan to a registered student. Remarks: <span className="font-mono bg-slate-50 px-1 py-0.5 border border-border-main rounded-none text-red-600">{selectedResult.ai_remarks}</span>
+                          <p className="text-[10px] text-foreground/50 font-mono mt-0.5 truncate">
+                            {selectedResult.index_number ? `Index: ${selectedResult.index_number} · ` : ""}
+                            ID: {selectedResult.id}
                           </p>
+                        </div>
 
-                          <div className="h-40 bg-surface-soft border border-border-main rounded-none overflow-hidden relative flex items-center justify-center">
-                            {selectedResult.paper_images_urls?.page1 ? (
-                              <img
-                                src={selectedResult.paper_images_urls.page1}
-                                alt="Scan Crop"
-                                className="max-h-full object-contain"
-                                onError={(e: any) => { e.target.src = "https://via.placeholder.com/600x200?text=Handwritten+Name+Header"; }}
-                              />
-                            ) : (
-                              <span className="text-xs text-foreground/40 italic">No image file found</span>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="text-xs font-bold text-foreground/60 mb-2 block">Link to Student Record</label>
-                            <select
-                              value={resolutionStudentId}
-                              onChange={(e) => setResolutionStudentId(e.target.value)}
-                              className="w-full p-3 bg-surface border border-border-main rounded-none text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
-                            >
-                              <option value="">Select Student...</option>
-                              {classStudents.map((st: any) => (
-                                <option key={st.id} value={st.id}>{st.full_name} {st.index_number ? `(Index: ${st.index_number})` : ""}</option>
-                              ))}
-                            </select>
-                          </div>
-
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
-                            onClick={handleResolveIdentity}
-                            disabled={!resolutionStudentId || isResolving}
-                            className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-none hover:bg-foreground/90 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-none"
+                            onClick={handleRegradeSingleResult}
+                            disabled={isRegradingPaper}
+                            className="px-2.5 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold rounded-[6px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            title="Re-run AI evaluation for this student script"
                           >
-                            {isResolving && <Loader2 className="w-3 h-3 animate-spin" />}
-                            Confirm Match & Link Grade
+                            {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                            <span>{isRegradingPaper ? "Evaluating..." : "Re-evaluate"}</span>
                           </button>
                         </div>
                       </div>
-                    ) : (
-                      /* Display Graded scan & AI report based on active detail tab */
-                      <div className="flex-1 flex flex-col overflow-hidden">
-                        {activeDetailTab === "inspector" ? (
-                          /* Dual-Pane Answer Sheet Inspector View */
-                          <div className="flex-1 flex flex-col overflow-hidden bg-surface font-outfit">
-                            {/* Mode & Master Paper Action Header */}
-                            <div className="px-6 py-2.5 bg-surface-soft/60 border-b border-border-main flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-                              <div className="flex items-center gap-2">
-                                <span className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider bg-brand-500/10 text-brand-700 border border-brand-500/20">
-                                  Answer Sheet Only Mode
-                                </span>
-                                {selectedBatch?.master_question_urls ? (
-                                  <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700 border border-emerald-500/20 flex items-center gap-1">
-                                    <Check className="w-3 h-3 text-emerald-600" />
-                                    Master Question Paper Attached ({Object.keys(selectedBatch.master_question_urls).length} Pages)
-                                  </span>
-                                ) : (
-                                  <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 border border-amber-500/20 flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3 text-amber-600" />
-                                    No Master Paper Attached
-                                  </span>
-                                )}
-                              </div>
 
+                      {/* Question Item Navigator Track */}
+                      {parsedQs.length > 0 && !selectedResult.needs_manual_review && (
+                        <div className="px-4 py-2 bg-surface border-b border-border-main flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0">
+                          <button
+                            onClick={() => setSelectedItemKey("all")}
+                            className={cn(
+                              "px-2.5 py-1 text-[11px] font-bold rounded-[4px] border transition-all cursor-pointer shrink-0",
+                              selectedItemKey === "all"
+                                ? "bg-brand-600 text-white border-brand-600 shadow-xs"
+                                : "bg-surface-soft text-foreground/70 border-border-main hover:bg-surface-soft/80"
+                            )}
+                          >
+                            All Report ({parsedQs.length})
+                          </button>
+                          {parsedQs.map((q: any) => {
+                            const isSelected = selectedItemKey === q.qNum;
+                            const isCorrect = q.status === "CORRECT";
+                            const isPartial = q.status === "PARTIAL";
+                            return (
                               <button
-                                onClick={() => setShowMasterUploadModal(true)}
-                                className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-black uppercase tracking-wider rounded-none transition-all flex items-center gap-1.5 cursor-pointer shadow-none"
+                                key={q.qNum}
+                                onClick={() => setSelectedItemKey(q.qNum)}
+                                className={cn(
+                                  "px-2.5 py-1 text-[11px] font-bold rounded-[4px] border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
+                                  isSelected
+                                    ? "bg-brand-600 text-white border-brand-600 shadow-xs"
+                                    : "bg-surface text-foreground/80 border-border-main hover:bg-surface-soft"
+                                )}
                               >
-                                <Upload className="w-3.5 h-3.5" />
-                                {selectedBatch?.master_question_urls ? "Change Master Paper" : "Upload Master Question Paper"}
+                                <span>Q{q.qNum}</span>
+                                <span className={cn(
+                                  "px-1 py-0.2 text-[9px] font-extrabold rounded-[3px]",
+                                  isSelected
+                                    ? "bg-white/20 text-white"
+                                    : isCorrect
+                                      ? "bg-emerald-500/15 text-emerald-700"
+                                      : isPartial
+                                        ? "bg-amber-500/15 text-amber-700"
+                                        : "bg-rose-500/15 text-rose-700"
+                                )}>
+                                  {q.scoreAwarded}/{q.maxScore}
+                                </span>
                               </button>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Main Scrollable Canvas Content */}
+                      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-24">
+                        {/* MANUAL REVIEW NEEDED CENTER */}
+                        {selectedResult.needs_manual_review ? (
+                          <div className="bg-amber-500/5 border border-amber-500/30 rounded-[10px] p-6 space-y-4 text-left">
+                            <div className="flex items-center gap-2 text-amber-600">
+                              <AlertCircle className="w-5 h-5 shrink-0" />
+                              <h4 className="font-bold text-sm">Identity Resolution Center</h4>
+                            </div>
+                            <p className="text-xs text-foreground/75 leading-relaxed">
+                              The AI engine could not match this script with a registered student record.
+                              {selectedResult.ai_remarks && (
+                                <span className="block mt-1 font-mono text-amber-800 bg-amber-500/10 px-2 py-1 rounded-[4px] border border-amber-500/20">
+                                  {selectedResult.ai_remarks}
+                                </span>
+                              )}
+                            </p>
+
+                            <div className="h-44 bg-surface-soft border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
+                              {selectedResult.paper_images_urls?.page1 ? (
+                                <img
+                                  src={selectedResult.paper_images_urls.page1}
+                                  alt="Student Scan Crop"
+                                  className="max-h-full max-w-full object-contain"
+                                  onError={(e: any) => {
+                                    e.target.src = "https://via.placeholder.com/600x200?text=Scan+Header+Offline";
+                                  }}
+                                />
+                              ) : (
+                                <span className="text-xs text-foreground/40 italic">No image file found</span>
+                              )}
                             </div>
 
-                            {/* Item Navigation Bar & Split Screen */}
-                            {(() => {
-                              const attemptedList: string[] = selectedResult.attempted_items?.items || [];
-                              const rawParsedQs = parseResultQuestions(selectedResult.raw_extracted_html || "");
-                              const parsedQs = attemptedList.length > 0
-                                ? rawParsedQs.filter((q: any) => attemptedList.includes(q.qNum))
-                                : rawParsedQs;
-                              const activeItem = parsedQs.find((q: any) => q.qNum === selectedItemKey) || parsedQs[0];
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-bold text-foreground/70 block">
+                                Link to Registered Student
+                              </label>
+                              <select
+                                value={resolutionStudentId}
+                                onChange={(e) => setResolutionStudentId(e.target.value)}
+                                className="w-full p-2.5 bg-surface border border-border-main rounded-[6px] text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
+                              >
+                                <option value="">Select Student from Roster...</option>
+                                {classStudents.map((st: any) => (
+                                  <option key={st.id} value={st.id}>
+                                    {st.full_name} {st.index_number ? `(Index: ${st.index_number})` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
 
-                              return (
-                                <div className="flex-1 flex flex-col overflow-hidden">
-                                  {parsedQs.length > 0 && (
-                                    <div className="px-6 py-2 bg-surface border-b border-border-main flex items-center gap-2 overflow-x-auto custom-scrollbar shrink-0">
-                                      <span className="text-[10px] font-black uppercase tracking-wider text-foreground/40 shrink-0">
-                                        Item Navigator:
-                                      </span>
-                                      <button
-                                        onClick={() => setSelectedItemKey("all")}
-                                        className={cn(
-                                          "px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-none border transition-all cursor-pointer shrink-0",
-                                          selectedItemKey === "all"
-                                            ? "bg-brand-600 text-white border-brand-600"
-                                            : "bg-surface-soft text-foreground/70 border-border-main hover:bg-surface-soft/80"
-                                        )}
-                                      >
-                                        All Items ({parsedQs.length})
-                                      </button>
-                                      {parsedQs.map((q: any) => {
-                                        const isSelected = selectedItemKey === q.qNum;
-                                        const isCorrect = q.status === "CORRECT";
-                                        const isPartial = q.status === "PARTIAL";
-                                        return (
-                                          <button
-                                            key={q.qNum}
-                                            onClick={() => setSelectedItemKey(q.qNum)}
-                                            className={cn(
-                                              "px-3 py-1 text-[10px] font-extrabold uppercase tracking-wider rounded-none border transition-all cursor-pointer shrink-0 flex items-center gap-1.5",
-                                              isSelected
-                                                ? "bg-brand-600 text-white border-brand-600"
-                                                : "bg-surface text-foreground/80 border-border-main hover:bg-surface-soft"
-                                            )}
-                                          >
-                                            <span>Item {q.qNum}</span>
-                                            <span className={cn(
-                                              "px-1.5 py-0.2 text-[9px] font-black rounded-none",
-                                              isSelected
-                                                ? "bg-white/20 text-white"
-                                                : isCorrect ? "bg-emerald-500/15 text-emerald-600" : isPartial ? "bg-amber-500/15 text-amber-600" : "bg-rose-500/15 text-rose-600"
-                                            )}>
-                                              {q.scoreAwarded}/{q.maxScore}
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-
-                                  {/* Dual-Pane Grid */}
-                                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-border-main">
-                                    {/* LEFT PANE: Master Question Context */}
-                                    <div className="flex flex-col bg-surface-soft/30 overflow-hidden">
-                                      <div className="px-4 py-2.5 bg-surface border-b border-border-main flex justify-between items-center shrink-0">
-                                        <div className="flex items-center gap-2">
-                                          <BookOpen className="w-4 h-4 text-brand-600" />
-                                          <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
-                                            Master Question Paper Prompt
-                                          </h4>
-                                        </div>
-                                        {selectedBatch?.master_question_urls && (
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-bold text-foreground/50">
-                                              Page {masterPageIndex + 1} of {Object.keys(selectedBatch.master_question_urls).length}
-                                            </span>
-                                            <button
-                                              onClick={() => setMasterPageIndex(prev => Math.max(0, prev - 1))}
-                                              disabled={masterPageIndex === 0}
-                                              className="p-1 text-xs border border-border-main bg-surface disabled:opacity-30 cursor-pointer"
-                                            >
-                                              <ChevronLeft className="w-3.5 h-3.5" />
-                                            </button>
-                                            <button
-                                              onClick={() => setMasterPageIndex(prev => Math.min(Object.keys(selectedBatch.master_question_urls).length - 1, prev + 1))}
-                                              disabled={masterPageIndex >= Object.keys(selectedBatch.master_question_urls).length - 1}
-                                              className="p-1 text-xs border border-border-main bg-surface disabled:opacity-30 cursor-pointer"
-                                            >
-                                              <ChevronRight className="w-3.5 h-3.5" />
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
-                                        {selectedBatch?.master_question_urls ? (
-                                          <div className="space-y-3">
-                                            {(() => {
-                                              const masterKeys = Object.keys(selectedBatch.master_question_urls).sort((a, b) => {
-                                                const numA = parseInt(a.replace(/\D/g, "") || "0");
-                                                const numB = parseInt(b.replace(/\D/g, "") || "0");
-                                                return numA - numB;
-                                              });
-                                              const currentKey = masterKeys[masterPageIndex] || masterKeys[0];
-                                              const currentMasterUrl = selectedBatch.master_question_urls[currentKey];
-
-                                              return (
-                                                <div className="space-y-3">
-                                                  <div className="border border-border-main bg-white shadow-md">
-                                                    <img
-                                                      src={currentMasterUrl}
-                                                      alt={`Master Question Paper Page ${masterPageIndex + 1}`}
-                                                      className="w-full object-contain"
-                                                    />
-                                                  </div>
-                                                  <div className="text-[10px] text-foreground/40 text-center font-mono">
-                                                    Master Question Reference Page {masterPageIndex + 1}
-                                                  </div>
-                                                </div>
-                                              );
-                                            })()}
-                                          </div>
-                                        ) : (
-                                          <div className="space-y-4">
-                                            <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 space-y-1">
-                                              <div className="font-bold flex items-center gap-1.5">
-                                                <AlertCircle className="w-4 h-4 text-amber-600" />
-                                                No Master Question Paper scan uploaded
-                                              </div>
-                                              <p className="text-[11px] text-amber-700/90 leading-relaxed">
-                                                Showing AI-extracted question prompt. Click <strong>Upload Master Question Paper</strong> above to attach master scan.
-                                              </p>
-                                            </div>
-
-                                            {activeItem ? (
-                                              <div className="bg-surface border border-border-main p-4 space-y-3 shadow-sm">
-                                                <div className="flex justify-between items-center border-b border-border-main/50 pb-2">
-                                                  <span className="text-xs font-black uppercase tracking-wider text-brand-600 bg-brand-500/10 px-2.5 py-1 border border-brand-500/20">
-                                                    Question {activeItem.qNum}
-                                                  </span>
-                                                  <span className="text-xs font-extrabold text-foreground/60">
-                                                    {activeItem.maxScore} Marks Allocated
-                                                  </span>
-                                                </div>
-                                                <div className="text-xs font-medium text-foreground leading-relaxed">
-                                                  {activeItem.qText || "Full examination item statement."}
-                                                </div>
-                                              </div>
-                                            ) : (
-                                              <div className="p-8 text-center text-xs text-foreground/40 italic">
-                                                Select an item from the navigator above to inspect question prompt.
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* RIGHT PANE: Full Student Script & Item Rubric Evaluation */}
-                                    <div className="flex flex-col bg-surface overflow-hidden">
-                                      <div className="px-4 py-2.5 bg-surface-soft/60 border-b border-border-main flex justify-between items-center shrink-0">
-                                        <div className="flex items-center gap-2">
-                                          <FileText className="w-4 h-4 text-brand-600" />
-                                          <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
-                                            Student Script & Item Evaluation
-                                          </h4>
-                                        </div>
-                                        <span className="text-[10px] font-bold text-foreground/50 uppercase">
-                                          {selectedResult.student_name}
-                                        </span>
-                                      </div>
-
-                                      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-6">
-                                        {/* Active Item Rubric & Feedback Box */}
-                                        {activeItem && selectedItemKey !== "all" && (
-                                          <div className="bg-surface-soft/40 border border-brand-500/30 p-4 space-y-3 shadow-sm">
-                                            <div className="flex justify-between items-center border-b border-border-main/50 pb-2">
-                                              <div className="flex items-center gap-2">
-                                                <span className="text-xs font-black uppercase tracking-wider text-foreground">
-                                                  Item {activeItem.qNum} Evaluation
-                                                </span>
-                                                <span className={cn(
-                                                  "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider border",
-                                                  activeItem.status === "CORRECT" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : activeItem.status === "PARTIAL" ? "bg-amber-500/10 text-amber-600 border-amber-500/20" : "bg-rose-500/10 text-rose-600 border-rose-500/20"
-                                                )}>
-                                                  {activeItem.status}
-                                                </span>
-                                              </div>
-                                              <span className="text-sm font-black text-brand-600 bg-brand-500/10 px-3 py-1 border border-brand-500/20">
-                                                {activeItem.scoreAwarded} / {activeItem.maxScore} Pts
-                                              </span>
-                                            </div>
-
-                                            <div className="space-y-2 text-xs">
-                                              <div>
-                                                <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Student Response:</span>
-                                                <p className="font-semibold text-foreground bg-surface p-2.5 border border-border-main/60 mt-1 leading-relaxed">
-                                                  {activeItem.studentAns || "—"}
-                                                </p>
-                                              </div>
-
-                                              {activeItem.explanation && (
-                                                <div>
-                                                  <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Marking Justification & Explanation:</span>
-                                                  <div
-                                                    className="text-foreground/80 bg-surface p-2.5 border border-border-main/60 mt-1 leading-relaxed text-xs"
-                                                    dangerouslySetInnerHTML={{ __html: activeItem.explanation }}
-                                                  />
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        )}
-
-                                        {/* Full Student Script (All Pages) */}
-                                        <div className="space-y-4">
-                                          <div className="flex justify-between items-center border-b border-border-main pb-2">
-                                            <h5 className="text-xs font-black uppercase tracking-wider text-foreground/60 flex items-center gap-1.5">
-                                              <Layers className="w-3.5 h-3.5 text-brand-600" />
-                                              Full Student Answer Paper ({Object.keys(selectedResult.paper_images_urls || {}).length} Pages)
-                                            </h5>
-                                          </div>
-
-                                          {(() => {
-                                            const paper_images = selectedResult.paper_images_urls || {};
-                                            const sortedEntries = Object.entries(paper_images).sort((a, b) => {
-                                              const numA = parseInt(a[0].replace(/\D/g, "") || "0");
-                                              const numB = parseInt(b[0].replace(/\D/g, "") || "0");
-                                              return numA - numB;
-                                            });
-
-                                            if (sortedEntries.length === 0) {
-                                              return <div className="text-xs text-foreground/40 italic py-6 text-center">No image scans found for this student.</div>;
-                                            }
-
-                                            return sortedEntries.map(([key, url], idx) => (
-                                              <div key={key} className="space-y-1.5">
-                                                <div className="flex justify-between items-center text-[10px] font-extrabold uppercase tracking-wider text-foreground/50 px-1">
-                                                  <span>Student Page {idx + 1} of {sortedEntries.length}</span>
-                                                </div>
-                                                <div className="border border-border-main bg-white shadow-md">
-                                                  <img
-                                                    src={url as string}
-                                                    alt={`Student Answer Script Page ${idx + 1}`}
-                                                    className="w-full object-contain"
-                                                    onError={(e: any) => { e.target.src = `https://via.placeholder.com/600x800?text=Page+${idx + 1}+Offline`; }}
-                                                  />
-                                                </div>
-                                              </div>
-                                            ));
-                                          })()}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        ) : activeDetailTab === "paper" ? (
-                          /* Graded scan Image (Full Width) */
-                          <div className="flex-1 bg-surface-soft overflow-y-auto p-6 flex flex-col gap-6 items-center custom-scrollbar">
-                            {(() => {
-                              const paper_images = selectedResult.paper_images_urls || {};
-                              const sortedEntries = Object.entries(paper_images).sort((a, b) => {
-                                const numA = parseInt(a[0].replace(/\D/g, "") || "0");
-                                const numB = parseInt(b[0].replace(/\D/g, "") || "0");
-                                if (numA !== numB) return numA - numB;
-                                return a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' });
-                              });
-                              if (sortedEntries.length === 0) {
-                                return <div className="text-xs text-foreground/40 italic py-12">No image file found for this scan.</div>;
-                              }
-                              return sortedEntries.map(([key, url], idx) => (
-                                <div key={key} className="w-full max-w-2xl space-y-2 flex flex-col items-center">
-                                  <div className="w-full flex justify-between items-center px-1">
-                                    <p className="text-[10px] text-foreground/50 font-bold uppercase tracking-wider">
-                                      Page {idx + 1} of {sortedEntries.length}
-                                    </p>
-                                    {sortedEntries.length > 1 && (
-                                      <div className="flex items-center gap-1.5">
-                                        <button
-                                          onClick={() => handleReorderPages(idx, idx - 1)}
-                                          disabled={idx === 0}
-                                          className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-border-main hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
-                                          title="Move page earlier in sequence"
-                                        >
-                                          Move Up
-                                        </button>
-                                        <button
-                                          onClick={() => handleReorderPages(idx, idx + 1)}
-                                          disabled={idx === sortedEntries.length - 1}
-                                          className="px-2 py-0.5 text-[10px] font-bold bg-surface border border-border-main hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
-                                          title="Move page later in sequence"
-                                        >
-                                          Move Down
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                  <img
-                                    src={url as string}
-                                    alt={`Graded scan page ${idx + 1}`}
-                                    className="w-full rounded-none border border-border-main shadow-lg object-contain bg-white animate-in fade-in zoom-in-95 duration-300"
-                                    onError={(e: any) => { e.target.src = `https://via.placeholder.com/600x800?text=Page+${idx + 1}+Offline`; }}
-                                  />
-                                </div>
-                              ));
-                            })()}
+                            <button
+                              onClick={handleResolveIdentity}
+                              disabled={!resolutionStudentId || isResolving}
+                              className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-[6px] hover:bg-foreground/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                            >
+                              {isResolving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              <span>Confirm Match & Link Grade</span>
+                            </button>
                           </div>
                         ) : (
-                          /* AI Feedback Report (HTML Rendering) - Full Width with Premium Styling */
-                          <div className="flex-1 overflow-y-auto bg-surface custom-scrollbar text-left flex flex-col animate-in fade-in duration-300">
-                            <div className="flex-1 p-6">
+                          <>
+                            {/* Selected Single Question Detail Card */}
+                            {activeItem && selectedItemKey !== "all" && (
+                              <div className="bg-surface-soft/40 border border-brand-500/25 rounded-[8px] p-4 space-y-3 shadow-xs">
+                                <div className="flex items-center justify-between border-b border-border-main/60 pb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-black uppercase tracking-wider text-foreground">
+                                      Item {activeItem.qNum} Evaluation
+                                    </span>
+                                    <span className={cn(
+                                      "px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-[4px] border",
+                                      activeItem.status === "CORRECT"
+                                        ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+                                        : activeItem.status === "PARTIAL"
+                                          ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                                          : "bg-rose-500/10 text-rose-700 border-rose-500/20"
+                                    )}>
+                                      {activeItem.status}
+                                    </span>
+                                  </div>
+                                  <span className="text-xs font-black text-brand-700 bg-brand-500/10 px-2.5 py-0.5 rounded-[4px] border border-brand-500/20">
+                                    {activeItem.scoreAwarded} / {activeItem.maxScore} Marks
+                                  </span>
+                                </div>
+
+                                {activeItem.qText && (
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Question Prompt:</span>
+                                    <p className="text-xs font-medium text-foreground bg-surface p-2.5 border border-border-main/60 rounded-[4px] leading-relaxed">
+                                      {activeItem.qText}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="space-y-1">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Student Response:</span>
+                                  <p className="text-xs font-semibold text-foreground bg-surface p-2.5 border border-border-main/60 rounded-[4px] leading-relaxed">
+                                    {activeItem.studentAns || "—"}
+                                  </p>
+                                </div>
+
+                                {activeItem.explanation && (
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">Marking Justification:</span>
+                                    <div
+                                      className="text-foreground/80 bg-surface p-2.5 border border-border-main/60 rounded-[4px] leading-relaxed text-xs"
+                                      dangerouslySetInnerHTML={{ __html: activeItem.explanation }}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Full AI Feedback Report (HERO) */}
+                            <div className="bg-surface rounded-[8px] border border-border-main/70 p-6 shadow-xs text-left">
+                              <div className="flex items-center gap-2 pb-3 mb-4 border-b border-border-main/60">
+                                <Sparkles className="w-4 h-4 text-brand-600" />
+                                <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                                  AI Diagnostic & Feedback Report
+                                </h4>
+                              </div>
+
                               {selectedResult.raw_extracted_html ? (
                                 <div
                                   className="prose prose-sm prose-slate max-w-none text-foreground"
                                   dangerouslySetInnerHTML={{ __html: formatRawReportHtml(selectedResult.raw_extracted_html) }}
                                 />
                               ) : (
-                                <div className="text-center py-12 text-xs text-foreground/40 italic">
-                                  {selectedResult.ai_remarks || "No grading report details generated yet."}
+                                <div className="text-center py-12 text-xs text-foreground/50 italic space-y-2">
+                                  <p>{selectedResult.ai_remarks || "No grading report details generated yet."}</p>
+                                  <p className="text-[11px] text-foreground/40 font-mono">Click Re-evaluate above if you wish to run evaluation again.</p>
                                 </div>
                               )}
                             </div>
-                            {/* Score Override Form */}
-                            <div className="border-t border-border-main p-4 bg-surface-soft/50 shrink-0">
-                              <label className="text-[10px] font-bold uppercase tracking-widest text-foreground/50 block mb-2">
-                                <Edit3 className="w-3 h-3 inline mr-1" />Override Score
-                              </label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  placeholder="0–100"
-                                  value={overrideScore}
-                                  onChange={e => setOverrideScore(e.target.value)}
-                                  className="w-20 text-xs border border-border-main rounded-none p-2 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
-                                />
-                                <button
-                                  onClick={handleOverrideScore}
-                                  disabled={!overrideScore || isOverriding}
-                                  className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-none hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-none"
-                                >
-                                  {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
-                                  Set Score
-                                </button>
-                              </div>
-                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Floating Bottom Pill: View Scanned Paper */}
+                      {paperCount > 0 && (
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+                          <button
+                            onClick={() => {
+                              setShowPaperModal(true);
+                              setPaperModalPageIndex(0);
+                            }}
+                            className="px-4 py-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-lg backdrop-blur-md text-xs font-bold text-foreground flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                          >
+                            <Layers className="w-4 h-4 text-brand-600" />
+                            <span>View Scanned Paper ({paperCount} {paperCount === 1 ? "Page" : "Pages"})</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* PANE 3: Right Inspector */}
+              <div className="col-span-12 lg:col-span-3 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-y-auto custom-scrollbar p-4 space-y-4">
+                {!selectedResult ? (
+                  <div className="space-y-4">
+                    <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-2">
+                      <h4 className="text-xs font-black uppercase tracking-wider text-foreground">
+                        Batch Summary
+                      </h4>
+                      <div className="space-y-1.5 text-xs text-foreground/70">
+                        <div className="flex justify-between">
+                          <span>Subject</span>
+                          <strong className="text-foreground">{selectedBatch.subject}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Class</span>
+                          <strong className="text-foreground">{selectedBatch.level} {selectedBatch.stream}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Exam Type</span>
+                          <strong className="text-foreground">{selectedBatch.exam_type}</strong>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Submissions</span>
+                          <strong className="text-foreground">{results.length}</strong>
+                        </div>
+                        {classAverage !== null && (
+                          <div className="flex justify-between pt-1 border-t border-border-main/50">
+                            <span>Class Average</span>
+                            <strong className="text-emerald-700">{classAverage}%</strong>
                           </div>
                         )}
                       </div>
-                    )}
+                    </div>
+
+                    {/* Class Insights */}
+                    <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
+                      <div className="p-3 bg-surface-soft/60 border-b border-border-main flex items-center gap-2">
+                        <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                        <h4 className="text-xs font-bold text-foreground">Class AI Insights</h4>
+                      </div>
+                      <div className="p-3">
+                        <BatchInsightsCard batchId={selectedBatch.id} />
+                      </div>
+                    </div>
                   </div>
-                )}
+                ) : (() => {
+                  const scoreVal = typeof selectedResult.total_score === "number" ? Math.round(selectedResult.total_score) : null;
+                  const letterGrade = scoreVal !== null ? getLetterGrade(scoreVal) : "—";
+                  const paperImages = selectedResult.paper_images_urls || {};
+                  const paperCount = Object.keys(paperImages).length;
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Performance Snapshot Card */}
+                      <div className="border border-border-main rounded-[8px] p-4 bg-surface-soft/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50">
+                            Performance
+                          </span>
+                          <span className={cn(
+                            "px-2 py-0.5 text-[9px] font-bold uppercase rounded-[4px] border",
+                            selectedResult.needs_manual_review
+                              ? "bg-amber-500/10 text-amber-700 border-amber-500/20"
+                              : "bg-emerald-500/10 text-emerald-700 border-emerald-500/20"
+                          )}>
+                            {selectedResult.needs_manual_review ? "Review Required" : "Evaluated"}
+                          </span>
+                        </div>
+
+                        <div className="flex items-baseline justify-between pt-1">
+                          <div>
+                            <span className="text-3xl font-black text-foreground">
+                              {scoreVal !== null ? `${scoreVal}%` : "—"}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="px-3 py-1 bg-brand-500/10 border border-brand-500/20 text-brand-700 text-sm font-black rounded-[4px]">
+                              Grade {letterGrade}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 text-[11px] text-foreground/60 pt-2 border-t border-border-main/50">
+                          <div className="flex justify-between">
+                            <span>Student:</span>
+                            <strong className="text-foreground truncate max-w-[140px]">{selectedResult.student_name}</strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Index:</span>
+                            <span className="font-mono text-foreground">{selectedResult.index_number || "Unlinked"}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Exam Mode:</span>
+                            <span className="text-foreground">{selectedResult.mode || selectedBatch.mode || "Hybrid"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Override Score Form */}
+                      <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-foreground/50 block">
+                          <Edit3 className="w-3 h-3 inline mr-1 text-brand-600" />
+                          Override Final Score
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            placeholder="0–100"
+                            value={overrideScore}
+                            onChange={e => setOverrideScore(e.target.value)}
+                            className="w-20 text-xs border border-border-main rounded-[6px] p-2 bg-surface-soft text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
+                          />
+                          <button
+                            onClick={handleOverrideScore}
+                            disabled={!overrideScore || isOverriding}
+                            className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
+                            <span>Set Score</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="space-y-2">
+                        {scoreVal !== null && !selectedResult.needs_manual_review && (
+                          <button
+                            onClick={() => handleExportStudentPdf(selectedResult.id)}
+                            disabled={isExportingStudentPdf}
+                            className="w-full py-2 bg-surface hover:bg-surface-soft border border-border-main text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                          >
+                            {isExportingStudentPdf ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-600" />
+                            ) : (
+                              <FileDown className="w-3.5 h-3.5 text-brand-600" />
+                            )}
+                            <span>{isExportingStudentPdf ? "Generating PDF..." : "Export Student PDF"}</span>
+                          </button>
+                        )}
+
+                        {paperCount > 0 && (
+                          <button
+                            onClick={() => {
+                              setShowPaperModal(true);
+                              setPaperModalPageIndex(0);
+                            }}
+                            className="w-full py-2 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                          >
+                            <Layers className="w-3.5 h-3.5 text-brand-600" />
+                            <span>Inspect Paper Pages ({paperCount})</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Master Question Paper (Answer Sheet Mode) */}
+                      {selectedBatch.mode === "answer_sheet" && (
+                        <div className="border border-border-main rounded-[8px] p-3.5 bg-surface space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-foreground/50">
+                              Master Question Paper
+                            </span>
+                            {selectedBatch.master_question_urls ? (
+                              <span className="text-[9px] font-bold uppercase text-emerald-700 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-[4px]">
+                                Attached
+                              </span>
+                            ) : (
+                              <span className="text-[9px] font-bold uppercase text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-[4px]">
+                                Not Attached
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setShowMasterUploadModal(true)}
+                            className="w-full py-1.5 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-brand-600" />
+                            <span>{selectedBatch.master_question_urls ? "Change Master Paper" : "Upload Master Paper"}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Class Batch AI Insights Accordion */}
+                      <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
+                        <button
+                          onClick={() => setIsInsightsAccordionOpen(prev => !prev)}
+                          className="w-full p-3.5 flex items-center justify-between text-left hover:bg-surface-soft/60 transition-colors cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-brand-600" />
+                            <span className="text-xs font-bold text-foreground">Class AI Insights</span>
+                          </div>
+                          <ChevronDown className={cn("w-3.5 h-3.5 text-foreground/40 transition-transform duration-200", isInsightsAccordionOpen && "rotate-180")} />
+                        </button>
+                        {isInsightsAccordionOpen && (
+                          <div className="p-3 border-t border-border-main bg-surface-soft/30 animate-in fade-in duration-200">
+                            <BatchInsightsCard batchId={selectedBatch.id} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
         )}
+
+        {/* Scanned Paper Lightbox Modal */}
+        {showPaperModal && selectedResult && (() => {
+          const paper_images = selectedResult.paper_images_urls || {};
+          const sortedEntries = Object.entries(paper_images).sort((a, b) => {
+            const numA = parseInt(a[0].replace(/\D/g, "") || "0");
+            const numB = parseInt(b[0].replace(/\D/g, "") || "0");
+            if (numA !== numB) return numA - numB;
+            return a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: "base" });
+          });
+          const safePageIndex = Math.min(paperModalPageIndex, Math.max(0, sortedEntries.length - 1));
+          const currentPageUrl = sortedEntries[safePageIndex]?.[1] as string | undefined;
+
+          return (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 font-outfit animate-in fade-in duration-200">
+              <div className="bg-surface border border-border-main rounded-[10px] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-left">
+                {/* Modal Header */}
+                <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/60 flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <Layers className="w-4 h-4 text-brand-600" />
+                    <div>
+                      <h3 className="text-xs font-black uppercase tracking-wider text-foreground">
+                        Scanned Paper — {selectedResult.student_name}
+                      </h3>
+                      <p className="text-[10px] text-foreground/50 font-mono">
+                        Page {safePageIndex + 1} of {sortedEntries.length} {sortedEntries[safePageIndex]?.[0] ? `(${sortedEntries[safePageIndex][0]})` : ""}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {sortedEntries.length > 1 && (
+                      <div className="flex items-center gap-1.5 mr-2">
+                        <button
+                          onClick={() => handleReorderPages(safePageIndex, safePageIndex - 1)}
+                          disabled={safePageIndex === 0}
+                          className="px-2 py-1 text-[10px] font-bold bg-surface border border-border-main rounded-[4px] hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
+                          title="Move page earlier in sequence"
+                        >
+                          Move Up
+                        </button>
+                        <button
+                          onClick={() => handleReorderPages(safePageIndex, safePageIndex + 1)}
+                          disabled={safePageIndex === sortedEntries.length - 1}
+                          className="px-2 py-1 text-[10px] font-bold bg-surface border border-border-main rounded-[4px] hover:bg-surface-soft disabled:opacity-30 cursor-pointer"
+                          title="Move page later in sequence"
+                        >
+                          Move Down
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => setShowPaperModal(false)}
+                      className="text-foreground/40 hover:text-foreground p-1.5 rounded-[6px] hover:bg-surface-soft cursor-pointer transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modal Canvas Body */}
+                <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center bg-surface-soft/30 relative min-h-[300px]">
+                  {sortedEntries.length === 0 ? (
+                    <div className="text-xs text-foreground/40 italic py-16">
+                      No scanned pages found for this student.
+                    </div>
+                  ) : (
+                    <div className="relative max-w-full flex items-center justify-center">
+                      {safePageIndex > 0 && (
+                        <button
+                          onClick={() => setPaperModalPageIndex(prev => Math.max(0, prev - 1))}
+                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-md text-foreground cursor-pointer z-10"
+                          title="Previous page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <img
+                        src={currentPageUrl}
+                        alt={`Scanned paper page ${safePageIndex + 1}`}
+                        className="max-h-[68vh] w-auto object-contain border border-border-main rounded-[4px] shadow-lg bg-white"
+                        onError={(e: any) => {
+                          e.target.src = `https://via.placeholder.com/600x800?text=Page+${safePageIndex + 1}+Offline`;
+                        }}
+                      />
+
+                      {safePageIndex < sortedEntries.length - 1 && (
+                        <button
+                          onClick={() => setPaperModalPageIndex(prev => Math.min(sortedEntries.length - 1, prev + 1))}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-md text-foreground cursor-pointer z-10"
+                          title="Next page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer / Thumbnail Strip */}
+                {sortedEntries.length > 1 && (
+                  <div className="px-4 py-2.5 border-t border-border-main bg-surface flex items-center justify-center gap-2 shrink-0 overflow-x-auto">
+                    {sortedEntries.map(([key, url], idx) => (
+                      <button
+                        key={key}
+                        onClick={() => setPaperModalPageIndex(idx)}
+                        className={cn(
+                          "px-2.5 py-1 text-xs font-bold rounded-[4px] border transition-all cursor-pointer flex items-center gap-1",
+                          idx === safePageIndex
+                            ? "bg-brand-600 text-white border-brand-600 shadow-xs"
+                            : "bg-surface-soft border-border-main text-foreground/70 hover:bg-surface-soft/80"
+                        )}
+                      >
+                        Page {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Master Question Paper Upload Modal */}
         {showMasterUploadModal && (
@@ -2057,6 +2541,25 @@ export default function GradebookView({
           </div>
         )}
       </div>
+
+      {/* Floating Run Control panel, runs list only */}
+      {!selectedBatch && !runId && (
+        <GradingRunsControlPanel
+          batches={batches}
+          openedBatchIds={openedBatchIds}
+          statusFilter={runStatusFilter}
+          onStatusFilterChange={setRunStatusFilter}
+          sortOrder={runSortOrder}
+          onSortOrderChange={setRunSortOrder}
+          liveMode={runLiveMode}
+          onLiveModeChange={handleRunLiveModeChange}
+          lastSyncedAt={batchesSyncedAt}
+          isRefreshing={isRefreshingBatches}
+          onRefresh={handleRefreshBatches}
+          onMarkAllReviewed={markAllBatchesAsOpened}
+          onOpenRun={handleSelectBatch}
+        />
+      )}
 
       {/* PDF Generation Toast */}
       {pdfToastMessage && (
