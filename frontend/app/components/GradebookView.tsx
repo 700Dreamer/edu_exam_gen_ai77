@@ -1,15 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Download, Loader2, FileCheck, AlertCircle, CheckCircle2, Trash2, Edit3, RefreshCw, ChevronLeft, ChevronRight,
-  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X, FileDown
+  Upload, BookOpen, FileText, Layers, Eye, HelpCircle, Check, X, FileDown, Clock, Search
 } from "lucide-react";
-import { cn, authFetch } from "../lib/utils";
+import { cn, authFetch, formatTimeAgo } from "../lib/utils";
 
-export default function GradebookView({ theme }: { theme: string }) {
+export default function GradebookView({
+  theme,
+  onBatchActive
+}: {
+  theme?: string;
+  onBatchActive?: (batch: any) => void;
+}) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [batches, setBatches] = useState<any[]>([]);
+  const [batchSearch, setBatchSearch] = useState("");
+  const [isRefreshingBatches, setIsRefreshingBatches] = useState(false);
   const [selectedBatch, setSelectedBatch] = useState<any | null>(null);
+  const [batchLoadingError, setBatchLoadingError] = useState<string | null>(null);
+  const [isDirectHydrating, setIsDirectHydrating] = useState<boolean>(false);
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [distribution, setDistribution] = useState<any | null>(null);
@@ -532,21 +547,148 @@ export default function GradebookView({ theme }: { theme: string }) {
     }
   };
 
+  const updateUrlParams = useCallback((updates: Record<string, string | null>, replace: boolean = false) => {
+    const params = new URLSearchParams(searchParams ? searchParams.toString() : "");
+    if (!params.get("view") && !params.get("tab")) {
+      params.set("view", "gradebook");
+    }
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === undefined) {
+        params.delete(k);
+      } else {
+        params.set(k, v);
+      }
+    }
+    const qs = params.toString();
+    const newUrl = qs ? `${pathname}?${qs}` : pathname;
+    if (replace) {
+      router.replace(newUrl, { scroll: false });
+    } else {
+      router.push(newUrl, { scroll: false });
+    }
+  }, [searchParams, pathname, router]);
+
   useEffect(() => { fetchBatches(); }, []);
 
-  const fetchBatches = () => {
-    authFetch("/api/v1/assessment/batches")
-      .then(res => res.json())
-      .then(data => setBatches(Array.isArray(data) ? data : []))
-      .catch(() => { });
+  const fetchBatches = async () => {
+    try {
+      const res = await authFetch("/api/v1/assessment/batches");
+      if (res.ok) {
+        const data = await res.json();
+        setBatches(Array.isArray(data) ? data : []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch batches:", e);
+    }
   };
+
+  const handleRefreshBatches = async () => {
+    setIsRefreshingBatches(true);
+    try {
+      await fetchBatches();
+    } finally {
+      setIsRefreshingBatches(false);
+    }
+  };
+
+  const loadBatchById = useCallback(async (batchId: string, targetStudentId?: string | null) => {
+    setLoading(true);
+    setIsDirectHydrating(true);
+    setBatchLoadingError(null);
+    try {
+      const [bRes, rRes, dRes] = await Promise.all([
+        authFetch(`/api/v1/assessment/batch/${batchId}`),
+        authFetch(`/api/v1/assessment/batch/${batchId}/results`),
+        authFetch(`/api/v1/analytics/score-distribution/${batchId}`)
+      ]);
+
+      if (!bRes.ok) {
+        if (bRes.status === 404) {
+          setBatchLoadingError("Grading run not found or was removed.");
+        } else {
+          setBatchLoadingError("Failed to load grading run details.");
+        }
+        setSelectedBatch(null);
+        setLoading(false);
+        setIsDirectHydrating(false);
+        return;
+      }
+
+      const batchData = await bRes.json();
+      setSelectedBatch(batchData);
+      sessionStorage.setItem("edulytics_last_batch_id", batchId);
+      markBatchAsOpened(batchId);
+
+      if (onBatchActive) {
+        onBatchActive(batchData);
+      }
+
+      let loadedResults: any[] = [];
+      if (rRes.ok) {
+        loadedResults = await rRes.json();
+        setResults(loadedResults);
+      }
+      if (dRes.ok) {
+        setDistribution(await dRes.json());
+      }
+
+      const desiredStudentId = targetStudentId || (searchParams ? searchParams.get("student") : null);
+      if (desiredStudentId && loadedResults.length > 0) {
+        const matched = loadedResults.find((r: any) => r.id === desiredStudentId);
+        if (matched) {
+          setSelectedResult(matched);
+        }
+      }
+    } catch (err) {
+      console.error("Error loading batch by ID:", err);
+      setBatchLoadingError("Network error while connecting to server.");
+    } finally {
+      setLoading(false);
+      setIsDirectHydrating(false);
+    }
+  }, [onBatchActive, searchParams]);
+
+  // Deep-linking & reload persistence effect
+  const runId = searchParams ? (searchParams.get("run") || searchParams.get("batch")) : null;
+  const studentParam = searchParams ? searchParams.get("student") : null;
+
+  useEffect(() => {
+    if (runId) {
+      if (!selectedBatch || selectedBatch.id !== runId) {
+        loadBatchById(runId, studentParam);
+      } else if (studentParam && (!selectedResult || selectedResult.id !== studentParam)) {
+        const found = results.find((r: any) => r.id === studentParam);
+        if (found) setSelectedResult(found);
+      } else if (!studentParam && selectedResult) {
+        setSelectedResult(null);
+      }
+    } else {
+      const cachedBatchId = typeof window !== "undefined" ? sessionStorage.getItem("edulytics_last_batch_id") : null;
+      if (cachedBatchId) {
+        updateUrlParams({ run: cachedBatchId }, true);
+        loadBatchById(cachedBatchId);
+      } else if (selectedBatch) {
+        setSelectedBatch(null);
+        setResults([]);
+        setSelectedResult(null);
+      }
+    }
+  }, [runId, studentParam]);
 
   const handleSelectBatch = async (batch: any) => {
     setSelectedBatch(batch);
     setSelectedResult(null);
     setIsSidebarCollapsed(false);
     setLoading(true);
+    setBatchLoadingError(null);
+    sessionStorage.setItem("edulytics_last_batch_id", batch.id);
     markBatchAsOpened(batch.id);
+    updateUrlParams({ run: batch.id, student: null });
+
+    if (onBatchActive) {
+      onBatchActive(batch);
+    }
+
     try {
       const [rRes, dRes] = await Promise.all([
         authFetch(`/api/v1/assessment/batch/${batch.id}/results`),
@@ -556,6 +698,16 @@ export default function GradebookView({ theme }: { theme: string }) {
       if (dRes.ok) setDistribution(await dRes.json());
     } catch (e) { }
     finally { setLoading(false); }
+  };
+
+  const handleBackToBatches = () => {
+    sessionStorage.removeItem("edulytics_last_batch_id");
+    setSelectedBatch(null);
+    setResults([]);
+    setSelectedResult(null);
+    setIsSidebarCollapsed(false);
+    setBatchLoadingError(null);
+    updateUrlParams({ run: null, batch: null, student: null });
   };
 
   useEffect(() => {
@@ -934,6 +1086,19 @@ export default function GradebookView({ theme }: { theme: string }) {
     );
   };
 
+  const filteredBatches = batches.filter(batch => {
+    if (!batchSearch.trim()) return true;
+    const q = batchSearch.toLowerCase();
+    return (
+      (batch.tenant_name && batch.tenant_name.toLowerCase().includes(q)) ||
+      (batch.subject && batch.subject.toLowerCase().includes(q)) ||
+      (batch.level && batch.level.toLowerCase().includes(q)) ||
+      (batch.stream && batch.stream.toLowerCase().includes(q)) ||
+      (batch.status && batch.status.toLowerCase().includes(q)) ||
+      (batch.exam_type && batch.exam_type.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <div className="flex-1 bg-surface-soft/30 text-foreground p-8 overflow-y-auto font-outfit relative">
       <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -941,15 +1106,45 @@ export default function GradebookView({ theme }: { theme: string }) {
         {/* Header or back navigation */}
         <div className="flex justify-between items-center border-b border-border-main pb-4">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-6 h-6 text-brand-600" />
+            {selectedBatch && (
+              <button
+                onClick={handleBackToBatches}
+                className="p-1.5 text-foreground/50 hover:text-foreground hover:bg-surface-soft border border-border-main transition-all cursor-pointer rounded-none"
+                title="Back to Grading Runs"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
             <div>
-              <h2 className="text-xl font-bold tracking-tight">Gradebook & Batch History</h2>
-              <p className="text-xs text-foreground/60 mt-0.5">Review automatic grading stats and individual results</p>
+              <div className="flex items-center gap-1.5 text-xs text-foreground/50 font-medium">
+                <span
+                  onClick={selectedBatch ? handleBackToBatches : undefined}
+                  className={cn(selectedBatch && "hover:text-foreground cursor-pointer underline-offset-4 hover:underline")}
+                >
+                  Grading Runs
+                </span>
+                {selectedBatch && (
+                  <>
+                    <span>/</span>
+                    <span className="text-foreground font-semibold">
+                      {selectedBatch.subject} — {selectedBatch.level} {selectedBatch.stream}
+                    </span>
+                  </>
+                )}
+              </div>
+              <h2 className="text-xl font-bold tracking-tight mt-0.5">
+                {selectedBatch ? `${selectedBatch.subject} Assessment Results` : "Gradebook & Batch History"}
+              </h2>
+              <p className="text-xs text-foreground/60 mt-0.5">
+                {selectedBatch
+                  ? `${selectedBatch.tenant_name} | ${selectedBatch.exam_type} | ${results.length} Students Evaluated`
+                  : "Review automatic grading stats and individual results"}
+              </p>
             </div>
           </div>
           {selectedBatch && (
             <button
-              onClick={() => { setSelectedBatch(null); setResults([]); setSelectedResult(null); setIsSidebarCollapsed(false); }}
+              onClick={handleBackToBatches}
               className="px-4 py-2 text-xs font-bold bg-surface border border-border-main rounded-none hover:bg-surface-soft transition-colors cursor-pointer"
             >
               Back to Batches
@@ -957,79 +1152,208 @@ export default function GradebookView({ theme }: { theme: string }) {
           )}
         </div>
 
-        {!selectedBatch ? (
-          /* List of Batches */
-          <div className="bg-surface border border-border-main rounded-none shadow-none overflow-hidden">
-            <div className="px-6 py-4 border-b border-border-main bg-surface-soft/50">
-              <h3 className="text-sm font-bold text-foreground">Grading Runs</h3>
+        {/* Not Found State */}
+        {batchLoadingError && !selectedBatch && (
+          <div className="bg-surface border border-border-main p-12 text-center max-w-lg mx-auto my-12 space-y-4">
+            <div className="w-10 h-10 mx-auto rounded-none bg-foreground/5 border border-border-main flex items-center justify-center text-foreground/60 font-bold text-sm">
+              !
             </div>
-            {batches.length === 0 ? (
-              <div className="p-12 text-center text-xs text-foreground/40 italic">No assessment batches found. Execute an Orchestration from the Grading Pipeline page.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-border-main/50 bg-surface-soft/30 text-foreground/50 font-bold uppercase tracking-wider">
-                      <th className="px-6 py-3.5">School / Tenant</th>
-                      <th className="px-6 py-3.5">Class Stream</th>
-                      <th className="px-6 py-3.5">Subject</th>
-                      <th className="px-6 py-3.5">Date</th>
-                      <th className="px-6 py-3.5">Status</th>
-                      <th className="px-6 py-3.5" colSpan={3}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-main/50">
-                    {batches.map(batch => (
-                      <tr key={batch.id} className="hover:bg-surface-soft/20 transition-colors group">
-                        <td className="px-6 py-4 font-bold text-foreground">{batch.tenant_name}</td>
-                        <td className="px-6 py-4 text-foreground/80">{batch.level} - {batch.stream}</td>
-                        <td className="px-6 py-4 font-semibold text-brand-700">{batch.subject}</td>
-                        <td className="px-6 py-4 font-mono text-foreground/60">{new Date(batch.created_at).toLocaleString()}</td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className={cn("px-2.5 py-1 rounded-none text-[10px] font-black uppercase tracking-wider", getStatusColor(batch.status))}>
-                              {batch.status}
-                            </span>
-                            {batch.status === "Completed" && !openedBatchIds.has(batch.id) && (
-                              <span className="px-2 py-0.5 rounded-none text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-600 border border-emerald-500/40 animate-pulse flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-500" /> Newly Evaluated
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-4">
-                          <button
-                            onClick={() => handleSelectBatch(batch)}
-                            className="px-3 py-1.5 bg-foreground text-surface text-[10px] font-bold rounded-none hover:bg-foreground/90 transition-all cursor-pointer shadow-none"
-                          >
-                            View Results
-                          </button>
-                        </td>
-                        <td className="px-2 py-4">
-                          <button
-                            onClick={() => handleExportCSV(batch.id, batch.subject)}
-                            className="px-3 py-1.5 bg-emerald-600 text-white text-[10px] font-bold rounded-none hover:bg-emerald-700 transition-all cursor-pointer shadow-none flex items-center gap-1"
-                            title="Export CSV"
-                          >
-                            <Download className="w-3 h-3" /> CSV
-                          </button>
-                        </td>
-                        <td className="px-2 py-4">
-                          <button
-                            onClick={() => handleDeleteBatch(batch.id)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-red-500 hover:bg-red-50 rounded-none cursor-pointer"
-                            title="Delete batch"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            <h3 className="text-sm font-bold text-foreground">Grading Run Not Found</h3>
+            <p className="text-xs text-foreground/60 leading-relaxed">
+              {batchLoadingError}
+            </p>
+            <button
+              onClick={handleBackToBatches}
+              className="px-4 py-2 bg-foreground text-surface text-xs font-bold hover:bg-foreground/90 transition-all cursor-pointer"
+            >
+              Return to Grading Runs
+            </button>
           </div>
+        )}
+
+        {/* Direct Hydration Skeleton */}
+        {Boolean(runId) && !selectedBatch && !batchLoadingError ? (
+          <div className="space-y-6 animate-pulse py-4">
+            <div className="h-28 bg-surface-soft/40 border border-border-main/50" />
+            <div className="grid grid-cols-12 gap-6">
+              <div className="col-span-12 lg:col-span-4 h-96 bg-surface-soft/40 border border-border-main/50" />
+              <div className="col-span-12 lg:col-span-8 h-96 bg-surface-soft/40 border border-border-main/50" />
+            </div>
+          </div>
+        ) : !selectedBatch ? (
+          /* List of Batches */
+          <div className="bg-surface border border-border-main rounded-[10px] shadow-none overflow-hidden flex flex-col">
+                {/* Dashboard Toolbar Header */}
+                <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-surface-soft rounded-[6px]">
+                      <Layers className="w-4 h-4 text-foreground/60" />
+                    </div>
+                    <div>
+                      <h3 className="text-[11px] font-semibold text-foreground/60 tracking-[0.18em] uppercase">
+                        Grading Runs <span className="text-foreground/40">&middot; {batches.length} {batches.length === 1 ? "Run" : "Runs"}</span>
+                      </h3>
+                      <p className="text-[11px] text-foreground/45 mt-0.5">
+                        Completed and active assessment evaluations
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={batchSearch}
+                        onChange={(e) => setBatchSearch(e.target.value)}
+                        placeholder="Filter runs..."
+                        className="pl-8 pr-7 py-1.5 text-xs bg-surface-soft border border-transparent text-foreground placeholder:text-foreground/40 rounded-[6px] focus:outline-none focus:bg-surface focus:border-border-main w-44 sm:w-56 transition-all"
+                      />
+                      {batchSearch && (
+                        <button
+                          onClick={() => setBatchSearch("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-foreground/40 hover:text-foreground p-0.5 cursor-pointer"
+                          title="Clear filter"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleRefreshBatches}
+                      disabled={isRefreshingBatches}
+                      className="p-2 bg-surface-soft hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-all rounded-[6px] cursor-pointer disabled:opacity-50"
+                      title="Refresh runs"
+                      aria-label="Refresh runs"
+                    >
+                      <RefreshCw className={cn("w-3.5 h-3.5", isRefreshingBatches && "animate-spin")} />
+                    </button>
+                  </div>
+                </div>
+
+                {batches.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-foreground/40 italic">
+                    No assessment batches found. Execute an Orchestration from the Grading Pipeline page.
+                  </div>
+                ) : filteredBatches.length === 0 ? (
+                  <div className="p-12 text-center text-xs text-foreground/60 space-y-2">
+                    <p>No grading runs match &quot;{batchSearch}&quot;.</p>
+                    <button
+                      onClick={() => setBatchSearch("")}
+                      className="px-3 py-1 bg-surface border border-border-main text-xs font-semibold hover:bg-surface-soft text-brand-600 rounded-[5px] cursor-pointer"
+                    >
+                      Clear filter
+                    </button>
+                  </div>
+                ) : (
+                  /* Scrollable Table Viewport */
+                  <div className="overflow-x-auto overflow-y-auto max-h-[520px] relative scrollbar-thin">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 z-10 bg-surface-soft/95 backdrop-blur-md border-b border-border-main shadow-xs">
+                        <tr className="text-foreground/50 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="px-5 py-3">School / Tenant</th>
+                          <th className="px-5 py-3">Class Stream</th>
+                          <th className="px-5 py-3">Subject</th>
+                          <th className="px-5 py-3">Evaluated</th>
+                          <th className="px-5 py-3">Status</th>
+                          <th className="px-5 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border-main/50">
+                        {filteredBatches.map(batch => (
+                          <tr key={batch.id} className="hover:bg-surface-soft/30 transition-colors group">
+                            <td className="px-5 py-3.5">
+                              <span className="font-bold text-foreground block text-xs">{batch.tenant_name}</span>
+                              {batch.exam_type && (
+                                <span className="text-[10px] text-foreground/45 block font-mono mt-0.5">{batch.exam_type}</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className="px-2 py-0.5 text-[11px] font-semibold bg-surface-soft text-foreground/80 rounded-[4px] inline-block">
+                                {batch.level} - {batch.stream}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className="font-semibold text-brand-700 text-xs">{batch.subject}</span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                                <Clock className="w-3 h-3 text-foreground/40 shrink-0" />
+                                <span>{formatTimeAgo(batch.created_at)}</span>
+                              </div>
+                              <span className="text-[10px] font-mono text-foreground/45 block mt-0.5">
+                                {new Date(batch.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · {new Date(batch.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <span className={cn("px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-wider inline-block", getStatusColor(batch.status))}>
+                                  {batch.status}
+                                </span>
+                                {batch.status === "Completed" && !openedBatchIds.has(batch.id) && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-[4px] text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex items-center gap-1"
+                                    title={`Evaluated ${formatTimeAgo(batch.created_at)}`}
+                                  >
+                                    <Clock className="w-2.5 h-2.5 text-emerald-500" />
+                                    {formatTimeAgo(batch.created_at)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleSelectBatch(batch)}
+                                  className="p-2 bg-surface-soft text-foreground/70 hover:text-foreground hover:bg-foreground/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                                  title="View Results"
+                                  aria-label="View Results"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleExportCSV(batch.id, batch.subject)}
+                                  className="p-2 bg-surface-soft text-foreground/70 hover:text-emerald-600 hover:bg-emerald-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                                  title="Export CSV"
+                                  aria-label="Export CSV"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteBatch(batch.id)}
+                                  className="p-2 bg-surface-soft text-foreground/50 hover:text-red-600 hover:bg-red-500/10 rounded-[5px] transition-all cursor-pointer shadow-none flex items-center justify-center group/btn"
+                                  title="Delete batch"
+                                  aria-label="Delete batch"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Bottom Summary Bar */}
+                {batches.length > 0 && (
+                  <div className="px-5 py-2.5 bg-surface-soft/40 border-t border-border-main flex items-center justify-between text-[11px] text-foreground/50">
+                    <span>
+                      Showing {filteredBatches.length} of {batches.length} grading {batches.length === 1 ? "run" : "runs"}
+                    </span>
+                    {batchSearch && (
+                      <button
+                        onClick={() => setBatchSearch("")}
+                        className="text-brand-600 hover:underline cursor-pointer font-medium"
+                      >
+                        Clear filter
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
         ) : (
           /* Detailed Batch Results */
           <div className="space-y-6">
@@ -1106,6 +1430,7 @@ export default function GradebookView({ theme }: { theme: string }) {
                           } else {
                             setActiveDetailTab("report");
                           }
+                          updateUrlParams({ student: r.id }, true);
                         }}
                         className={cn(
                           "p-4 cursor-pointer hover:bg-surface-soft/30 transition-all flex justify-between items-center",

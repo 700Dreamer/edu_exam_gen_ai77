@@ -27,8 +27,6 @@ if sys.platform == "darwin":
     os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = ":".join(_paths)
 
 from jinja2 import Environment, FileSystemLoader
-from weasyprint import HTML
-from weasyprint.text.fonts import FontConfiguration
 
 from sqlalchemy import select
 from core.models import (
@@ -207,18 +205,65 @@ def parse_batch_insights(insights_html: str) -> Dict[str, Any]:
     return result
 
 
-def _render_pdf_bytes(template_name: str, context: Dict[str, Any]) -> bytes:
-    """Renders a Jinja2 HTML template to PDF bytes using WeasyPrint."""
+async def _render_pdf_with_playwright(html_string: str) -> bytes:
+    """
+    Renders HTML string to PDF bytes via Playwright Chromium/Chrome.
+    Inlines stylesheet for fast, reliable, self-contained rendering.
+    """
+    from playwright.async_api import async_playwright
+
+    # Inline CSS if linked so the page is completely self-contained
+    css_path = os.path.join(TEMPLATES_DIR, "pdf_styles.css")
+    if os.path.exists(css_path):
+        try:
+            with open(css_path, "r", encoding="utf-8") as f:
+                css_content = f.read()
+            html_string = html_string.replace(
+                '<link rel="stylesheet" href="pdf_styles.css">',
+                f"<style>\n{css_content}\n</style>"
+            )
+        except Exception as e:
+            print(f"[PDF Generator] Could not inline CSS: {e}")
+
+    async with async_playwright() as p:
+        browser = None
+        try:
+            browser = await p.chromium.launch(args=["--no-sandbox", "--disable-setuid-sandbox"])
+        except Exception:
+            # Fallback to local Chrome channel if headless shell is not installed
+            browser = await p.chromium.launch(channel="chrome", args=["--no-sandbox", "--disable-setuid-sandbox"])
+
+        try:
+            page = await browser.new_page()
+            await page.set_content(html_string, wait_until="networkidle")
+            pdf_bytes = await page.pdf(
+                format="A4",
+                print_background=True,
+                prefer_css_page_size=True
+            )
+            return pdf_bytes
+        finally:
+            if browser:
+                await browser.close()
+
+
+async def _render_pdf_bytes(template_name: str, context: Dict[str, Any]) -> bytes:
+    """Renders a Jinja2 HTML template to PDF bytes using WeasyPrint, falling back to Playwright."""
     template = jinja_env.get_template(template_name)
     html_string = template.render(**context)
 
-    font_config = FontConfiguration()
-    html_doc = HTML(
-        string=html_string,
-        base_url=TEMPLATES_DIR
-    )
-    pdf_bytes = html_doc.write_pdf(font_config=font_config)
-    return pdf_bytes
+    # 1. Attempt WeasyPrint if native C-libraries are present
+    try:
+        from weasyprint import HTML
+        from weasyprint.text.fonts import FontConfiguration
+        font_config = FontConfiguration()
+        html_doc = HTML(string=html_string, base_url=TEMPLATES_DIR)
+        return html_doc.write_pdf(font_config=font_config)
+    except Exception as wp_err:
+        print(f"[PDF Generator] WeasyPrint unavailable ({wp_err}). Rendering with Playwright...")
+
+    # 2. Seamless fallback to Playwright Chromium/Chrome
+    return await _render_pdf_with_playwright(html_string)
 
 
 # ── Public API ──
@@ -301,7 +346,7 @@ async def generate_student_pdf(result_id: str) -> Tuple[bytes, str]:
         "generated_at": datetime.utcnow().strftime("%d %B %Y, %H:%M UTC"),
     }
 
-    pdf_bytes = _render_pdf_bytes("student_report.html", context)
+    pdf_bytes = await _render_pdf_bytes("student_report.html", context)
 
     safe_name = re.sub(r'[^\w\s-]', '', student_name).strip().replace(' ', '_')
     filename = f"Edulytics_{safe_name}_{batch_obj.subject}_Report.pdf"
@@ -434,7 +479,7 @@ async def generate_class_report_zip(batch_id: str) -> Tuple[str, str]:
     }
 
     # Generate class report PDF
-    class_pdf = _render_pdf_bytes("class_report.html", class_context)
+    class_pdf = await _render_pdf_bytes("class_report.html", class_context)
 
     # Generate individual student PDFs
     student_pdfs: List[Tuple[str, bytes]] = []

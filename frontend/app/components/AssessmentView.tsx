@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  FileText, Download, Loader2, Camera, Archive, Eye, X, FileCheck, Plus, ArrowRight, Layers, CheckCircle2, ScanLine, AlertTriangle, RefreshCw, RotateCw, Building2, ShieldCheck
+  FileText, Download, Loader2, Camera, Archive, Eye, X, FileCheck, Plus, ArrowRight, Layers, CheckCircle2, ScanLine, AlertTriangle, RefreshCw, RotateCw, Building2, ShieldCheck, Sliders, ChevronRight, Search, GraduationCap
 } from "lucide-react";
 import { cn, authFetch, API_BASE } from "../lib/utils";
 
@@ -84,6 +84,18 @@ export default function AssessmentView({
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [lastScanPreview, setLastScanPreview] = useState<string>("");
+  const [isPaperSpecificsSliderOpen, setIsPaperSpecificsSliderOpen] = useState(false);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState("");
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isPaperSpecificsSliderOpen) {
+        setIsPaperSpecificsSliderOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isPaperSpecificsSliderOpen]);
 
   useEffect(() => {
     authFetch("/api/v1/tenant/list")
@@ -1045,7 +1057,7 @@ export default function AssessmentView({
 
   return (
     <div className={cn(
-      "flex-1 bg-surface-soft text-foreground overflow-hidden relative flex transition-all duration-700 ease-in-out",
+      "flex-1 bg-surface-soft/30 text-foreground overflow-hidden relative flex transition-all duration-700 ease-in-out",
       isSidebarMode ? "flex-col lg:flex-row" : "flex-col items-center overflow-y-auto py-12 lg:py-20"
     )}>
       <div className={cn(
@@ -1226,28 +1238,146 @@ export default function AssessmentView({
           </div>
 
           {configLocked && (
-            <div className="bg-surface border border-border-main rounded-none p-5 animate-in fade-in slide-in-from-right-4 duration-300 shadow-none font-outfit">
-              <div className="flex justify-between items-center mb-4 border-b border-border-main/50 pb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Active Context</span>
-                <button onClick={() => { setConfigLocked(false); setBatchStatus(null); setBatchId(null); setScannedPages([]); stopCamera(); }} className="text-xs font-bold text-foreground/50 hover:text-foreground transition-colors cursor-pointer">Edit</button>
-              </div>
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">School / Tenant</span>
-                  <span className="text-sm font-bold text-foreground">{tenants.find(t => t.id === selectedTenant)?.name || "—"}</span>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Class Stream</span>
-                  <span className="text-sm font-bold text-foreground">
-                    {(() => {
-                      const g = groups.find(x => x.id === selectedGroup);
-                      return g ? `${g.level} - ${g.stream}` : "—";
-                    })()}
+            <div className={cn(
+              "animate-in fade-in slide-in-from-right-4 duration-300 font-outfit",
+              isSidebarMode ? "flex flex-col gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch"
+            )}>
+              {/* ── LEFT: Scrollable Schools List ── */}
+              <div className="bg-surface rounded-none p-4 flex flex-col shadow-none">
+                <div className="flex justify-between items-center mb-2.5 border-b border-border-main/50 pb-2.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-brand-600 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-brand-600" /> Schools
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-surface-soft border border-border-main text-foreground/60">
+                    {(Array.isArray(tenants) ? tenants : []).length} registered
                   </span>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Subject</span>
-                  <span className="text-sm font-bold text-foreground truncate">{subject}</span>
+
+                {/* Search input for schools */}
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/40 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search schools..."
+                    value={schoolSearchQuery}
+                    onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                    className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-surface-soft border border-border-main text-foreground placeholder:text-foreground/40 focus:outline-none focus:border-brand-500 rounded-none transition-colors"
+                  />
+                </div>
+
+                {/* Scrollable list container */}
+                <div className="flex-1 overflow-y-auto max-h-[190px] space-y-1.5 pr-1 focus:outline-none">
+                  {((Array.isArray(tenants) ? tenants : []).filter((t: any) =>
+                    ((t.name || "") + " " + (t.id || "")).toLowerCase().includes(schoolSearchQuery.toLowerCase())
+                  )).length === 0 ? (
+                    <div className="py-6 text-center text-xs text-foreground/40">
+                      No schools found
+                    </div>
+                  ) : (
+                    (Array.isArray(tenants) ? tenants : [])
+                      .filter((t: any) =>
+                        ((t.name || "") + " " + (t.id || "")).toLowerCase().includes(schoolSearchQuery.toLowerCase())
+                      )
+                      .map((t: any) => {
+                        const isSelected = selectedTenant === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedTenant(t.id);
+                              setIsPaperSpecificsSliderOpen(true);
+                            }}
+                            className={cn(
+                              "w-full text-left p-2.5 rounded-none border transition-all flex items-center justify-between group cursor-pointer",
+                              isSelected
+                                ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                                : "border-border-main/60 bg-surface text-foreground/70 hover:bg-surface-soft hover:text-foreground hover:border-border-main"
+                            )}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                              <div className={cn(
+                                "w-7 h-7 rounded-none flex items-center justify-center shrink-0 border text-[10px] font-bold uppercase",
+                                isSelected
+                                  ? "border-brand-600 bg-brand-600 text-white"
+                                  : "border-border-main bg-surface-soft text-foreground/60 group-hover:border-brand-500/50 group-hover:text-brand-600"
+                              )}>
+                                {t.name ? t.name.substring(0, 2).toUpperCase() : "SC"}
+                              </div>
+                              <div className="truncate">
+                                <div className="text-xs font-bold truncate leading-tight">{t.name}</div>
+                                <div className="text-[10px] text-foreground/40 truncate font-mono mt-0.5">
+                                  ID: {t.id}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isSelected ? (
+                                <span className="text-[10px] font-bold uppercase text-brand-600 bg-brand-500/10 border border-brand-500/20 px-1.5 py-0.5">
+                                  Active
+                                </span>
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5 text-foreground/30 group-hover:text-foreground/70 group-hover:translate-x-0.5 transition-all" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
+
+                <div className="mt-2.5 pt-2 border-t border-border-main/40 text-[10px] text-foreground/50 flex items-center justify-between">
+                  <span>Click school to configure specifics</span>
+                  <span className="font-mono text-brand-600 font-bold">Paper Specifics</span>
+                </div>
+              </div>
+
+              {/* ── RIGHT: Active Context Card ── */}
+              <div className="bg-surface border border-border-main rounded-none p-5 shadow-none flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center mb-3 border-b border-border-main/50 pb-2.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4" /> Active Context
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPaperSpecificsSliderOpen(true)}
+                      className="text-xs font-bold text-foreground/60 hover:text-brand-600 flex items-center gap-1.5 transition-colors cursor-pointer group"
+                    >
+                      <Sliders className="w-3.5 h-3.5 text-brand-600 group-hover:rotate-12 transition-transform" />
+                      <span>Edit</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3.5">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">School / Tenant</span>
+                      <span className="text-sm font-bold text-foreground truncate">
+                        {tenants.find(t => t.id === selectedTenant)?.name || "—"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Class Stream</span>
+                      <span className="text-sm font-bold text-foreground">
+                        {(() => {
+                          const g = groups.find(x => x.id === selectedGroup);
+                          return g ? `${g.level} - ${g.stream}` : "—";
+                        })()}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-foreground/40">Subject</span>
+                      <span className="text-sm font-bold text-foreground truncate">{subject}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-border-main/40 flex items-center justify-between text-[11px]">
+                  <span className="text-foreground/50">Marking Format:</span>
+                  <span className="font-bold text-brand-600 uppercase text-[10px] bg-brand-500/10 border border-brand-500/20 px-2 py-0.5">
+                    {batchMode}
+                  </span>
                 </div>
               </div>
             </div>
@@ -2090,6 +2220,229 @@ export default function AssessmentView({
               >
                 <Download className="w-3.5 h-3.5" /> Download High-Res Image
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── PAPER SPECIFICS SLIDER DRAWER (FROM THE LEFT) ── */}
+      {isPaperSpecificsSliderOpen && (
+        <div className="fixed inset-0 z-50 overflow-hidden font-outfit">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity duration-300"
+            onClick={() => setIsPaperSpecificsSliderOpen(false)}
+          />
+
+          {/* Slider Panel from Left */}
+          <div
+            className="fixed inset-y-0 left-0 w-full sm:w-[480px] lg:w-[520px] bg-surface border-r border-border-main shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-300 ease-out"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-5 border-b border-border-main bg-surface-soft flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-brand-500/10 border border-brand-500/20 flex items-center justify-center">
+                  <Building2 className="w-5 h-5 text-brand-600" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-foreground">Paper Specifics</h3>
+                  <p className="text-[11px] text-foreground/60 font-medium">Academic Context & Examination Layout</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPaperSpecificsSliderOpen(false)}
+                className="p-1.5 hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-colors cursor-pointer"
+                title="Close slider (Esc)"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* 1. School / Tenant */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <Building2 className="w-3.5 h-3.5 text-brand-600" />
+                  <span>1. School / Institution</span>
+                </label>
+                <select
+                  value={selectedTenant}
+                  onChange={(e) => setSelectedTenant(e.target.value)}
+                  className="w-full text-xs border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer font-medium"
+                >
+                  <option value="" disabled>Select School...</option>
+                  {(Array.isArray(tenants) ? tenants : []).map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <div className="text-[11px] text-foreground/50">
+                  Active School ID: <span className="font-mono text-foreground/70">{selectedTenant || "None"}</span>
+                </div>
+              </div>
+
+              {/* 2. Academic Class & Stream */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <GraduationCap className="w-3.5 h-3.5 text-brand-600" />
+                  <span>2. Academic Class & Stream</span>
+                </label>
+                <select
+                  value={selectedGroup}
+                  onChange={(e) => setSelectedGroup(e.target.value)}
+                  className="w-full text-xs border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer font-medium"
+                  disabled={!Array.isArray(groups) || groups.length === 0}
+                >
+                  <option value="" disabled>Select Class Stream...</option>
+                  {(Array.isArray(groups) ? groups : []).map((g: any) => (
+                    <option key={g.id} value={g.id}>{g.level} - {g.stream}</option>
+                  ))}
+                </select>
+                {(!groups || groups.length === 0) && selectedTenant && (
+                  <p className="text-[11px] text-amber-600 font-medium">No class streams found for this school.</p>
+                )}
+              </div>
+
+              {/* 3. Subject */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <FileText className="w-3.5 h-3.5 text-brand-600" />
+                  <span>3. Subject</span>
+                </label>
+                <select
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full text-xs border border-border-main rounded-none p-3 bg-surface text-foreground focus:ring-1 focus:ring-brand-500 outline-none transition-all cursor-pointer font-medium"
+                >
+                  <option value="" disabled>Select Subject...</option>
+                  {subjects.map((s: string) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 4. Exam Layout & Format */}
+              <div className="space-y-3 pt-2 border-t border-border-main/60">
+                <label className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5 text-brand-600" />
+                  <span>4. Exam Layout & Marking Format</span>
+                </label>
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBatchMode("hybrid")}
+                    className={cn(
+                      "p-3 border text-left rounded-none transition-all cursor-pointer",
+                      batchMode === "hybrid"
+                        ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                        : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                    )}
+                  >
+                    <div className="text-xs font-bold text-brand-600">Hybrid Format</div>
+                    <div className="text-[11px] text-foreground/50 mt-0.5">Section A Worksheet + Section B/C Answer Sheet</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBatchMode("answer_sheet")}
+                    className={cn(
+                      "p-3 border text-left rounded-none transition-all cursor-pointer",
+                      batchMode === "answer_sheet"
+                        ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                        : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                    )}
+                  >
+                    <div className="text-xs font-bold">Answer Sheet Only</div>
+                    <div className="text-[11px] text-foreground/50 mt-0.5">1-Time Master Paper + Student Answer Sheets</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setBatchMode("worksheet")}
+                    className={cn(
+                      "p-3 border text-left rounded-none transition-all cursor-pointer",
+                      batchMode === "worksheet"
+                        ? "border-brand-600 bg-brand-500/10 text-foreground font-bold"
+                        : "border-border-main text-foreground/60 hover:bg-surface-soft"
+                    )}
+                  >
+                    <div className="text-xs font-bold">Worksheet Format</div>
+                    <div className="text-[11px] text-foreground/50 mt-0.5">Questions & answers printed together</div>
+                  </button>
+                </div>
+
+                {(batchMode === "answer_sheet" || batchMode === "hybrid") && (
+                  <div className="p-3 bg-brand-500/5 border border-brand-500/20 rounded-none space-y-2 mt-2">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[11px] font-bold text-brand-600 uppercase tracking-wider block">
+                        Master Paper {batchMode === "hybrid" ? "(Optional)" : "(1-Time)"}
+                      </label>
+                      {masterQuestionFiles.length > 0 && (
+                        <span className="text-[10px] font-bold text-emerald-600">{masterQuestionFiles.length} page(s)</span>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setMasterQuestionFiles(Array.from(e.target.files));
+                        }
+                      }}
+                      className="w-full text-xs text-foreground file:mr-2 file:py-1 file:px-2 file:border-0 file:text-[11px] file:font-bold file:bg-brand-600 file:text-white hover:file:bg-brand-700 cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Context Summary */}
+              <div className="p-3.5 bg-surface-soft border border-border-main space-y-2 text-xs">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-foreground/50 mb-1">Context Summary</div>
+                <div className="flex justify-between text-foreground/70">
+                  <span>School:</span>
+                  <span className="font-bold text-foreground truncate max-w-[200px]">
+                    {tenants.find(t => t.id === selectedTenant)?.name || "Not set"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-foreground/70">
+                  <span>Class:</span>
+                  <span className="font-bold text-foreground">
+                    {groups.find(g => g.id === selectedGroup)?.level || "Not set"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-foreground/70">
+                  <span>Subject:</span>
+                  <span className="font-bold text-foreground">{subject || "Not set"}</span>
+                </div>
+                <div className="flex justify-between text-foreground/70">
+                  <span>Format:</span>
+                  <span className="font-bold text-brand-600 uppercase text-[10px]">{batchMode}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-border-main bg-surface-soft flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPaperSpecificsSliderOpen(false)}
+                className="px-4 py-3 border border-border-main text-foreground/70 hover:text-foreground text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfigLocked(true);
+                  setIsPaperSpecificsSliderOpen(false);
+                }}
+                disabled={!subject || !selectedGroup || !selectedTenant}
+                className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Save & Apply Specifics
+              </button>
             </div>
           </div>
         </div>

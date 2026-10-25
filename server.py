@@ -30,8 +30,9 @@ if os.path.exists(env_path):
 # ── Add project root to path so core/ is importable ──
 sys.path.insert(0, BASE_DIR)
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -112,7 +113,21 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition", "*"],
 )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Ensure CORS headers and structured detail are returned even on unhandled 500 exceptions."""
+    origin = request.headers.get("origin") or "*"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    )
 
 # ── Serve Uploaded Scans ──
 uploads_dir = Path(BASE_DIR) / "static" / "uploads"
@@ -477,6 +492,39 @@ async def list_batches():
                 "created_at": batch.created_at.isoformat()
             })
         return batches_data
+
+@app.get("/api/v1/assessment/batch/{batch_id}")
+async def get_batch_detail(batch_id: str):
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+        async with async_session_maker() as session:
+            query = select(AssessmentBatch, AcademicGroup, Tenant).join(
+                AcademicGroup, AssessmentBatch.academic_group_id == AcademicGroup.id
+            ).join(
+                Tenant, AcademicGroup.tenant_id == Tenant.id
+            ).where(AssessmentBatch.id == batch_uuid)
+            res = await session.execute(query)
+            row = res.first()
+            if not row:
+                raise HTTPException(status_code=404, detail="Assessment batch not found")
+            batch, group, tenant = row
+            return {
+                "id": str(batch.id),
+                "academic_group_id": str(batch.academic_group_id),
+                "level": group.level,
+                "stream": group.stream,
+                "tenant_id": str(tenant.id),
+                "tenant_name": tenant.name,
+                "subject": batch.subject,
+                "exam_type": batch.exam_type,
+                "status": batch.status,
+                "mode": batch.mode or "worksheet",
+                "master_question_urls": batch.master_question_urls,
+                "master_exam_structure": batch.master_exam_structure,
+                "created_at": batch.created_at.isoformat()
+            }
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
 
 @app.get("/api/v1/assessment/batch/{batch_id}/results")
 async def get_batch_results(batch_id: str):
@@ -2057,9 +2105,8 @@ async def export_student_pdf(result_id: str):
     Generates and streams a single student's PDF report.
     Synchronous -- returns the PDF directly as a download.
     """
-    from core.pdf_generator import generate_student_pdf
-
     try:
+        from core.pdf_generator import generate_student_pdf
         pdf_bytes, filename = await generate_student_pdf(result_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -2076,9 +2123,8 @@ async def export_student_pdf(result_id: str):
 
 async def _background_generate_class_report(batch_id: str, job_id: str):
     """Background task to generate the class report ZIP."""
-    from core.pdf_generator import generate_class_report_zip
-
     try:
+        from core.pdf_generator import generate_class_report_zip
         _pdf_generation_status[job_id] = {"status": "generating", "progress": "Building class report and individual student PDFs..."}
         zip_path, zip_filename = await generate_class_report_zip(batch_id)
         _pdf_generation_status[job_id] = {

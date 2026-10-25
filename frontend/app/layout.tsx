@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Outfit, Coming_Soon } from "next/font/google";
+import { Outfit, Coming_Soon, Geist } from "next/font/google";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -19,6 +19,10 @@ export const metadata: Metadata = {
 };
 
 import Script from "next/script";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+
 
 export default function RootLayout({
   children,
@@ -26,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${outfit.variable} ${comingSoon.variable}`}>
+    <html lang="en" className={cn(outfit.variable, comingSoon.variable, "font-sans", geist.variable)}>
       <head>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" />
       </head>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Database, Plus, Users, Layers, CheckCircle2, BarChart3, School, BookOpen, Calendar
 } from "lucide-react";
@@ -15,6 +16,7 @@ import SchoolOnboardingView from "./components/SchoolOnboardingView";
 import SettingsView from "./components/SettingsView";
 import { Settings } from "lucide-react";
 import { authFetch } from "./lib/utils";
+import DotField from "@/components/DotField";
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -47,12 +49,12 @@ const Header = ({
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-3 group px-3 py-1.5 hover:bg-foreground/5 rounded-none transition-all cursor-default">
           <div className="bg-brand-500/10 border border-brand-500/20 p-2 rounded-none backdrop-blur-md relative overflow-hidden">
-             <Database className="w-5 h-5 text-brand-500 relative z-10" />
-             <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
+            <Database className="w-5 h-5 text-brand-500 relative z-10" />
+            <div className="absolute inset-0 bg-brand-500/20 animate-pulse"></div>
           </div>
           <div>
-             <h1 className="text-lg font-black tracking-widest leading-none">EDULYTICS V2.4</h1>
-             <p className="text-[8px] tracking-[0.25em] font-bold mt-1 uppercase text-brand-500 opacity-90">AI Grading &amp; Analytics</p>
+            <h1 className="text-lg font-black tracking-widest leading-none">EDULYTICS V2.4</h1>
+            <p className="text-[8px] tracking-[0.25em] font-bold mt-1 uppercase text-brand-500 opacity-90">AI Grading &amp; Analytics</p>
           </div>
         </div>
 
@@ -70,9 +72,9 @@ const Header = ({
               key={key}
               onClick={() => setCurrentPage(key)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-none font-extrabold text-xs transition-all cursor-pointer border",
-                currentPage === key 
-                  ? "bg-brand-800 text-white border-brand-700 shadow-none" 
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-[5px] font-medium text-xs transition-all cursor-pointer border",
+                currentPage === key
+                  ? "bg-brand-800 text-white border-brand-700 shadow-none"
                   : "bg-transparent text-foreground/70 border-transparent hover:text-foreground hover:bg-surface-soft"
               )}
             >
@@ -86,10 +88,63 @@ const Header = ({
   );
 };
 
-export default function Home() {
-  const [currentPage, setCurrentPage] = useState<Page>("assessment");
+function HomeContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const getInitialPage = (): Page => {
+    if (!searchParams) return "assessment";
+    if (searchParams.get("run") || searchParams.get("batch")) {
+      return "gradebook";
+    }
+    const view = searchParams.get("view") || searchParams.get("tab");
+    if (view === "results" || view === "gradebook") return "gradebook";
+    if (view === "grading" || view === "assessment") return "assessment";
+    if (view === "insights" || view === "analytics") return "analytics";
+    if (view && ["onboarding", "roster", "settings"].includes(view)) {
+      return view as Page;
+    }
+    return "assessment";
+  };
+
+  const [currentPage, setCurrentPage] = useState<Page>(getInitialPage);
   const [theme, setTheme] = useState<'burgundy' | 'midnight' | 'emerald' | 'royal'>('burgundy');
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>('small');
+
+  // Sync state if user clicks Browser Back/Forward
+  useEffect(() => {
+    if (!searchParams) return;
+    const runParam = searchParams.get("run") || searchParams.get("batch");
+    if (runParam && currentPage !== "gradebook") {
+      setCurrentPage("gradebook");
+      return;
+    }
+    const viewParam = searchParams.get("view") || searchParams.get("tab");
+    let targetPage: Page | null = null;
+    if (viewParam === "results" || viewParam === "gradebook") targetPage = "gradebook";
+    else if (viewParam === "grading" || viewParam === "assessment") targetPage = "assessment";
+    else if (viewParam === "insights" || viewParam === "analytics") targetPage = "analytics";
+    else if (viewParam && ["onboarding", "roster", "settings"].includes(viewParam)) targetPage = viewParam as Page;
+
+    if (targetPage && targetPage !== currentPage) {
+      setCurrentPage(targetPage);
+    }
+  }, [searchParams]);
+
+  const handlePageChange = useCallback((newPage: Page) => {
+    setCurrentPage(newPage);
+    const params = new URLSearchParams(searchParams ? searchParams.toString() : "");
+    params.set("view", newPage);
+    if (newPage !== "gradebook") {
+      params.delete("run");
+      params.delete("batch");
+      params.delete("student");
+    }
+    const qs = params.toString();
+    const newUrl = qs ? `${pathname}?${qs}` : pathname;
+    router.push(newUrl, { scroll: false });
+  }, [searchParams, pathname, router]);
 
   // Global persistent academic context states
   const [tenants, setTenants] = useState<any[]>([]);
@@ -126,7 +181,7 @@ export default function Home() {
           if (data.length > 0) {
             const firstT = data[0].id;
             setActiveTenantId(firstT);
-            
+
             // Load groups for first tenant
             const gRes = await authFetch(`/api/v1/tenant/${firstT}/groups`);
             if (gRes.ok) {
@@ -138,16 +193,16 @@ export default function Home() {
             }
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     loadGlobalContext();
-    
+
     const handleLogout = () => {
       window.location.href = "/login";
     };
     window.addEventListener("edulytics_logout", handleLogout);
-    
+
     return () => {
       window.removeEventListener("edulytics_logout", handleLogout);
     };
@@ -177,18 +232,44 @@ export default function Home() {
             setActiveGroupId(gData[0].id);
           }
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     fetchGroups();
   }, [activeTenantId]);
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col transition-colors duration-500">
+    <div className="h-screen overflow-hidden flex flex-col transition-colors duration-500 relative">
+      {/* Base Background: DotField */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+        <DotField
+          gradientFrom="#94a3b8"
+          gradientTo="#94a3b8"
+          dotRadius={1.2}
+          dotSpacing={18}
+          cursorRadius={240}
+          bulgeStrength={0.6}
+          glowRadius={70}
+          pattern="grid"
+          glowColor="#ffffff"
+          gradientAngle={164}
+          twist={-110}
+          glowIntensity={0.8}
+          baseOpacity={0.45}
+          waveAmplitude={0}
+          speed={1}
+          sparkle={false}
+          interactive={false}
+          holdToZoom
+          intro
+          lightMode
+        />
+      </div>
+
       <Header
         theme={theme}
         setTheme={setTheme}
         currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
+        setCurrentPage={handlePageChange}
         tenants={tenants}
         activeTenantId={activeTenantId}
         setActiveTenantId={setActiveTenantId}
@@ -204,13 +285,13 @@ export default function Home() {
         setActiveYear={setActiveYear}
       />
 
-      <main className="flex-1 overflow-hidden flex flex-col relative">
+      <main className="flex-1 overflow-hidden flex flex-col relative z-10">
         {currentPage === "onboarding" ? (
-          <SchoolOnboardingView theme={theme} setActiveTab={setCurrentPage} />
+          <SchoolOnboardingView theme={theme} setActiveTab={handlePageChange} />
         ) : currentPage === "roster" ? (
           <RosterView theme={theme} />
         ) : currentPage === "assessment" ? (
-          <AssessmentView 
+          <AssessmentView
             theme={theme}
             globalTenantId={activeTenantId}
             globalGroupId={activeGroupId}
@@ -228,9 +309,28 @@ export default function Home() {
             setFontSize={setFontSize}
           />
         ) : (
-          <GradebookView theme={theme} />
+          <GradebookView
+            theme={theme}
+            onBatchActive={(batch: any) => {
+              if (batch.tenant_id) setActiveTenantId(batch.tenant_id);
+              if (batch.academic_group_id) setActiveGroupId(batch.academic_group_id);
+              if (batch.subject) setActiveSubject(batch.subject);
+            }}
+          />
         )}
       </main>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="h-screen w-screen flex items-center justify-center bg-surface font-outfit text-foreground/40 text-xs">
+        Loading Edulytics...
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

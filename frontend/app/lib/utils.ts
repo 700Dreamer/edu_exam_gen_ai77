@@ -46,3 +46,35 @@ export const authFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 export type Page = "onboarding" | "roster" | "assessment" | "gradebook" | "analytics";
+
+export function formatTimeAgo(dateInput: string | Date | number | null | undefined): string {
+  if (!dateInput) return "Unknown";
+  try {
+    const date = typeof dateInput === "string" || typeof dateInput === "number" ? new Date(dateInput) : dateInput;
+    if (isNaN(date.getTime())) return "Unknown";
+    const now = new Date();
+    const diffInSeconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+
+    if (diffInSeconds < 45) {
+      return "just now";
+    }
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes} ${diffInMinutes === 1 ? "minute" : "minutes"} ago`;
+    }
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours} ${diffInHours === 1 ? "hour" : "hours"} ago`;
+    }
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays === 1) {
+      return "yesterday";
+    }
+    if (diffInDays < 7) {
+      return `${diffInDays} days ago`;
+    }
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return "Unknown";
+  }
+}
