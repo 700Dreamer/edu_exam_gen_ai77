@@ -1756,7 +1756,7 @@ export default function GradebookView({
               </div>
 
               {/* PANE 2: Center Hero Canvas */}
-              <div className="col-span-12 lg:col-span-6 bg-surface border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden relative">
+              <div className="col-span-12 lg:col-span-6 bg-transparent border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden relative">
                 {!selectedResult ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 p-12 space-y-3">
                     <FileCheck className="w-12 h-12 text-foreground/40" />
@@ -1779,7 +1779,7 @@ export default function GradebookView({
                   return (
                     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
                       {/* Hero Header */}
-                      <div className="px-5 py-3 border-b border-border-main bg-surface-soft/40 flex items-center justify-between gap-3 shrink-0">
+                      <div className="px-5 py-3 border-b border-border-main bg-surface/80 backdrop-blur-md flex items-center justify-between gap-3 shrink-0">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="text-sm font-bold text-foreground truncate">
@@ -1819,7 +1819,7 @@ export default function GradebookView({
 
                       {/* Question Item Navigator Track */}
                       {parsedQs.length > 0 && !selectedResult.needs_manual_review && (
-                        <div className="px-4 py-2 bg-surface border-b border-border-main flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0">
+                        <div className="px-4 py-2 bg-surface/80 backdrop-blur-md border-b border-border-main flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0">
                           <button
                             onClick={() => setSelectedItemKey("all")}
                             className={cn(
@@ -1866,7 +1866,7 @@ export default function GradebookView({
                       )}
 
                       {/* Main Scrollable Canvas Content */}
-                      <div className=" flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-24">
+                      <div className="bg-transparent flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6 pb-24">
                         {/* MANUAL REVIEW NEEDED CENTER */}
                         {selectedResult.needs_manual_review ? (
                           <div className="bg-amber-500/5 border border-amber-500/30 rounded-[10px] p-6 space-y-4 text-left">
@@ -1883,7 +1883,7 @@ export default function GradebookView({
                               )}
                             </p>
 
-                            <div className="h-44 bg-green-200 border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
+                            <div className="h-44 bg-transparent border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
                               {selectedResult.paper_images_urls?.page1 ? (
                                 <img
                                   src={selectedResult.paper_images_urls.page1}
