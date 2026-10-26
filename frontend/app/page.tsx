@@ -15,7 +15,7 @@ import AnalyticsView from "./components/AnalyticsView";
 import ReportLabView from "./components/ReportLabView";
 import SchoolOnboardingView from "./components/SchoolOnboardingView";
 import SettingsView from "./components/SettingsView";
-import { Settings, FileText } from "lucide-react";
+import { Settings, FileText, Sparkles, Clock, ArrowRight } from "lucide-react";
 import { authFetch } from "./lib/utils";
 import DotField from "@/components/DotField";
 
@@ -65,25 +65,42 @@ const Header = ({
             { key: "onboarding", label: "Onboarding", Icon: Plus },
             { key: "assessment", label: "Grading", Icon: Layers },
             { key: "gradebook", label: "Results", Icon: CheckCircle2 },
-            { key: "reports", label: "Report Lab", Icon: FileText },
+            { key: "reports", label: "Report Lab", Icon: FileText, tag: "BETA" },
             { key: "analytics", label: "Insights", Icon: BarChart3 },
             { key: "roster", label: "Class Rosters", Icon: Users },
             { key: "settings", label: "Settings", Icon: Settings },
-          ] as const).map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              onClick={() => setCurrentPage(key)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-[5px] font-medium text-xs transition-all cursor-pointer border",
-                currentPage === key
-                  ? "bg-brand-800 text-white border-brand-700 shadow-none"
-                  : "bg-transparent text-foreground/70 border-transparent hover:text-foreground hover:bg-surface-soft"
-              )}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
+          ] as const).map(({ key, label, Icon, ...item }) => {
+            const hasTag = "tag" in item && Boolean(item.tag);
+            const tagText = hasTag ? (item as any).tag : null;
+
+            return (
+              <button
+                key={key}
+                onClick={() => setCurrentPage(key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-[5px] font-medium text-xs transition-all cursor-pointer border relative",
+                  currentPage === key
+                    ? "bg-brand-800 text-white border-brand-700 shadow-none"
+                    : "bg-transparent text-foreground/70 border-transparent hover:text-foreground hover:bg-surface-soft"
+                )}
+              >
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span>{label}</span>
+                {tagText && (
+                  <span
+                    className={cn(
+                      "text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded-[3px] border leading-none transition-colors",
+                      currentPage === key
+                        ? "bg-white/15 text-white/90 border-white/20"
+                        : "bg-foreground/[0.05] text-foreground/50 border-border-main"
+                    )}
+                  >
+                    {tagText}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </header>
@@ -304,7 +321,47 @@ function HomeContent() {
             globalYear={activeYear}
           />
         ) : currentPage === "reports" ? (
-          <ReportLabView theme={theme} />
+          <div className="flex-1 overflow-hidden relative flex flex-col">
+            {/* Subtle underlying preview with deep blur */}
+            <div className="flex-1 overflow-hidden pointer-events-none filter blur-md select-none opacity-20">
+              <ReportLabView theme={theme} />
+            </div>
+
+            {/* Apple-style Ultra-minimal Monochromatic Overlay */}
+            <div className="absolute inset-0 z-30 bg-surface/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit">
+              <div className="max-w-xs w-full text-center space-y-6">
+                {/* Monochromatic icon badge */}
+                <div className="w-11 h-11 rounded-full bg-foreground/[0.04] border border-border-main flex items-center justify-center mx-auto text-foreground/70">
+                  <FileText className="w-5 h-5 stroke-[1.5]" />
+                </div>
+
+                {/* Typography */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-semibold tracking-[0.2em] uppercase text-foreground/40">
+                    Report Lab
+                  </div>
+                  <h2 className="text-xl font-medium tracking-tight text-foreground">
+                    Coming Soon
+                  </h2>
+                  <p className="text-xs text-foreground/50 leading-relaxed font-normal pt-1">
+                    Automated report cards, transcripts, and cross-subject analytics are on the way.
+                  </p>
+                </div>
+
+                {/* Monochromatic Back Action */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange("gradebook")}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-foreground/80 hover:text-foreground bg-foreground/[0.04] hover:bg-foreground/[0.08] border border-border-main rounded-full transition-all cursor-pointer active:scale-95"
+                  >
+                    Return to Results
+                    <ArrowRight className="w-3 h-3 text-foreground/40" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : currentPage === "analytics" ? (
           <AnalyticsView theme={theme} />
         ) : currentPage === "settings" ? (
