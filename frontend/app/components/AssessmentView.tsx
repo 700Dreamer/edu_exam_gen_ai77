@@ -844,51 +844,6 @@ export default function AssessmentView({
     });
   };
 
-  const uploadFormDataWithProgress = (
-    url: string,
-    formData: FormData,
-    onProgress: (percent: number) => void
-  ): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", url, true);
-      const token = typeof window !== "undefined" ? localStorage.getItem("edulytics_token") : null;
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          onProgress(percent);
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            resolve(JSON.parse(xhr.responseText));
-          } catch {
-            resolve({});
-          }
-        } else {
-          let errorMsg = `Upload failed with status ${xhr.status}`;
-          try {
-            const errObj = JSON.parse(xhr.responseText);
-            if (errObj.detail) errorMsg = errObj.detail;
-          } catch {}
-          reject(new Error(errorMsg));
-        }
-      };
-
-      xhr.onerror = () => {
-        reject(new Error("Network error during file upload to server. Ensure backend on port 8000 is active."));
-      };
-
-      xhr.send(formData);
-    });
-  };
-
   const processBatch = async () => {
     if (scannedPages.length === 0 || !selectedGroup) return;
     setIsProcessing(true);
@@ -906,10 +861,7 @@ export default function AssessmentView({
           mode: batchMode
         })
       });
-      if (!initRes.ok) {
-        const errData = await initRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Failed to initialize assessment batch");
-      }
+      if (!initRes.ok) throw new Error("Failed to init batch");
       const { batch_id } = await initRes.json();
       setBatchId(batch_id);
 
@@ -929,6 +881,7 @@ export default function AssessmentView({
         }
       }
 
+      // We'll upload scanned pages directly to S3
       const allFiles = scannedPages.map(p => p.file);
       if (allFiles.length === 0) {
         // If only master question was uploaded, just start processing
@@ -945,96 +898,68 @@ export default function AssessmentView({
         return;
       }
 
-      // Check if S3 presigned direct upload is available
-      setUploadProgressText("Checking upload method...");
-      let useS3 = false;
-      let upload_urls: any[] = [];
-      try {
-        const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filenames: allFiles.map(f => f.name) })
-        });
-        if (presignRes.ok) {
-          const presignData = await presignRes.json();
-          if (presignData.s3_enabled !== false && Array.isArray(presignData.upload_urls) && presignData.upload_urls.length > 0) {
-            useS3 = true;
-            upload_urls = presignData.upload_urls;
-          }
-        }
-      } catch (err) {
-        console.warn("S3 presigned upload unavailable, falling back to direct server upload:", err);
-      }
+      setUploadProgressText("Requesting upload URLs...");
+      const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: allFiles.map(f => f.name) })
+      });
+      if (!presignRes.ok) throw new Error("Failed to get presigned URLs");
+      const { upload_urls } = await presignRes.json();
+      
+      const fileMap = new Map(allFiles.map(f => [f.name, f]));
+      
+      // Upload progress tracking
+      const totalBytes = allFiles.reduce((acc, f) => acc + f.size, 0);
+      const loadedBytesPerFile = new Map<string, number>();
+      let uploadedFilesCount = 0;
 
-      if (useS3) {
-        setUploadProgressText("Requesting upload URLs...");
-        const fileMap = new Map(allFiles.map(f => [f.name, f]));
-        
-        // Upload progress tracking
-        const totalBytes = allFiles.reduce((acc, f) => acc + f.size, 0);
-        const loadedBytesPerFile = new Map<string, number>();
-        let uploadedFilesCount = 0;
+      const updateProgress = () => {
+        let totalLoaded = 0;
+        loadedBytesPerFile.forEach(loaded => totalLoaded += loaded);
+        const percent = Math.round((totalLoaded / totalBytes) * 100);
+        setUploadProgressPercent(percent);
+        setUploadProgressText(`Uploading ${uploadedFilesCount}/${allFiles.length} pages... (${percent}%)`);
+      };
 
-        const updateProgress = () => {
-          let totalLoaded = 0;
-          loadedBytesPerFile.forEach(loaded => totalLoaded += loaded);
-          const percent = totalBytes > 0 ? Math.round((totalLoaded / totalBytes) * 100) : 100;
-          setUploadProgressPercent(percent);
-          setUploadProgressText(`Uploading ${uploadedFilesCount}/${allFiles.length} pages to S3... (${percent}%)`);
-        };
+      // Parallel uploads with concurrency limit
+      const maxConcurrency = 4;
+      const s3Keys: string[] = [];
+      let index = 0;
 
-        // Parallel uploads with concurrency limit
-        const maxConcurrency = 4;
-        const s3Keys: string[] = [];
-        let index = 0;
+      const uploadNext = async (): Promise<void> => {
+        if (index >= upload_urls.length) return;
+        const currentIdx = index++;
+        const urlData = upload_urls[currentIdx];
+        const file = fileMap.get(urlData.filename);
+        if (!file) return;
 
-        const uploadNext = async (): Promise<void> => {
-          if (index >= upload_urls.length) return;
-          const currentIdx = index++;
-          const urlData = upload_urls[currentIdx];
-          const file = fileMap.get(urlData.filename);
-          if (!file) return;
-
-          await uploadFileToS3WithXHR(file, urlData.url, (loaded) => {
-            loadedBytesPerFile.set(urlData.filename, loaded);
-            updateProgress();
-          });
-          
-          uploadedFilesCount++;
-          loadedBytesPerFile.set(urlData.filename, file.size);
-          s3Keys.push(urlData.key);
+        await uploadFileToS3WithXHR(file, urlData.url, (loaded) => {
+          loadedBytesPerFile.set(urlData.filename, loaded);
           updateProgress();
-          
-          await uploadNext();
-        };
-
-        const workers = [];
-        for (let i = 0; i < maxConcurrency; i++) {
-          workers.push(uploadNext());
-        }
-        await Promise.all(workers);
-
-        setUploadProgressText("Confirming uploads...");
-        const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keys: s3Keys })
         });
-        if (!confirmRes.ok) {
-          const errData = await confirmRes.json().catch(() => ({}));
-          throw new Error(errData.detail || "Failed to confirm uploads");
-        }
-      } else {
-        // Direct local server upload
-        setUploadProgressText(`Uploading ${allFiles.length} pages directly to server... (0%)`);
-        const formData = new FormData();
-        allFiles.forEach(f => formData.append("files", f));
-        const uploadEndpoint = API_BASE ? `${API_BASE}/api/v1/assessment/batch/${batch_id}/upload` : `/api/v1/assessment/batch/${batch_id}/upload`;
-        await uploadFormDataWithProgress(uploadEndpoint, formData, (percent) => {
-          setUploadProgressPercent(percent);
-          setUploadProgressText(`Uploading ${allFiles.length} pages to server... (${percent}%)`);
-        });
+        
+        uploadedFilesCount++;
+        loadedBytesPerFile.set(urlData.filename, file.size);
+        s3Keys.push(urlData.key);
+        updateProgress();
+        
+        await uploadNext(); // Continue to next file
+      };
+
+      const workers = [];
+      for (let i = 0; i < maxConcurrency; i++) {
+        workers.push(uploadNext());
       }
+      await Promise.all(workers);
+
+      setUploadProgressText("Confirming uploads...");
+      const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: s3Keys })
+      });
+      if (!confirmRes.ok) throw new Error("Failed to confirm uploads");
 
       setUploadProgressText("Starting grading...");
       const procRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
@@ -1080,76 +1005,42 @@ export default function AssessmentView({
           exam_type: "Mid Term"
         })
       });
-      if (!initRes.ok) {
-        const errData = await initRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Failed to initialize batch");
-      }
+      if (!initRes.ok) throw new Error("Failed to init batch");
       const { batch_id } = await initRes.json();
       setBatchId(batch_id);
 
-      // Check if S3 presigned upload is available for ZIP
-      let useS3 = false;
-      let urlData: any = null;
-      try {
-        const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filenames: [zipFile.name] })
-        });
-        if (presignRes.ok) {
-          const presignData = await presignRes.json();
-          if (presignData.s3_enabled !== false && Array.isArray(presignData.upload_urls) && presignData.upload_urls.length > 0) {
-            useS3 = true;
-            urlData = presignData.upload_urls[0];
-          }
-        }
-      } catch (err) {
-        console.warn("Presigned S3 upload unavailable for ZIP, falling back to direct server upload:", err);
-      }
+      setUploadProgressText("Requesting upload URL...");
+      const presignRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/presign-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filenames: [zipFile.name] })
+      });
+      if (!presignRes.ok) throw new Error("Failed to get presigned URL");
+      const { upload_urls } = await presignRes.json();
+      const urlData = upload_urls[0];
 
-      let uploadedTotal = 1;
-      if (useS3 && urlData) {
-        setUploadProgressText(`Uploading ${zipFile.name}... (0%)`);
-        await uploadFileToS3WithXHR(zipFile, urlData.url, (loaded) => {
-          const percent = Math.round((loaded / zipFile.size) * 100);
-          setUploadProgressPercent(percent);
-          setUploadProgressText(`Uploading ZIP archive... (${percent}%)`);
-        });
+      setUploadProgressText(`Uploading ${zipFile.name}... (0%)`);
+      await uploadFileToS3WithXHR(zipFile, urlData.url, (loaded) => {
+        const percent = Math.round((loaded / zipFile.size) * 100);
+        setUploadProgressPercent(percent);
+        setUploadProgressText(`Uploading ZIP archive... (${percent}%)`);
+      });
 
-        setUploadProgressText("Confirming upload and extracting...");
-        const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keys: [urlData.key], is_zip: true })
-        });
-        if (!confirmRes.ok) {
-          const errData = await confirmRes.json().catch(() => ({}));
-          throw new Error(errData.detail || "Failed to confirm ZIP upload");
-        }
-        const uploadData = await confirmRes.json();
-        uploadedTotal = uploadData.uploaded_count || 1;
-      } else {
-        setUploadProgressText(`Uploading ${zipFile.name} to server... (0%)`);
-        const formData = new FormData();
-        formData.append("file", zipFile);
-        const uploadEndpoint = API_BASE ? `${API_BASE}/api/v1/assessment/batch/${batch_id}/upload-zip` : `/api/v1/assessment/batch/${batch_id}/upload-zip`;
-        const uploadData = await uploadFormDataWithProgress(uploadEndpoint, formData, (percent) => {
-          setUploadProgressPercent(percent);
-          setUploadProgressText(`Uploading ZIP archive... (${percent}%)`);
-        });
-        uploadedTotal = uploadData.uploaded_count || 1;
-      }
+      setUploadProgressText("Confirming upload and extracting...");
+      const confirmRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/confirm-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: [urlData.key], is_zip: true }) // Added is_zip flag
+      });
+      if (!confirmRes.ok) throw new Error("Failed to confirm ZIP upload");
+      const uploadData = await confirmRes.json();
 
       setUploadProgressText("Starting grading...");
-      const procRes = await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
+      await authFetch(`/api/v1/assessment/batch/${batch_id}/process`, {
         method: "POST"
       });
-      if (!procRes.ok) {
-        const errData = await procRes.json().catch(() => ({}));
-        throw new Error(errData.detail || "Failed to start batch processing");
-      }
 
-      setBatchStatus({ status: "Processing", processed: 0, total: uploadedTotal, needs_review: 0 });
+      setBatchStatus({ status: "Processing", processed: 0, total: uploadData.uploaded_count || 1, needs_review: 0 });
       setZipFile(null);
     } catch (e: any) {
       console.error(e);

@@ -816,7 +816,7 @@ def get_filename_prefix(filename: str) -> str:
     
     return name.strip()
 
-from core.storage import generate_presigned_upload_urls, verify_objects_exist, is_s3_configured
+from core.storage import generate_presigned_upload_urls, verify_objects_exist
 
 class PresignUploadRequest(BaseModel):
     filenames: List[str]
@@ -832,16 +832,13 @@ async def presign_upload(batch_id: str, req: PresignUploadRequest):
         batch = await session.get(AssessmentBatch, batch_uuid)
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
-
-    if not is_s3_configured():
-        return {"upload_urls": [], "s3_enabled": False}
             
     try:
         urls = generate_presigned_upload_urls(batch_id, req.filenames)
-        return {"upload_urls": urls, "s3_enabled": True}
+        return {"upload_urls": urls}
     except Exception as e:
         print(f"Error generating presigned URLs: {e}")
-        return {"upload_urls": [], "s3_enabled": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
 class ConfirmUploadRequest(BaseModel):
     keys: List[str]
