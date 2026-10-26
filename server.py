@@ -107,7 +107,8 @@ app.add_middleware(
         "http://www.edulytics.net",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:8000"
+        "http://localhost:8000",
+        "http://localhost:8181"
     ],
     allow_origin_regex=r"https?://.*",
     allow_credentials=True,
@@ -567,6 +568,94 @@ async def get_batch_results(batch_id: str):
         print(f"Error in get_batch_results: {e}")
         return []
 
+@app.get("/api/v1/assessment/student-history")
+async def get_student_exam_history(
+    student_id: Optional[str] = None,
+    index_number: Optional[str] = None,
+    student_name: Optional[str] = None
+):
+    """Fetches all past exams and scores for a specific student across all batches."""
+    try:
+        from sqlalchemy import or_
+        async with async_session_maker() as session:
+            target_student_id = None
+            if student_id:
+                try:
+                    target_student_id = uuid.UUID(student_id)
+                except ValueError:
+                    target_student_id = None
+
+            if not target_student_id and index_number:
+                st_q = select(Student).where(Student.index_number == index_number.strip())
+                st_res = (await session.execute(st_q)).scalar_one_or_none()
+                if st_res:
+                    target_student_id = st_res.id
+
+            if not target_student_id and student_name:
+                st_q = select(Student).where(Student.full_name.ilike(student_name.strip()))
+                st_row = (await session.execute(st_q)).first()
+                if st_row:
+                    target_student_id = st_row[0].id
+
+            conditions = []
+            if target_student_id:
+                conditions.append(StudentResult.student_id == target_student_id)
+            if index_number and index_number.strip():
+                conditions.append(Student.index_number == index_number.strip())
+            if student_name and student_name.strip() and student_name.strip().lower() not in ["unmatched/review", "unmatched", "unknown"]:
+                conditions.append(Student.full_name.ilike(student_name.strip()))
+
+            if not conditions:
+                return []
+
+            query = select(StudentResult, AssessmentBatch, Student).join(
+                AssessmentBatch, StudentResult.batch_id == AssessmentBatch.id
+            ).outerjoin(
+                Student, StudentResult.student_id == Student.id
+            ).where(
+                or_(*conditions)
+            ).order_by(AssessmentBatch.created_at.desc())
+
+            res = await session.execute(query)
+            rows = res.all()
+
+            history = []
+            seen_results = set()
+            for result, batch, student in rows:
+                if str(result.id) in seen_results:
+                    continue
+                seen_results.add(str(result.id))
+
+                score = result.total_score
+                grade = "A" if score is not None and score >= 80 else \
+                        "B" if score is not None and score >= 70 else \
+                        "C" if score is not None and score >= 60 else \
+                        "D" if score is not None and score >= 50 else \
+                        "F" if score is not None else "--"
+
+                created_str = batch.created_at.strftime("%b %d, %Y") if batch.created_at else "Unknown date"
+                exam_name = f"{batch.subject} - {batch.exam_type}"
+
+                history.append({
+                    "result_id": str(result.id),
+                    "batch_id": str(batch.id),
+                    "subject": batch.subject,
+                    "exam_type": batch.exam_type,
+                    "exam_name": exam_name,
+                    "total_score": score,
+                    "grade": grade,
+                    "created_at": batch.created_at.isoformat() if batch.created_at else None,
+                    "date_formatted": created_str,
+                    "mode": result.mode or batch.mode or "hybrid",
+                    "needs_manual_review": result.needs_manual_review,
+                    "ai_remarks": result.ai_remarks
+                })
+
+            return history
+    except Exception as e:
+        print(f"Error in get_student_exam_history: {e}")
+        return []
+
 # ── Assessment Grading Endpoints ──
 @app.post("/api/v1/assessment/batch/create")
 async def create_batch(req: BatchCreateRequest):
@@ -727,7 +816,7 @@ def get_filename_prefix(filename: str) -> str:
     
     return name.strip()
 
-from core.storage import generate_presigned_upload_urls, verify_objects_exist
+from core.storage import generate_presigned_upload_urls, verify_objects_exist, is_s3_configured
 
 class PresignUploadRequest(BaseModel):
     filenames: List[str]
@@ -743,13 +832,16 @@ async def presign_upload(batch_id: str, req: PresignUploadRequest):
         batch = await session.get(AssessmentBatch, batch_uuid)
         if not batch:
             raise HTTPException(status_code=404, detail="Batch not found")
+
+    if not is_s3_configured():
+        return {"upload_urls": [], "s3_enabled": False}
             
     try:
         urls = generate_presigned_upload_urls(batch_id, req.filenames)
-        return {"upload_urls": urls}
+        return {"upload_urls": urls, "s3_enabled": True}
     except Exception as e:
         print(f"Error generating presigned URLs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"upload_urls": [], "s3_enabled": False, "error": str(e)}
 
 class ConfirmUploadRequest(BaseModel):
     keys: List[str]

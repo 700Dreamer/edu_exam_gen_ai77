@@ -28,7 +28,7 @@ function Segmented<T extends string>({
     <div
       role="radiogroup"
       aria-label={ariaLabel}
-      className="flex gap-0.5 p-1 bg-surface-soft/80 backdrop-blur-md rounded-[6px] border border-border-main/50"
+      className="flex gap-0.5 p-1 bg-surface-soft/80 backdrop-blur-md rounded-[4px] border border-border-main/50"
     >
       {options.map((opt) => {
         const active = opt.value === value;
@@ -108,7 +108,7 @@ export default function GradingRunsControlPanel({
         setCollapsed(saved === "1");
         return;
       }
-    } catch {}
+    } catch { }
     // Start minimized on narrower screens so the panel never covers the table
     setCollapsed(!window.matchMedia("(min-width: 1536px)").matches);
   }, []);
@@ -117,7 +117,7 @@ export default function GradingRunsControlPanel({
     setCollapsed(next);
     try {
       localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-    } catch {}
+    } catch { }
   };
 
   if (collapsed === null) return null;
@@ -251,11 +251,11 @@ export default function GradingRunsControlPanel({
             <span className="text-[10px] tabular-nums font-mono text-foreground/45">{activeRuns.length} in flight</span>
           </div>
           {activeRuns.length === 0 ? (
-            <div className="px-3 py-2.5 bg-surface-soft/60 backdrop-blur-xs rounded-[6px] border border-border-main/40 text-[11px] text-foreground/50">
+            <div className="px-3 py-2.5 bg-surface-soft/60 backdrop-blur-xs rounded-[4px] border border-border-main/40 text-[11px] text-foreground/50">
               No runs queued or processing.
             </div>
           ) : (
-            <ul className="bg-surface-soft/60 backdrop-blur-xs rounded-[6px] border border-border-main/50 divide-y divide-border-main/40 overflow-hidden">
+            <ul className="bg-surface-soft/60 backdrop-blur-xs rounded-[4px] border border-border-main/50 divide-y divide-border-main/40 overflow-hidden">
               {activeRuns.slice(0, MAX_ACTIVE_ROWS).map((run) => {
                 const isProcessing = run.status === "Processing";
                 return (

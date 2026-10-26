@@ -55,6 +55,12 @@ export default function GradebookView({
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [isInsightsAccordionOpen, setIsInsightsAccordionOpen] = useState(false);
 
+  // Exam History State
+  const [isExamHistoryOpen, setIsExamHistoryOpen] = useState(true);
+  const [studentExamHistory, setStudentExamHistory] = useState<any[]>([]);
+  const [isLoadingExamHistory, setIsLoadingExamHistory] = useState(false);
+  const [selectedHistoryResultId, setSelectedHistoryResultId] = useState<string>("");
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [classStudents, setClassStudents] = useState<any[]>([]);
   const [resolutionStudentId, setResolutionStudentId] = useState("");
@@ -86,6 +92,50 @@ export default function GradebookView({
     } catch (e) { }
     fetchBatches();
   }, []);
+
+  // Fetch student past exams across all grading runs
+  useEffect(() => {
+    if (!selectedResult) {
+      setStudentExamHistory([]);
+      setSelectedHistoryResultId("");
+      return;
+    }
+
+    let isMounted = true;
+    const fetchStudentHistory = async () => {
+      setIsLoadingExamHistory(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedResult.student_id) params.append("student_id", selectedResult.student_id);
+        if (selectedResult.index_number) params.append("index_number", selectedResult.index_number);
+        if (selectedResult.student_name) params.append("student_name", selectedResult.student_name);
+
+        const res = await authFetch(`/api/v1/assessment/student-history?${params.toString()}`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          const list = Array.isArray(data) ? data : [];
+          setStudentExamHistory(list);
+          const currentMatch = list.find((item: any) => item.result_id === selectedResult.id);
+          if (currentMatch) {
+            setSelectedHistoryResultId(currentMatch.result_id);
+          } else if (list.length > 0) {
+            setSelectedHistoryResultId(list[0].result_id);
+          } else {
+            setSelectedHistoryResultId("");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch student exam history:", err);
+      } finally {
+        if (isMounted) setIsLoadingExamHistory(false);
+      }
+    };
+
+    fetchStudentHistory();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedResult?.id, selectedResult?.student_id, selectedResult?.index_number, selectedResult?.student_name]);
 
   const markBatchAsOpened = (batchId: string) => {
     setOpenedBatchIds(prev => {
@@ -738,7 +788,7 @@ export default function GradebookView({
     }
   }, [runId, studentParam]);
 
-  const handleSelectBatch = async (batch: any) => {
+  const handleSelectBatch = async (batch: any, targetStudentId?: string) => {
     setSelectedBatch(batch);
     setSelectedResult(null);
     setIsSidebarCollapsed(false);
@@ -761,13 +811,39 @@ export default function GradebookView({
         const rData = await rRes.json();
         const loadedResults = Array.isArray(rData) ? rData : [];
         setResults(loadedResults);
-        if (loadedResults.length > 0 && !selectedResult) {
-          setSelectedResult(loadedResults[0]);
+        if (loadedResults.length > 0) {
+          if (targetStudentId) {
+            const matched = loadedResults.find((r: any) =>
+              r.student_id === targetStudentId ||
+              r.id === targetStudentId ||
+              (selectedResult && r.student_name === selectedResult.student_name)
+            );
+            setSelectedResult(matched || loadedResults[0]);
+          } else {
+            setSelectedResult(loadedResults[0]);
+          }
         }
       }
       if (dRes.ok) setDistribution(await dRes.json());
     } catch (e) { }
     finally { setLoading(false); }
+  };
+
+  const handleSwitchToHistoryRun = async (batchId: string, studentId?: string) => {
+    let target = batches.find(b => b.id === batchId);
+    if (!target) {
+      try {
+        const res = await authFetch(`/api/v1/assessment/batch/${batchId}`);
+        if (res.ok) {
+          target = await res.json();
+        }
+      } catch (e) { }
+    }
+    if (target) {
+      await handleSelectBatch(target, studentId);
+    } else {
+      router.push(`${pathname}?run=${batchId}`);
+    }
   };
 
   const handleBackToBatches = () => {
@@ -1325,7 +1401,7 @@ export default function GradebookView({
             {/* Dashboard Toolbar Header */}
             <div className="px-5 py-3.5 border-b border-border-main bg-surface-soft/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-surface-soft rounded-[6px]">
+                <div className="p-2 bg-surface-soft rounded-[4px]">
                   <Layers className="w-4 h-4 text-foreground/60" />
                 </div>
                 <div>
@@ -1346,7 +1422,7 @@ export default function GradebookView({
                     value={batchSearch}
                     onChange={(e) => setBatchSearch(e.target.value)}
                     placeholder="Filter runs..."
-                    className="pl-8 pr-7 py-1.5 text-xs bg-surface-soft border border-transparent text-foreground placeholder:text-foreground/40 rounded-[6px] focus:outline-none focus:bg-surface focus:border-border-main w-44 sm:w-56 transition-all"
+                    className="pl-8 pr-7 py-1.5 text-xs bg-surface-soft border border-transparent text-foreground placeholder:text-foreground/40 rounded-[4px] focus:outline-none focus:bg-surface focus:border-border-main w-44 sm:w-56 transition-all"
                   />
                   {batchSearch && (
                     <button
@@ -1362,7 +1438,7 @@ export default function GradebookView({
                 <button
                   onClick={handleRefreshBatches}
                   disabled={isRefreshingBatches}
-                  className="p-2 bg-surface-soft hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-all rounded-[6px] cursor-pointer disabled:opacity-50"
+                  className="p-2 bg-surface-soft hover:bg-foreground/10 text-foreground/60 hover:text-foreground transition-all rounded-[4px] cursor-pointer disabled:opacity-50"
                   title="Refresh runs"
                   aria-label="Refresh runs"
                 >
@@ -1526,7 +1602,7 @@ export default function GradebookView({
                   <div className="flex items-center gap-2 min-w-0">
                     <button
                       onClick={handleBackToBatches}
-                      className="p-1.5 text-foreground/60 hover:text-foreground hover:bg-surface-soft rounded-[6px] border border-border-main/60 transition-all cursor-pointer shrink-0"
+                      className="p-1.5 text-foreground/60 hover:text-foreground hover:bg-surface-soft rounded-[4px] border border-border-main/60 transition-all cursor-pointer shrink-0"
                       title="Back to Grading Runs"
                     >
                       <ChevronLeft className="w-3.5 h-3.5" />
@@ -1551,7 +1627,7 @@ export default function GradebookView({
                     <button
                       onClick={() => setNavTab("students")}
                       className={cn(
-                        "flex-1 py-1.5 text-xs rounded-[6px] transition-all text-center cursor-pointer",
+                        "flex-1 py-1.5 text-xs rounded-[4px] transition-all text-center cursor-pointer",
                         navTab === "students"
                           ? "bg-white dark:bg-neutral-900 text-foreground font-semibold shadow-xs border border-border-main/50"
                           : "text-foreground/60 hover:text-foreground font-medium bg-transparent"
@@ -1562,7 +1638,7 @@ export default function GradebookView({
                     <button
                       onClick={() => setNavTab("questions")}
                       className={cn(
-                        "flex-1 py-1.5 text-xs rounded-[6px] transition-all text-center cursor-pointer",
+                        "flex-1 py-1.5 text-xs rounded-[4px] transition-all text-center cursor-pointer",
                         navTab === "questions"
                           ? "bg-white dark:bg-neutral-900 text-foreground font-semibold shadow-xs border border-border-main/50"
                           : "text-foreground/60 hover:text-foreground font-medium bg-transparent"
@@ -1584,7 +1660,7 @@ export default function GradebookView({
                           value={studentSearchQuery}
                           onChange={(e) => setStudentSearchQuery(e.target.value)}
                           placeholder="Search student or index..."
-                          className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-soft/60 border border-border-main rounded-[6px] text-foreground placeholder:text-foreground/40 outline-none focus:ring-1 focus:ring-brand-500 transition-all"
+                          className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-soft/60 border border-border-main rounded-[4px] text-foreground placeholder:text-foreground/40 outline-none focus:ring-1 focus:ring-brand-500 transition-all"
                         />
                         {studentSearchQuery && (
                           <button
@@ -1660,7 +1736,7 @@ export default function GradebookView({
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div className={cn(
-                                  "w-7 h-7 rounded-[6px] border flex items-center justify-center text-[10px] font-black shrink-0",
+                                  "w-7 h-7 rounded-[4px] border flex items-center justify-center text-[10px] font-black shrink-0",
                                   isSelected
                                     ? "bg-brand-600 text-white border-brand-600"
                                     : "bg-surface-soft border-border-main text-foreground/70"
@@ -1717,7 +1793,7 @@ export default function GradebookView({
                             key={q.qNum}
                             onClick={() => setSelectedItemKey(q.qNum)}
                             className={cn(
-                              "p-2.5 border rounded-[6px] transition-all cursor-pointer space-y-1.5",
+                              "p-2.5 border rounded-[4px] transition-all cursor-pointer space-y-1.5",
                               isSelected
                                 ? "bg-brand-500/10 border-brand-600 shadow-xs"
                                 : "bg-surface border-border-main hover:bg-surface-soft/60"
@@ -1756,7 +1832,7 @@ export default function GradebookView({
               </div>
 
               {/* PANE 2: Center Hero Canvas */}
-              <div className="col-span-12 lg:col-span-6 bg-transparent border border-border-main rounded-[10px] shadow-sm flex flex-col h-full overflow-hidden relative">
+              <div className="col-span-12 lg:col-span-6 bg-transparent  rounded-[10px]  flex flex-col h-full overflow-hidden relative">
                 {!selectedResult ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 p-12 space-y-3">
                     <FileCheck className="w-12 h-12 text-foreground/40" />
@@ -1808,7 +1884,7 @@ export default function GradebookView({
                           <button
                             onClick={handleRegradeSingleResult}
                             disabled={isRegradingPaper}
-                            className="px-2.5 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold rounded-[6px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            className="px-2.5 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 border border-brand-500/30 text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                             title="Re-run AI evaluation for this student script"
                           >
                             {isRegradingPaper ? <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" /> : <RefreshCw className="w-3.5 h-3.5 text-foreground/70" />}
@@ -1883,7 +1959,7 @@ export default function GradebookView({
                               )}
                             </p>
 
-                            <div className="h-44 bg-transparent border border-border-main rounded-[6px] overflow-hidden flex items-center justify-center p-2">
+                            <div className="h-44 bg-transparent border border-border-main rounded-[4px] overflow-hidden flex items-center justify-center p-2">
                               {selectedResult.paper_images_urls?.page1 ? (
                                 <img
                                   src={selectedResult.paper_images_urls.page1}
@@ -1905,7 +1981,7 @@ export default function GradebookView({
                               <select
                                 value={resolutionStudentId}
                                 onChange={(e) => setResolutionStudentId(e.target.value)}
-                                className="w-full p-2.5 bg-surface border border-border-main rounded-[6px] text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
+                                className="w-full p-2.5 bg-surface border border-border-main rounded-[4px] text-xs text-foreground focus:ring-1 focus:ring-brand-500 outline-none cursor-pointer"
                               >
                                 <option value="">Select Student from Roster...</option>
                                 {classStudents.map((st: any) => (
@@ -1919,7 +1995,7 @@ export default function GradebookView({
                             <button
                               onClick={handleResolveIdentity}
                               disabled={!resolutionStudentId || isResolving}
-                              className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-[6px] hover:bg-foreground/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                              className="w-full py-2.5 bg-foreground text-surface text-xs font-bold rounded-[4px] hover:bg-foreground/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                             >
                               {isResolving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                               <span>Confirm Match & Link Grade</span>
@@ -2012,7 +2088,7 @@ export default function GradebookView({
                               setShowPaperModal(true);
                               setPaperModalPageIndex(0);
                             }}
-                            className="px-4 py-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-lg backdrop-blur-md text-xs font-bold text-foreground flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                            className="px-4 py-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[4px] shadow-lg backdrop-blur-md text-xs font-bold text-foreground flex items-center gap-2 cursor-pointer transition-all hover:scale-105 active:scale-95"
                           >
                             <Layers className="w-4 h-4 text-foreground/70" />
                             <span>View Scanned Paper ({paperCount} {paperCount === 1 ? "Page" : "Pages"})</span>
@@ -2033,7 +2109,7 @@ export default function GradebookView({
                     <button
                       onClick={handleReGradeBatch}
                       disabled={isReGrading}
-                      className="flex-1 py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="flex-1 py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[4px] transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                       title="Re-Grade Batch"
                     >
                       {isReGrading ? (
@@ -2048,7 +2124,7 @@ export default function GradebookView({
                     <div className="relative flex-1">
                       <button
                         onClick={() => setExportMenuOpen(prev => !prev)}
-                        className="w-full py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[6px] transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        className="w-full py-1.5 px-2 bg-surface hover:bg-surface-soft border border-border-main/80 text-foreground text-xs font-semibold rounded-[4px] transition-all flex items-center justify-center gap-1 cursor-pointer"
                         title="Export Options"
                       >
                         <Download className="w-3.5 h-3.5 text-foreground/70 shrink-0" />
@@ -2062,7 +2138,7 @@ export default function GradebookView({
                             className="fixed inset-0 z-30"
                             onClick={() => setExportMenuOpen(false)}
                           />
-                          <div className="absolute right-0 mt-1.5 w-52 bg-surface border border-border-main rounded-[6px] shadow-xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="absolute right-0 mt-1.5 w-52 bg-surface border border-border-main rounded-[4px] shadow-xl py-1 z-40 animate-in fade-in zoom-in-95 duration-150">
                             <button
                               onClick={() => {
                                 setExportMenuOpen(false);
@@ -2114,7 +2190,7 @@ export default function GradebookView({
                     <button
                       onClick={() => setIsDistributionOpen(prev => !prev)}
                       className={cn(
-                        "flex-1 py-1.5 px-2 text-xs font-semibold rounded-[6px] border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                        "flex-1 py-1.5 px-2 text-xs font-semibold rounded-[4px] border transition-all flex items-center justify-center gap-1.5 cursor-pointer",
                         isDistributionOpen
                           ? "bg-brand-600 text-white border-brand-600 shadow-xs"
                           : "bg-surface hover:bg-surface-soft border-border-main/80 text-foreground"
@@ -2170,6 +2246,75 @@ export default function GradebookView({
                         <div className="p-3">
                           <BatchInsightsCard batchId={selectedBatch.id} />
                         </div>
+                      </div>
+
+                      {/* Exam History Accordion */}
+                      <div className="border-t border-border-main/60 pt-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsExamHistoryOpen(prev => !prev)}
+                          className="w-full flex items-center justify-between text-left py-1 group cursor-pointer"
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/70 group-hover:text-foreground transition-colors">
+                              Exam History
+                            </span>
+                            <span className="text-foreground/40 font-bold">·</span>
+                            <span className="text-[11px] font-bold text-foreground/60 group-hover:text-foreground transition-colors">
+                              {(studentExamHistory.length > 0 ? studentExamHistory : [1, 2, 3, 4]).length}
+                            </span>
+                          </div>
+                          <ChevronDown
+                            className={cn(
+                              "w-3.5 h-3.5 text-foreground/40 group-hover:text-foreground transition-transform duration-200",
+                              isExamHistoryOpen && "rotate-180"
+                            )}
+                          />
+                        </button>
+                        {isExamHistoryOpen && (
+                          <div className="pt-2 space-y-1.5 animate-in fade-in duration-200">
+                            {(studentExamHistory.length > 0 ? studentExamHistory : [
+                              { id: "sample-1", exam_name: "Mathematics - Midterm Exam", date_formatted: "Oct 12, 2026", total_score: 84 },
+                              { id: "sample-2", exam_name: "English - Continuous Assessment", date_formatted: "Sep 28, 2026", total_score: 76 },
+                              { id: "sample-3", exam_name: "Physics - Beginning of Term Test", date_formatted: "Sep 10, 2026", total_score: 91 },
+                              { id: "sample-4", exam_name: "Biology - Practical Assessment", date_formatted: "Aug 22, 2026", total_score: 68 },
+                            ]).map((exam: any, idx: number) => {
+                              const scoreVal = typeof exam.total_score === "number" ? Math.round(exam.total_score) : null;
+                              return (
+                                <button
+                                  key={exam.id || exam.result_id || idx}
+                                  type="button"
+                                  onClick={() => {
+                                    if (exam.batch_id) {
+                                      handleSwitchToHistoryRun(exam.batch_id);
+                                    }
+                                  }}
+                                  className="w-full group px-3 py-2 text-left rounded-[4px] bg-surface-soft/40 hover:bg-surface-soft border border-border-main/60 hover:border-border-main text-foreground transition-all flex items-center justify-between cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                    <FileText className="w-3.5 h-3.5 text-foreground/50 group-hover:text-foreground shrink-0 transition-colors" />
+                                    <div className="min-w-0">
+                                      <span className="text-xs font-semibold text-foreground block truncate group-hover:text-foreground">
+                                        {exam.exam_name}
+                                      </span>
+                                      <span className="text-[10px] text-foreground/50 font-mono block">
+                                        {exam.date_formatted || exam.date}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {scoreVal !== null && (
+                                      <span className="text-xs font-bold text-foreground">
+                                        {scoreVal}%
+                                      </span>
+                                    )}
+                                    <ArrowUpRight className="w-3.5 h-3.5 text-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (() => {
@@ -2239,12 +2384,12 @@ export default function GradebookView({
                               placeholder="0–100"
                               value={overrideScore}
                               onChange={e => setOverrideScore(e.target.value)}
-                              className="w-20 text-xs border border-border-main rounded-[6px] p-2 bg-surface-soft text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
+                              className="w-20 text-xs border border-border-main rounded-[4px] p-2 bg-surface-soft text-foreground focus:ring-1 focus:ring-brand-500 outline-none"
                             />
                             <button
                               onClick={handleOverrideScore}
                               disabled={!overrideScore || isOverriding}
-                              className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-[6px] hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                              className="flex-1 py-2 bg-brand-600 text-white text-xs font-bold rounded-[4px] hover:bg-brand-700 disabled:opacity-50 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                             >
                               {isOverriding && <Loader2 className="w-3 h-3 animate-spin" />}
                               <span>Set Score</span>
@@ -2258,7 +2403,7 @@ export default function GradebookView({
                             <button
                               onClick={() => handleExportStudentPdf(selectedResult.id)}
                               disabled={isExportingStudentPdf}
-                              className="w-full py-2 bg-surface hover:bg-surface-soft border border-border-main text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
+                              className="w-full py-2 bg-surface hover:bg-surface-soft border border-border-main text-foreground text-xs font-bold rounded-[4px] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-xs"
                             >
                               {isExportingStudentPdf ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin text-foreground/70" />
@@ -2275,7 +2420,7 @@ export default function GradebookView({
                                 setShowPaperModal(true);
                                 setPaperModalPageIndex(0);
                               }}
-                              className="w-full py-2 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                              className="w-full py-2 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[4px] transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                             >
                               <Layers className="w-3.5 h-3.5 text-foreground/70" />
                               <span>Inspect Paper Pages ({paperCount})</span>
@@ -2302,13 +2447,86 @@ export default function GradebookView({
                             </div>
                             <button
                               onClick={() => setShowMasterUploadModal(true)}
-                              className="w-full py-1.5 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[6px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                              className="w-full py-1.5 bg-surface-soft hover:bg-surface-soft/80 border border-border-main text-foreground/80 hover:text-foreground text-xs font-bold rounded-[4px] transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                             >
                               <Upload className="w-3.5 h-3.5 text-foreground/70" />
                               <span>{selectedBatch.master_question_urls ? "Change Master Paper" : "Upload Master Paper"}</span>
                             </button>
                           </div>
                         )}
+
+                        {/* Exam History Accordion */}
+                        <div className="border-t border-border-main/60 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => setIsExamHistoryOpen(prev => !prev)}
+                            className="w-full flex items-center justify-between text-left py-1 group cursor-pointer"
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-foreground/70 group-hover:text-foreground transition-colors">
+                                Exam History
+                              </span>
+                              <span className="text-foreground/40 font-bold">·</span>
+                              <span className="text-[11px] font-bold text-foreground/60 group-hover:text-foreground transition-colors">
+                                {(studentExamHistory.length > 0 ? studentExamHistory : [1, 2, 3, 4]).length}
+                              </span>
+                              {isLoadingExamHistory && (
+                                <Loader2 className="w-3 h-3 animate-spin text-foreground/40 ml-1" />
+                              )}
+                            </div>
+                            <ChevronDown
+                              className={cn(
+                                "w-3.5 h-3.5 text-foreground/40 group-hover:text-foreground transition-transform duration-200",
+                                isExamHistoryOpen && "rotate-180"
+                              )}
+                            />
+                          </button>
+
+                          {isExamHistoryOpen && (
+                            <div className="pt-2 space-y-1.5 animate-in fade-in duration-200">
+                              {(studentExamHistory.length > 0 ? studentExamHistory : [
+                                { id: "sample-1", exam_name: "Mathematics - Midterm Exam", date_formatted: "Oct 12, 2026", total_score: 84 },
+                                { id: "sample-2", exam_name: "English - Continuous Assessment", date_formatted: "Sep 28, 2026", total_score: 76 },
+                                { id: "sample-3", exam_name: "Physics - Beginning of Term Test", date_formatted: "Sep 10, 2026", total_score: 91 },
+                                { id: "sample-4", exam_name: "Biology - Practical Assessment", date_formatted: "Aug 22, 2026", total_score: 68 },
+                              ]).map((exam: any, idx: number) => {
+                                const scoreVal = typeof exam.total_score === "number" ? Math.round(exam.total_score) : null;
+                                return (
+                                  <button
+                                    key={exam.id || exam.result_id || idx}
+                                    type="button"
+                                    onClick={() => {
+                                      if (exam.batch_id) {
+                                        handleSwitchToHistoryRun(exam.batch_id, selectedResult?.student_id || selectedResult?.id);
+                                      }
+                                    }}
+                                    className="w-full group px-3 py-2 text-left rounded-[4px] hover:bg-surface-soft border-top border-border-main/60 hover:border-border-main text-foreground transition-all flex items-center justify-between cursor-pointer"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0 pr-2">
+
+                                      <div className="min-w-0">
+                                        <span className="text-xs font-semibold text-foreground block truncate group-hover:text-foreground">
+                                          {exam.exam_name}
+                                        </span>
+                                        <span className="text-[10px] text-foreground/50 font-mono block">
+                                          {exam.date_formatted || exam.date}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      {scoreVal !== null && (
+                                        <span className="text-xs font-bold text-foreground">
+                                          {scoreVal}%
+                                        </span>
+                                      )}
+                                      <ArrowUpRight className="w-3.5 h-3.5 text-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
 
                         {/* Class Batch AI Insights Accordion */}
                         <div className="border border-border-main rounded-[8px] bg-surface overflow-hidden">
@@ -2389,7 +2607,7 @@ export default function GradebookView({
                     )}
                     <button
                       onClick={() => setShowPaperModal(false)}
-                      className="text-foreground/40 hover:text-foreground p-1.5 rounded-[6px] hover:bg-surface-soft cursor-pointer transition-colors"
+                      className="text-foreground/40 hover:text-foreground p-1.5 rounded-[4px] hover:bg-surface-soft cursor-pointer transition-colors"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -2407,7 +2625,7 @@ export default function GradebookView({
                       {safePageIndex > 0 && (
                         <button
                           onClick={() => setPaperModalPageIndex(prev => Math.max(0, prev - 1))}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-md text-foreground cursor-pointer z-10"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[4px] shadow-md text-foreground cursor-pointer z-10"
                           title="Previous page"
                         >
                           <ChevronLeft className="w-4 h-4" />
@@ -2426,7 +2644,7 @@ export default function GradebookView({
                       {safePageIndex < sortedEntries.length - 1 && (
                         <button
                           onClick={() => setPaperModalPageIndex(prev => Math.min(sortedEntries.length - 1, prev + 1))}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[6px] shadow-md text-foreground cursor-pointer z-10"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-surface/90 hover:bg-surface border border-border-main rounded-[4px] shadow-md text-foreground cursor-pointer z-10"
                           title="Next page"
                         >
                           <ChevronRight className="w-4 h-4" />

@@ -13,6 +13,14 @@ S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
 S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 S3_REGION = os.getenv("S3_REGION", "auto")
 
+def is_s3_configured() -> bool:
+    """Returns True if the required S3/R2/Railway bucket configurations are present."""
+    endpoint = os.getenv("S3_ENDPOINT")
+    bucket = os.getenv("S3_BUCKET_NAME")
+    key = os.getenv("S3_ACCESS_KEY")
+    secret = os.getenv("S3_SECRET_KEY")
+    return bool(bucket and (key or os.getenv("AWS_ACCESS_KEY_ID")))
+
 def get_s3_client():
     """Initializes and returns a boto3 S3 client configured for the Railway bucket."""
     return boto3.client(
@@ -29,6 +37,9 @@ def generate_presigned_upload_urls(batch_id: str, filenames: List[str], expires_
     Generates pre-signed URLs for uploading files directly from the browser to the S3 bucket.
     Expires in 2 hours (7200 seconds) by default to accommodate slow connections on large batches.
     """
+    if not is_s3_configured():
+        return []
+
     s3_client = get_s3_client()
     urls = []
     
@@ -60,6 +71,8 @@ def generate_presigned_upload_urls(batch_id: str, filenames: List[str], expires_
 
 def verify_objects_exist(keys: List[str]) -> bool:
     """Verifies that the given keys actually exist in the bucket and have > 0 bytes."""
+    if not is_s3_configured():
+        return False
     s3_client = get_s3_client()
     for key in keys:
         try:
@@ -80,6 +93,9 @@ def generate_presigned_download_url(key: str, expires_in: int = 3600) -> str:
     Generates a pre-signed URL for downloading/reading a file from the bucket.
     Used by the backend workers to read images during grading.
     """
+    if not is_s3_configured():
+        return key
+
     # If the key is just a local URL (e.g. from older batches), return it directly
     if not key.startswith("batches/"):
         return key
