@@ -2286,7 +2286,9 @@ export default function GradebookView({
                                   type="button"
                                   onClick={() => {
                                     if (exam.batch_id) {
-                                      handleSwitchToHistoryRun(exam.batch_id);
+                                      router.push(`/?view=reports&scope=class_exam&run=${exam.batch_id}`);
+                                    } else {
+                                      router.push(`/?view=reports`);
                                     }
                                   }}
                                   className="w-full group px-3 py-2 text-left rounded-[4px] bg-surface-soft/40 hover:bg-surface-soft border border-border-main/60 hover:border-border-main text-foreground transition-all flex items-center justify-between cursor-pointer"
@@ -2496,8 +2498,14 @@ export default function GradebookView({
                                     key={exam.id || exam.result_id || idx}
                                     type="button"
                                     onClick={() => {
-                                      if (exam.batch_id) {
-                                        handleSwitchToHistoryRun(exam.batch_id, selectedResult?.student_id || selectedResult?.id);
+                                      const resId = exam.result_id || exam.id;
+                                      const stuId = selectedResult?.student_id || selectedResult?.id || "";
+                                      if (resId && !resId.startsWith("sample-")) {
+                                        router.push(`/?view=reports&scope=student_exam&result=${resId}&student=${stuId}`);
+                                      } else if (exam.batch_id) {
+                                        router.push(`/?view=reports&scope=class_exam&run=${exam.batch_id}`);
+                                      } else {
+                                        router.push(`/?view=reports&scope=student_exam`);
                                       }
                                     }}
                                     className="w-full group px-3 py-2 text-left rounded-[4px] hover:bg-surface-soft border-top border-border-main/60 hover:border-border-main text-foreground transition-all flex items-center justify-between cursor-pointer"

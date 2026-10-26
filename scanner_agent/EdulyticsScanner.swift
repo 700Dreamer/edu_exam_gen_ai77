@@ -842,6 +842,7 @@ class ScannerHTTPServer {
         response += "Access-Control-Allow-Origin: \(corsOrigin)\r\n"
         response += "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
         response += "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        response += "Access-Control-Allow-Private-Network: true\r\n"
         response += "Access-Control-Max-Age: 86400\r\n"
         response += "Connection: close\r\n"
         response += "\r\n"

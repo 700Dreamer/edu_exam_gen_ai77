@@ -162,6 +162,7 @@ class ScannerAgent
         }
         res.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
         res.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+        res.Headers["Access-Control-Allow-Private-Network"] = "true";
         res.Headers["Access-Control-Max-Age"] = "86400";
 
         // Handle preflight

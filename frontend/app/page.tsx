@@ -12,9 +12,10 @@ import RosterView from "./components/RosterView";
 import GradebookView from "./components/GradebookView";
 import AssessmentView from "./components/AssessmentView";
 import AnalyticsView from "./components/AnalyticsView";
+import ReportLabView from "./components/ReportLabView";
 import SchoolOnboardingView from "./components/SchoolOnboardingView";
 import SettingsView from "./components/SettingsView";
-import { Settings } from "lucide-react";
+import { Settings, FileText } from "lucide-react";
 import { authFetch } from "./lib/utils";
 import DotField from "@/components/DotField";
 
@@ -22,7 +23,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type Page = "onboarding" | "roster" | "assessment" | "gradebook" | "analytics" | "settings";
+type Page = "onboarding" | "roster" | "assessment" | "gradebook" | "reports" | "analytics" | "settings";
 
 const Header = ({
   theme,
@@ -64,6 +65,7 @@ const Header = ({
             { key: "onboarding", label: "Onboarding", Icon: Plus },
             { key: "assessment", label: "Grading", Icon: Layers },
             { key: "gradebook", label: "Results", Icon: CheckCircle2 },
+            { key: "reports", label: "Report Lab", Icon: FileText },
             { key: "analytics", label: "Insights", Icon: BarChart3 },
             { key: "roster", label: "Class Rosters", Icon: Users },
             { key: "settings", label: "Settings", Icon: Settings },
@@ -100,6 +102,7 @@ function HomeContent() {
     }
     const view = searchParams.get("view") || searchParams.get("tab");
     if (view === "results" || view === "gradebook") return "gradebook";
+    if (view === "reports" || view === "report_lab") return "reports";
     if (view === "grading" || view === "assessment") return "assessment";
     if (view === "insights" || view === "analytics") return "analytics";
     if (view && ["onboarding", "roster", "settings"].includes(view)) {
@@ -123,6 +126,7 @@ function HomeContent() {
     const viewParam = searchParams.get("view") || searchParams.get("tab");
     let targetPage: Page | null = null;
     if (viewParam === "results" || viewParam === "gradebook") targetPage = "gradebook";
+    else if (viewParam === "reports" || viewParam === "report_lab") targetPage = "reports";
     else if (viewParam === "grading" || viewParam === "assessment") targetPage = "assessment";
     else if (viewParam === "insights" || viewParam === "analytics") targetPage = "analytics";
     else if (viewParam && ["onboarding", "roster", "settings"].includes(viewParam)) targetPage = viewParam as Page;
@@ -299,6 +303,8 @@ function HomeContent() {
             globalTerm={activeTerm}
             globalYear={activeYear}
           />
+        ) : currentPage === "reports" ? (
+          <ReportLabView theme={theme} />
         ) : currentPage === "analytics" ? (
           <AnalyticsView theme={theme} />
         ) : currentPage === "settings" ? (

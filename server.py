@@ -2121,6 +2121,544 @@ async def get_school_leaderboard():
             
         return leaderboard
 
+# ── Report Lab Endpoints ──
+
+@app.get("/api/v1/reports/meta")
+async def get_reports_metadata(tenant_id: Optional[str] = None):
+    """Returns available academic groups, subjects, batches, and students for Report Lab queries."""
+    try:
+        async with async_session_maker() as session:
+            # Groups
+            group_q = select(AcademicGroup, Tenant).join(Tenant, AcademicGroup.tenant_id == Tenant.id)
+            if tenant_id:
+                try:
+                    group_q = group_q.where(AcademicGroup.tenant_id == uuid.UUID(tenant_id))
+                except ValueError:
+                    pass
+            group_res = await session.execute(group_q)
+            groups = [
+                {
+                    "id": str(g.id),
+                    "tenant_id": str(g.tenant_id),
+                    "tenant_name": t.name,
+                    "level": g.level,
+                    "stream": g.stream,
+                    "name": f"{g.level} {g.stream}"
+                }
+                for g, t in group_res.all()
+            ]
+
+            # Batches (Completed and processing runs)
+            batch_q = select(AssessmentBatch, AcademicGroup, Tenant).join(
+                AcademicGroup, AssessmentBatch.academic_group_id == AcademicGroup.id
+            ).join(
+                Tenant, AcademicGroup.tenant_id == Tenant.id
+            ).order_by(AssessmentBatch.created_at.desc()).limit(150)
+            batch_res = await session.execute(batch_q)
+            batches = [
+                {
+                    "id": str(b.id),
+                    "subject": b.subject,
+                    "exam_type": b.exam_type,
+                    "name": f"{b.subject} - {b.exam_type} ({g.level} {g.stream})",
+                    "academic_group_id": str(b.academic_group_id),
+                    "level": g.level,
+                    "stream": g.stream,
+                    "tenant_name": t.name,
+                    "created_at": b.created_at.isoformat() if b.created_at else None,
+                    "date_formatted": b.created_at.strftime("%b %d, %Y") if b.created_at else "Unknown date"
+                }
+                for b, g, t in batch_res.all()
+            ]
+
+            # Unique subjects
+            subjects = sorted(list(set(b["subject"] for b in batches if b["subject"])))
+
+            return {
+                "groups": groups,
+                "batches": batches,
+                "subjects": subjects
+            }
+    except Exception as e:
+        print(f"Error in get_reports_metadata: {e}")
+        return {"groups": [], "batches": [], "subjects": []}
+
+@app.get("/api/v1/reports/query")
+async def get_report_query(
+    scope: str = "student_exam",
+    result_id: Optional[str] = None,
+    student_id: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    academic_group_id: Optional[str] = None,
+    subject: Optional[str] = None
+):
+    """Unified query engine for Report Lab across all reporting scopes."""
+    try:
+        from sqlalchemy import or_
+
+        def get_grade(score: Optional[float]) -> str:
+            if score is None:
+                return "--"
+            if score >= 80:
+                return "A"
+            if score >= 70:
+                return "B"
+            if score >= 60:
+                return "C"
+            if score >= 50:
+                return "D"
+            return "F"
+
+        async with async_session_maker() as session:
+            # ─────────────────────────────────────────────────────────────
+            # SCOPE 1: STUDENT EXAM (Single examination performance report)
+            # ─────────────────────────────────────────────────────────────
+            if scope == "student_exam":
+                target_result = None
+
+                if result_id:
+                    try:
+                        target_result = await session.get(StudentResult, uuid.UUID(result_id))
+                    except ValueError:
+                        target_result = None
+
+                if not target_result and batch_id and student_id:
+                    try:
+                        q = select(StudentResult).where(
+                            StudentResult.batch_id == uuid.UUID(batch_id),
+                            StudentResult.student_id == uuid.UUID(student_id)
+                        )
+                        target_result = (await session.execute(q)).scalar_one_or_none()
+                    except ValueError:
+                        target_result = None
+
+                if not target_result and batch_id:
+                    try:
+                        q = select(StudentResult).where(StudentResult.batch_id == uuid.UUID(batch_id)).limit(1)
+                        target_result = (await session.execute(q)).scalar_one_or_none()
+                    except ValueError:
+                        target_result = None
+
+                if not target_result:
+                    # Fallback to latest graded result
+                    q = select(StudentResult).order_by(StudentResult.id.desc()).limit(1)
+                    target_result = (await session.execute(q)).scalar_one_or_none()
+
+                if not target_result:
+                    return {"error": "No exam results found"}
+
+                batch = await session.get(AssessmentBatch, target_result.batch_id)
+                group = await session.get(AcademicGroup, batch.academic_group_id) if batch else None
+                tenant = await session.get(Tenant, group.tenant_id) if group else None
+                student = await session.get(Student, target_result.student_id) if target_result.student_id else None
+
+                # Compute class benchmark for this exam run
+                all_res_q = select(StudentResult).where(StudentResult.batch_id == target_result.batch_id)
+                all_results = (await session.execute(all_res_q)).scalars().all()
+
+                scores = [r.total_score for r in all_results if r.total_score is not None]
+                class_avg = round(sum(scores) / len(scores), 1) if scores else 0.0
+                class_high = max(scores) if scores else 0
+                class_low = min(scores) if scores else 0
+                total_students = len(all_results)
+
+                sorted_scores = sorted(scores, reverse=True)
+                score_val = target_result.total_score
+                rank = (sorted_scores.index(score_val) + 1) if score_val in sorted_scores else 1
+
+                # Parse question items
+                raw_items = target_result.attempted_items or []
+                questions = []
+                if isinstance(raw_items, dict):
+                    for q_key, q_val in raw_items.items():
+                        if isinstance(q_val, dict):
+                            questions.append({
+                                "question_number": q_val.get("question_number", q_key),
+                                "max_score": q_val.get("max_score", 10),
+                                "score_awarded": q_val.get("score_awarded", 0),
+                                "feedback": q_val.get("feedback", ""),
+                                "confidence": q_val.get("confidence", "high")
+                            })
+                elif isinstance(raw_items, list):
+                    for idx, q_val in enumerate(raw_items, 1):
+                        if isinstance(q_val, dict):
+                            questions.append({
+                                "question_number": q_val.get("question_number", f"Q{idx}"),
+                                "max_score": q_val.get("max_score", 10),
+                                "score_awarded": q_val.get("score_awarded", 0),
+                                "feedback": q_val.get("feedback", ""),
+                                "confidence": q_val.get("confidence", "high")
+                            })
+
+                # Distribution bins for this exam
+                buckets = {"0-49": 0, "50-59": 0, "60-69": 0, "70-79": 0, "80-89": 0, "90-100": 0}
+                for s in scores:
+                    if s < 50: buckets["0-49"] += 1
+                    elif s < 60: buckets["50-59"] += 1
+                    elif s < 70: buckets["60-69"] += 1
+                    elif s < 80: buckets["70-79"] += 1
+                    elif s < 90: buckets["80-89"] += 1
+                    else: buckets["90-100"] += 1
+
+                created_date_str = batch.created_at.strftime("%B %d, %Y") if (batch and batch.created_at) else "Unknown"
+
+                return {
+                    "scope": "student_exam",
+                    "school": {
+                        "name": tenant.name if tenant else "Edulytics Academy",
+                        "id": str(tenant.id) if tenant else None
+                    },
+                    "class_info": {
+                        "level": group.level if group else "P.7",
+                        "stream": group.stream if group else "General",
+                        "name": f"{group.level} {group.stream}" if group else "Class",
+                        "id": str(group.id) if group else None
+                    },
+                    "exam": {
+                        "batch_id": str(batch.id) if batch else None,
+                        "subject": batch.subject if batch else "General",
+                        "exam_type": batch.exam_type if batch else "Examination",
+                        "exam_name": f"{batch.subject} - {batch.exam_type}" if batch else "Assessment",
+                        "date_formatted": created_date_str,
+                        "mode": target_result.mode or (batch.mode if batch else "hybrid")
+                    },
+                    "student": {
+                        "id": str(student.id) if student else None,
+                        "name": student.full_name if student else (target_result.student_name if hasattr(target_result, 'student_name') else "Unmatched/Review"),
+                        "index_number": student.index_number if student else "N/A"
+                    },
+                    "performance": {
+                        "score": score_val,
+                        "grade": get_grade(score_val),
+                        "rank": rank,
+                        "class_total": total_students,
+                        "class_average": class_avg,
+                        "class_highest": class_high,
+                        "class_lowest": class_low,
+                        "needs_review": target_result.needs_manual_review
+                    },
+                    "ai_remarks": target_result.ai_remarks or "Demonstrates solid foundational understanding with room for refinement in detailed problem steps.",
+                    "questions": questions,
+                    "distribution_buckets": buckets
+                }
+
+            # ─────────────────────────────────────────────────────────────
+            # SCOPE 2: STUDENT HISTORY (Longitudinal progression across terms)
+            # ─────────────────────────────────────────────────────────────
+            elif scope == "student_history":
+                target_student_id = None
+                if student_id:
+                    try:
+                        target_student_id = uuid.UUID(student_id)
+                    except ValueError:
+                        target_student_id = None
+
+                if not target_student_id and result_id:
+                    try:
+                        r_obj = await session.get(StudentResult, uuid.UUID(result_id))
+                        if r_obj:
+                            target_student_id = r_obj.student_id
+                    except ValueError:
+                        pass
+
+                if not target_student_id:
+                    # Pick first student with results
+                    first_res = (await session.execute(
+                        select(StudentResult).where(StudentResult.student_id.isnot(None)).limit(1)
+                    )).scalar_one_or_none()
+                    if first_res:
+                        target_student_id = first_res.student_id
+
+                if not target_student_id:
+                    return {"error": "Student not found or no student history exists"}
+
+                student = await session.get(Student, target_student_id)
+                group = await session.get(AcademicGroup, student.academic_group_id) if student else None
+                tenant = await session.get(Tenant, group.tenant_id) if group else None
+
+                history_q = select(StudentResult, AssessmentBatch).join(
+                    AssessmentBatch, StudentResult.batch_id == AssessmentBatch.id
+                ).where(
+                    StudentResult.student_id == target_student_id
+                ).order_by(AssessmentBatch.created_at.asc())
+
+                history_rows = (await session.execute(history_q)).all()
+
+                timeline = []
+                subject_scores = {}
+                for res_obj, b_obj in history_rows:
+                    sc = res_obj.total_score
+                    d_str = b_obj.created_at.strftime("%b %d, %Y") if b_obj.created_at else "Unknown date"
+                    timeline.append({
+                        "result_id": str(res_obj.id),
+                        "batch_id": str(b_obj.id),
+                        "exam_name": f"{b_obj.subject} - {b_obj.exam_type}",
+                        "subject": b_obj.subject,
+                        "exam_type": b_obj.exam_type,
+                        "score": sc,
+                        "grade": get_grade(sc),
+                        "date_formatted": d_str,
+                        "created_at": b_obj.created_at.isoformat() if b_obj.created_at else None
+                    })
+                    if sc is not None:
+                        if b_obj.subject not in subject_scores:
+                            subject_scores[b_obj.subject] = []
+                        subject_scores[b_obj.subject].append(sc)
+
+                valid_scores = [t["score"] for t in timeline if t["score"] is not None]
+                overall_avg = round(sum(valid_scores) / len(valid_scores), 1) if valid_scores else 0.0
+                highest_score = max(valid_scores) if valid_scores else 0
+                trend_delta = (timeline[-1]["score"] - timeline[0]["score"]) if (len(timeline) >= 2 and timeline[-1]["score"] is not None and timeline[0]["score"] is not None) else 0
+
+                subject_averages = [
+                    {"subject": subj, "average": round(sum(s_list) / len(s_list), 1), "count": len(s_list)}
+                    for subj, s_list in subject_scores.items()
+                ]
+
+                return {
+                    "scope": "student_history",
+                    "school": {
+                        "name": tenant.name if tenant else "Edulytics Academy",
+                        "id": str(tenant.id) if tenant else None
+                    },
+                    "student": {
+                        "id": str(student.id) if student else str(target_student_id),
+                        "name": student.full_name if student else "Student",
+                        "index_number": student.index_number if student else "N/A"
+                    },
+                    "class_info": {
+                        "name": f"{group.level} {group.stream}" if group else "Class",
+                        "level": group.level if group else "",
+                        "stream": group.stream if group else ""
+                    },
+                    "metrics": {
+                        "total_exams": len(timeline),
+                        "cumulative_average": overall_avg,
+                        "highest_score": highest_score,
+                        "trend_delta": trend_delta,
+                        "latest_score": timeline[-1]["score"] if timeline else None
+                    },
+                    "timeline": timeline,
+                    "subject_averages": subject_averages
+                }
+
+            # ─────────────────────────────────────────────────────────────
+            # SCOPE 3: CLASS EXAM (Full class exam analysis report)
+            # ─────────────────────────────────────────────────────────────
+            elif scope == "class_exam":
+                target_batch = None
+                if batch_id:
+                    try:
+                        target_batch = await session.get(AssessmentBatch, uuid.UUID(batch_id))
+                    except ValueError:
+                        target_batch = None
+
+                if not target_batch:
+                    # Pick latest batch
+                    target_batch = (await session.execute(
+                        select(AssessmentBatch).order_by(AssessmentBatch.created_at.desc()).limit(1)
+                    )).scalar_one_or_none()
+
+                if not target_batch:
+                    return {"error": "No grading batches found"}
+
+                group = await session.get(AcademicGroup, target_batch.academic_group_id)
+                tenant = await session.get(Tenant, group.tenant_id) if group else None
+
+                results_q = select(StudentResult, Student).outerjoin(
+                    Student, StudentResult.student_id == Student.id
+                ).where(StudentResult.batch_id == target_batch.id)
+
+                results_rows = (await session.execute(results_q)).all()
+
+                roster = []
+                for res_obj, st_obj in results_rows:
+                    sc = res_obj.total_score
+                    roster.append({
+                        "result_id": str(res_obj.id),
+                        "student_id": str(st_obj.id) if st_obj else None,
+                        "student_name": st_obj.full_name if st_obj else "Unmatched/Review",
+                        "index_number": st_obj.index_number if st_obj else "N/A",
+                        "score": sc,
+                        "grade": get_grade(sc),
+                        "needs_review": res_obj.needs_manual_review,
+                        "mode": res_obj.mode or target_batch.mode
+                    })
+
+                # Sort roster by score descending
+                roster.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
+                for idx, r_item in enumerate(roster, 1):
+                    r_item["rank"] = idx
+
+                scores = [r["score"] for r in roster if r["score"] is not None]
+                class_avg = round(sum(scores) / len(scores), 1) if scores else 0.0
+                class_high = max(scores) if scores else 0
+                class_low = min(scores) if scores else 0
+                pass_count = sum(1 for s in scores if s >= 50)
+                pass_rate = round((pass_count / len(scores)) * 100, 1) if scores else 0.0
+
+                buckets = {"0-49": 0, "50-59": 0, "60-69": 0, "70-79": 0, "80-89": 0, "90-100": 0}
+                grade_counts = {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
+                for s in scores:
+                    grade_counts[get_grade(s)] += 1
+                    if s < 50: buckets["0-49"] += 1
+                    elif s < 60: buckets["50-59"] += 1
+                    elif s < 70: buckets["60-69"] += 1
+                    elif s < 80: buckets["70-79"] += 1
+                    elif s < 90: buckets["80-89"] += 1
+                    else: buckets["90-100"] += 1
+
+                date_str = target_batch.created_at.strftime("%B %d, %Y") if target_batch.created_at else "Unknown date"
+
+                return {
+                    "scope": "class_exam",
+                    "school": {
+                        "name": tenant.name if tenant else "Edulytics Academy",
+                        "id": str(tenant.id) if tenant else None
+                    },
+                    "class_info": {
+                        "id": str(group.id) if group else None,
+                        "name": f"{group.level} {group.stream}" if group else "Class",
+                        "level": group.level if group else "",
+                        "stream": group.stream if group else ""
+                    },
+                    "exam": {
+                        "batch_id": str(target_batch.id),
+                        "subject": target_batch.subject,
+                        "exam_type": target_batch.exam_type,
+                        "exam_name": f"{target_batch.subject} - {target_batch.exam_type}",
+                        "date_formatted": date_str,
+                        "mode": target_batch.mode
+                    },
+                    "metrics": {
+                        "total_students": len(roster),
+                        "class_average": class_avg,
+                        "highest_score": class_high,
+                        "lowest_score": class_low,
+                        "pass_rate": pass_rate,
+                        "needs_review_count": sum(1 for r in roster if r["needs_review"])
+                    },
+                    "distribution_buckets": buckets,
+                    "grade_counts": grade_counts,
+                    "roster": roster,
+                    "batch_insights": target_batch.batch_insights
+                }
+
+            # ─────────────────────────────────────────────────────────────
+            # SCOPE 4: CLASS ALL SUBJECTS (Term Grade Matrix across subjects)
+            # ─────────────────────────────────────────────────────────────
+            elif scope == "class_all_subjects":
+                target_group_id = None
+                if academic_group_id:
+                    try:
+                        target_group_id = uuid.UUID(academic_group_id)
+                    except ValueError:
+                        target_group_id = None
+
+                if not target_group_id and batch_id:
+                    try:
+                        b = await session.get(AssessmentBatch, uuid.UUID(batch_id))
+                        if b:
+                            target_group_id = b.academic_group_id
+                    except ValueError:
+                        pass
+
+                if not target_group_id:
+                    # Pick first group
+                    grp_row = (await session.execute(select(AcademicGroup).limit(1))).scalar_one_or_none()
+                    if grp_row:
+                        target_group_id = grp_row.id
+
+                if not target_group_id:
+                    return {"error": "No academic class found"}
+
+                group = await session.get(AcademicGroup, target_group_id)
+                tenant = await session.get(Tenant, group.tenant_id) if group else None
+
+                # Find all batches for this group
+                batches_q = select(AssessmentBatch).where(
+                    AssessmentBatch.academic_group_id == target_group_id
+                ).order_by(AssessmentBatch.created_at.asc())
+                batches_list = (await session.execute(batches_q)).scalars().all()
+
+                subjects_set = []
+                subject_batch_map = {}
+                for b in batches_list:
+                    if b.subject not in subject_batch_map:
+                        subject_batch_map[b.subject] = b.id
+                        subjects_set.append(b.subject)
+
+                # Fetch all students in this group
+                students_q = select(Student).where(Student.academic_group_id == target_group_id)
+                students_list = (await session.execute(students_q)).scalars().all()
+
+                # Build matrix
+                matrix = []
+                subject_column_totals = {subj: [] for subj in subjects_set}
+
+                for st in students_list:
+                    # Find scores for this student in each subject batch
+                    st_scores = {}
+                    for subj in subjects_set:
+                        b_id = subject_batch_map[subj]
+                        res_q = select(StudentResult).where(
+                            StudentResult.batch_id == b_id,
+                            StudentResult.student_id == st.id
+                        )
+                        r_row = (await session.execute(res_q)).scalar_one_or_none()
+                        if r_row and r_row.total_score is not None:
+                            st_scores[subj] = r_row.total_score
+                            subject_column_totals[subj].append(r_row.total_score)
+                        else:
+                            st_scores[subj] = None
+
+                    valid_st_scores = [v for v in st_scores.values() if v is not None]
+                    avg_score = round(sum(valid_st_scores) / len(valid_st_scores), 1) if valid_st_scores else None
+
+                    matrix.append({
+                        "student_id": str(st.id),
+                        "student_name": st.full_name,
+                        "index_number": st.index_number or "N/A",
+                        "subject_scores": st_scores,
+                        "average_score": avg_score,
+                        "grade": get_grade(avg_score)
+                    })
+
+                # Sort by average score descending
+                matrix.sort(key=lambda x: (x["average_score"] if x["average_score"] is not None else -1), reverse=True)
+                for idx, m_item in enumerate(matrix, 1):
+                    m_item["rank"] = idx
+
+                subject_averages = {
+                    subj: (round(sum(vals) / len(vals), 1) if vals else None)
+                    for subj, vals in subject_column_totals.items()
+                }
+
+                return {
+                    "scope": "class_all_subjects",
+                    "school": {
+                        "name": tenant.name if tenant else "Edulytics Academy",
+                        "id": str(tenant.id) if tenant else None
+                    },
+                    "class_info": {
+                        "id": str(group.id) if group else None,
+                        "name": f"{group.level} {group.stream}" if group else "Class",
+                        "level": group.level if group else "",
+                        "stream": group.stream if group else ""
+                    },
+                    "subjects": subjects_set,
+                    "subject_averages": subject_averages,
+                    "matrix": matrix,
+                    "total_students": len(matrix)
+                }
+
+            else:
+                return {"error": f"Unknown scope: {scope}"}
+
+    except Exception as e:
+        print(f"Error in get_report_query: {e}")
+        return {"error": str(e)}
+
 # ── Delete Endpoints ──
 
 @app.delete("/api/v1/students/{student_id}")
