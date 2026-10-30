@@ -98,3 +98,23 @@ def generate_presigned_download_url(key: str, expires_in: int = 3600) -> str:
     except ClientError as e:
         print(f"Error generating download URL for {key}: {e}")
         raise
+
+def delete_s3_batch_files(batch_id: str) -> int:
+    """Deletes all objects stored under batches/{batch_id}/ in S3."""
+    if not S3_BUCKET_NAME or not S3_ACCESS_KEY:
+        return 0
+    try:
+        s3 = get_s3_client()
+        prefix = f"batches/{batch_id}/"
+        paginator = s3.get_paginator("list_objects_v2")
+        deleted_count = 0
+        for page in paginator.paginate(Bucket=S3_BUCKET_NAME, Prefix=prefix):
+            objects = page.get("Contents", [])
+            if objects:
+                delete_keys = [{"Key": obj["Key"]} for obj in objects]
+                s3.delete_objects(Bucket=S3_BUCKET_NAME, Delete={"Objects": delete_keys})
+                deleted_count += len(delete_keys)
+        return deleted_count
+    except Exception as e:
+        print(f"Warning: failed to delete S3 files for batch {batch_id}: {e}")
+        return 0

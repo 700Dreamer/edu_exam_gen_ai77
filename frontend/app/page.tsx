@@ -25,6 +25,9 @@ function cn(...inputs: ClassValue[]) {
 
 type Page = "onboarding" | "roster" | "assessment" | "gradebook" | "reports" | "analytics" | "settings";
 
+const isProduction = process.env.NODE_ENV === "production";
+const isReportLabComingSoon = isProduction && process.env.NEXT_PUBLIC_ENABLE_REPORT_LAB !== "true";
+
 const Header = ({
   theme,
   setTheme,
@@ -65,7 +68,7 @@ const Header = ({
             { key: "onboarding", label: "Onboarding", Icon: Plus },
             { key: "assessment", label: "Grading", Icon: Layers },
             { key: "gradebook", label: "Results", Icon: CheckCircle2 },
-            { key: "reports", label: "Report Lab", Icon: FileText, tag: "BETA" },
+            { key: "reports", label: "Report Lab", Icon: FileText, tag: isReportLabComingSoon ? "SOON" : "BETA" },
             { key: "analytics", label: "Insights", Icon: BarChart3 },
             { key: "roster", label: "Class Rosters", Icon: Users },
             { key: "settings", label: "Settings", Icon: Settings },
@@ -186,37 +189,46 @@ function HomeContent() {
     if (savedFontSize && ['small', 'medium', 'large'].includes(savedFontSize)) {
       setFontSize(savedFontSize);
     }
+  }, []);
 
-    // Fetch initial tenants and groups
-    const loadGlobalContext = async () => {
-      const token = localStorage.getItem("edulytics_token");
-      if (!token) {
-        window.location.href = "/login";
-        return;
-      }
-      try {
-        const res = await authFetch("/api/v1/tenant/list");
-        if (res.ok) {
-          const data = await res.json();
-          setTenants(data);
-          if (data.length > 0) {
-            const firstT = data[0].id;
-            setActiveTenantId(firstT);
+  // Fetch initial tenants and groups
+  const loadGlobalContext = useCallback(async () => {
+    const token = localStorage.getItem("edulytics_token");
+    if (!token) {
+      window.location.href = "/login";
+      return;
+    }
+    try {
+      const res = await authFetch("/api/v1/tenant/list");
+      if (res.ok) {
+        const data = await res.json();
+        setTenants(data);
+        if (data.length > 0) {
+          setActiveTenantId((prev) => {
+            const exists = data.some((t: any) => t.id === prev);
+            const currentT = exists ? prev : data[0].id;
 
-            // Load groups for first tenant
-            const gRes = await authFetch(`/api/v1/tenant/${firstT}/groups`);
-            if (gRes.ok) {
-              const gData = await gRes.json();
-              setGroups(gData);
-              if (gData.length > 0) {
-                setActiveGroupId(gData[0].id);
-              }
-            }
-          }
+            authFetch(`/api/v1/tenant/${currentT}/groups`)
+              .then(r => r.ok ? r.json() : [])
+              .then(gData => {
+                setGroups(gData);
+                if (gData.length > 0) setActiveGroupId(gData[0].id);
+                else setActiveGroupId("");
+              })
+              .catch(() => {});
+
+            return currentT;
+          });
+        } else {
+          setActiveTenantId("");
+          setGroups([]);
+          setActiveGroupId("");
         }
-      } catch (e) { }
-    };
+      }
+    } catch (e) { }
+  }, []);
 
+  useEffect(() => {
     loadGlobalContext();
 
     const handleLogout = () => {
@@ -227,7 +239,7 @@ function HomeContent() {
     return () => {
       window.removeEventListener("edulytics_logout", handleLogout);
     };
-  }, []);
+  }, [loadGlobalContext]);
 
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
@@ -321,47 +333,51 @@ function HomeContent() {
             globalYear={activeYear}
           />
         ) : currentPage === "reports" ? (
-          <div className="flex-1 overflow-hidden relative flex flex-col">
-            {/* Subtle underlying preview with deep blur */}
-            <div className="flex-1 overflow-hidden pointer-events-none filter blur-md select-none opacity-20">
-              <ReportLabView theme={theme} />
-            </div>
+          isReportLabComingSoon ? (
+            <div className="flex-1 overflow-hidden relative flex flex-col">
+              {/* Subtle underlying preview with deep blur */}
+              <div className="flex-1 overflow-hidden pointer-events-none filter blur-md select-none opacity-20">
+                <ReportLabView theme={theme} />
+              </div>
 
-            {/* Apple-style Ultra-minimal Monochromatic Overlay */}
-            <div className="absolute inset-0 z-30 bg-surface/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit">
-              <div className="max-w-xs w-full text-center space-y-6">
-                {/* Monochromatic icon badge */}
-                <div className="w-11 h-11 rounded-full bg-foreground/[0.04] border border-border-main flex items-center justify-center mx-auto text-foreground/70">
-                  <FileText className="w-5 h-5 stroke-[1.5]" />
-                </div>
-
-                {/* Typography */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-semibold tracking-[0.2em] uppercase text-foreground/40">
-                    Report Lab
+              {/* Apple-style Ultra-minimal Monochromatic Overlay */}
+              <div className="absolute inset-0 z-30 bg-surface/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300 font-outfit">
+                <div className="max-w-xs w-full text-center space-y-6">
+                  {/* Monochromatic icon badge */}
+                  <div className="w-11 h-11 rounded-full bg-foreground/[0.04] border border-border-main flex items-center justify-center mx-auto text-foreground/70">
+                    <FileText className="w-5 h-5 stroke-[1.5]" />
                   </div>
-                  <h2 className="text-xl font-medium tracking-tight text-foreground">
-                    Coming Soon
-                  </h2>
-                  <p className="text-xs text-foreground/50 leading-relaxed font-normal pt-1">
-                    Automated report cards, transcripts, and cross-subject analytics are on the way.
-                  </p>
-                </div>
 
-                {/* Monochromatic Back Action */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => handlePageChange("gradebook")}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-foreground/80 hover:text-foreground bg-foreground/[0.04] hover:bg-foreground/[0.08] border border-border-main rounded-full transition-all cursor-pointer active:scale-95"
-                  >
-                    Return to Results
-                    <ArrowRight className="w-3 h-3 text-foreground/40" />
-                  </button>
+                  {/* Typography */}
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-semibold tracking-[0.2em] uppercase text-foreground/40">
+                      Report Lab
+                    </div>
+                    <h2 className="text-xl font-medium tracking-tight text-foreground">
+                      Coming Soon
+                    </h2>
+                    <p className="text-xs text-foreground/50 leading-relaxed font-normal pt-1">
+                      Automated report cards, transcripts, and cross-subject analytics are on the way.
+                    </p>
+                  </div>
+
+                  {/* Monochromatic Back Action */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => handlePageChange("gradebook")}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-foreground/80 hover:text-foreground bg-foreground/[0.04] hover:bg-foreground/[0.08] border border-border-main rounded-full transition-all cursor-pointer active:scale-95"
+                    >
+                      Return to Results
+                      <ArrowRight className="w-3 h-3 text-foreground/40" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <ReportLabView theme={theme} />
+          )
         ) : currentPage === "analytics" ? (
           <AnalyticsView theme={theme} />
         ) : currentPage === "settings" ? (
@@ -370,6 +386,10 @@ function HomeContent() {
             setTheme={setTheme}
             fontSize={fontSize}
             setFontSize={setFontSize}
+            tenants={tenants}
+            activeTenantId={activeTenantId}
+            setActiveTenantId={setActiveTenantId}
+            onTenantsUpdated={loadGlobalContext}
           />
         ) : (
           <GradebookView

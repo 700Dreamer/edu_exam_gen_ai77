@@ -2674,12 +2674,105 @@ async def delete_student(student_id: str):
 @app.delete("/api/v1/assessment/batch/{batch_id}")
 async def delete_batch(batch_id: str):
     async with async_session_maker() as session:
-        batch = await session.get(AssessmentBatch, uuid.UUID(batch_id))
+        try:
+            b_uuid = uuid.UUID(batch_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid batch UUID format")
+
+        batch = await session.get(AssessmentBatch, b_uuid)
         if not batch:
             raise HTTPException(404, "Batch not found")
+
+        from core.storage import delete_s3_batch_files
+        from sqlalchemy import delete as sql_delete
+
+        delete_s3_batch_files(batch_id)
+        await session.execute(sql_delete(BatchTask).where(BatchTask.batch_id == b_uuid))
+        await session.execute(sql_delete(StudentResult).where(StudentResult.batch_id == b_uuid))
         await session.delete(batch)
         await session.commit()
         return {"status": "deleted"}
+
+@app.delete("/api/v1/tenant/{tenant_id}")
+async def delete_tenant(tenant_id: str):
+    """Permanently deletes a school (tenant) and cascades all related data (classes, students, batches, tasks, results, S3 files)."""
+    async with async_session_maker() as session:
+        try:
+            t_uuid = uuid.UUID(tenant_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid tenant UUID format")
+
+        tenant = await session.get(Tenant, t_uuid)
+        if not tenant:
+            raise HTTPException(404, "School/Tenant not found")
+
+        from core.storage import delete_s3_batch_files
+        from sqlalchemy import delete as sql_delete
+
+        # 1. Academic groups
+        groups_res = await session.execute(
+            select(AcademicGroup).where(AcademicGroup.tenant_id == t_uuid)
+        )
+        groups = groups_res.scalars().all()
+        group_ids = [g.id for g in groups]
+
+        total_batches = 0
+        total_results = 0
+        total_students = 0
+        s3_purged = 0
+
+        if group_ids:
+            # 2. Assessment batches
+            batches_res = await session.execute(
+                select(AssessmentBatch).where(AssessmentBatch.academic_group_id.in_(group_ids))
+            )
+            batches = batches_res.scalars().all()
+            batch_ids = [b.id for b in batches]
+            total_batches = len(batch_ids)
+
+            if batch_ids:
+                for b_id in batch_ids:
+                    s3_purged += delete_s3_batch_files(str(b_id))
+
+                await session.execute(
+                    sql_delete(BatchTask).where(BatchTask.batch_id.in_(batch_ids))
+                )
+                res_del = await session.execute(
+                    sql_delete(StudentResult).where(StudentResult.batch_id.in_(batch_ids))
+                )
+                total_results = res_del.rowcount or 0
+
+                await session.execute(
+                    sql_delete(AssessmentBatch).where(AssessmentBatch.id.in_(batch_ids))
+                )
+
+            # 3. Students
+            stu_del = await session.execute(
+                sql_delete(Student).where(Student.academic_group_id.in_(group_ids))
+            )
+            total_students = stu_del.rowcount or 0
+
+            # 4. Academic groups
+            await session.execute(
+                sql_delete(AcademicGroup).where(AcademicGroup.id.in_(group_ids))
+            )
+
+        school_name = tenant.name
+        await session.delete(tenant)
+        await session.commit()
+
+        return {
+            "status": "deleted",
+            "school_id": str(t_uuid),
+            "school_name": school_name,
+            "summary": {
+                "classes_deleted": len(group_ids),
+                "students_deleted": total_students,
+                "batches_deleted": total_batches,
+                "results_deleted": total_results,
+                "s3_objects_purged": s3_purged
+            }
+        }
 
 # ── CSV Export Endpoint ──
 

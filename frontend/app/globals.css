@@ -334,3 +334,22 @@ body {
     @apply font-sans;
   }
 }
+
+#wysiwyg-print-mount {
+  display: none;
+}
+
+@media print {
+  body.wysiwyg-export-active > *:not(#wysiwyg-print-mount) {
+    display: none !important;
+  }
+  body.wysiwyg-export-active #wysiwyg-print-mount {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+}

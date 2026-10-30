@@ -1,21 +1,49 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Settings, Type, Palette, Check, RotateCcw, LogOut, ShieldAlert } from "lucide-react";
+import {
+  Settings, Type, Palette, Check, RotateCcw, LogOut, ShieldAlert,
+  Trash2, AlertTriangle, X, Loader2, CheckCircle2
+} from "lucide-react";
 import { cn, authFetch } from "../lib/utils";
+
+interface SettingsViewProps {
+  theme: string;
+  setTheme: (t: 'burgundy' | 'midnight' | 'emerald' | 'royal') => void;
+  fontSize: 'small' | 'medium' | 'large';
+  setFontSize: (s: 'small' | 'medium' | 'large') => void;
+  tenants?: { id: string; name: string }[];
+  activeTenantId?: string;
+  setActiveTenantId?: (id: string) => void;
+  onTenantsUpdated?: () => void | Promise<void>;
+}
 
 export default function SettingsView({
   theme,
   setTheme,
   fontSize,
-  setFontSize
-}: {
-  theme: string;
-  setTheme: (t: 'burgundy' | 'midnight' | 'emerald' | 'royal') => void;
-  fontSize: 'small' | 'medium' | 'large';
-  setFontSize: (s: 'small' | 'medium' | 'large') => void;
-}) {
+  setFontSize,
+  tenants = [],
+  activeTenantId,
+  setActiveTenantId,
+  onTenantsUpdated
+}: SettingsViewProps) {
   const [userRole, setUserRole] = useState<string | null>(null);
+
+  // School deletion states
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>(activeTenantId || "");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [confirmInput, setConfirmInput] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletionError, setDeletionError] = useState<string | null>(null);
+  const [deletionSuccess, setDeletionSuccess] = useState<{
+    schoolName: string;
+    classes: number;
+    students: number;
+    batches: number;
+    results: number;
+    s3Files: number;
+  } | null>(null);
 
   useEffect(() => {
     const fetchMe = async () => {
@@ -31,6 +59,56 @@ export default function SettingsView({
     };
     fetchMe();
   }, []);
+
+  // Synchronize selectedSchoolId if tenants or activeTenantId changes
+  useEffect(() => {
+    if (activeTenantId && tenants.some(t => t.id === activeTenantId)) {
+      setSelectedSchoolId(activeTenantId);
+    } else if (tenants.length > 0 && !tenants.some(t => t.id === selectedSchoolId)) {
+      setSelectedSchoolId(tenants[0].id);
+    }
+  }, [activeTenantId, tenants]);
+
+  const selectedSchool = tenants.find(t => t.id === selectedSchoolId) || null;
+
+  const handleDeleteSchool = async () => {
+    if (!selectedSchoolId || !selectedSchool) return;
+    setIsDeleting(true);
+    setDeletionError(null);
+
+    try {
+      const res = await authFetch(`/api/v1/tenant/${selectedSchoolId}`, {
+        method: "DELETE"
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Failed to delete school.");
+      }
+
+      const result = await res.json();
+      setDeletionSuccess({
+        schoolName: result.school_name || selectedSchool.name,
+        classes: result.summary?.classes_deleted || 0,
+        students: result.summary?.students_deleted || 0,
+        batches: result.summary?.batches_deleted || 0,
+        results: result.summary?.results_deleted || 0,
+        s3Files: result.summary?.s3_objects_purged || 0
+      });
+
+      setIsDeleteModalOpen(false);
+      setConfirmInput("");
+
+      if (onTenantsUpdated) {
+        await onTenantsUpdated();
+      }
+    } catch (err: any) {
+      setDeletionError(err.message || "An unexpected error occurred during deletion.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   const fontOptions = [
     {
       key: "small",
@@ -180,7 +258,6 @@ export default function SettingsView({
             <button
               onClick={() => {
                 if (typeof window !== "undefined") {
-                  // The frontend routing we built earlier will catch this and redirect
                   window.dispatchEvent(new Event("edulytics_logout"));
                 }
               }}
@@ -200,6 +277,98 @@ export default function SettingsView({
           </div>
         </div>
 
+        {/* Danger Zone: School Deletion Card */}
+        <div className="bg-surface border border-red-500/30 p-6 space-y-6">
+          <div className="flex items-center justify-between border-b border-border-main/60 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-red-500/10 text-red-500 border border-red-500/20">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-extrabold uppercase tracking-wider text-red-500">
+                  Danger Zone - Institution Deletion
+                </h2>
+                <p className="text-[11px] text-foreground/50 font-normal">
+                  Permanently erase a school and all associated data, classes, rosters, exams, and cloud files.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-red-500 bg-red-500/10 border border-red-500/20 px-2 py-0.5">
+              Irreversible
+            </span>
+          </div>
+
+          {deletionSuccess && (
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 space-y-1 text-xs">
+              <div className="flex items-center gap-2 font-bold text-emerald-300">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>School Deleted Successfully</span>
+              </div>
+              <p className="text-[11px] text-emerald-400/90 leading-relaxed font-mono">
+                "{deletionSuccess.schoolName}" was completely wiped: {deletionSuccess.classes} classes, {deletionSuccess.students} students, {deletionSuccess.batches} exam batches, {deletionSuccess.results} student results, and {deletionSuccess.s3Files} cloud storage files purged.
+              </p>
+            </div>
+          )}
+
+          {tenants.length === 0 ? (
+            <p className="text-xs text-foreground/60 italic">
+              No registered schools found in the system.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wide text-foreground/80 block">
+                  Select School To Remove:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+                  <select
+                    value={selectedSchoolId}
+                    onChange={(e) => {
+                      setSelectedSchoolId(e.target.value);
+                      setDeletionSuccess(null);
+                    }}
+                    className="flex-1 bg-background border border-border-main px-3 py-2 text-xs font-medium text-foreground focus:outline-none focus:border-red-500"
+                  >
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.id.slice(0, 8)}...)
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmInput("");
+                      setDeletionError(null);
+                      setIsDeleteModalOpen(true);
+                    }}
+                    disabled={!selectedSchool}
+                    className="flex items-center justify-center gap-2 px-5 py-2 bg-red-600/10 text-red-500 border border-red-500/30 text-xs font-bold uppercase tracking-wider hover:bg-red-600 hover:text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete School &amp; Data
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-foreground/[0.02] border border-border-main/60 space-y-2 text-xs text-foreground/70">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-foreground/40 block">
+                  Deletion Scope Includes:
+                </span>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-foreground/60 list-disc list-inside">
+                  <li>School registry entry &amp; settings</li>
+                  <li>All classes, streams, and academic groups</li>
+                  <li>Student roster records &amp; profiles</li>
+                  <li>Assessment batches &amp; master blueprints</li>
+                  <li>Student marks, scores, and AI evaluations</li>
+                  <li>All S3 cloud storage files and exam scans</li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Reset Preferences Button */}
         <div className="flex justify-end pt-4">
           <button
@@ -213,6 +382,101 @@ export default function SettingsView({
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      {isDeleteModalOpen && selectedSchool && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-surface border border-red-500/40 shadow-2xl max-w-md w-full p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-500/10 border border-red-500/30 text-red-500">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-red-500">
+                    Confirm School Deletion
+                  </h3>
+                  <p className="text-[11px] text-foreground/60">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => !isDeleting && setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="text-foreground/40 hover:text-foreground cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Warning Message */}
+            <div className="p-3 bg-red-500/10 border border-red-500/20 text-xs text-red-300 space-y-1.5 leading-relaxed">
+              <p className="font-bold">You are about to permanently wipe:</p>
+              <div className="font-mono text-sm font-black text-white bg-red-950/40 p-2 border border-red-500/30">
+                {selectedSchool.name}
+              </div>
+              <p className="text-[11px] text-red-300/80">
+                All classes, students, exam results, worker tasks, and cloud storage images will be permanently erased.
+              </p>
+            </div>
+
+            {/* Error display */}
+            {deletionError && (
+              <div className="p-2.5 bg-red-500/20 border border-red-500/40 text-red-200 text-xs">
+                {deletionError}
+              </div>
+            )}
+
+            {/* Confirmation Input Field */}
+            <div className="space-y-2">
+              <label className="text-xs text-foreground/80 block leading-tight font-medium">
+                To confirm, type <span className="font-mono font-bold text-red-400">DELETE</span> or the school name below:
+              </label>
+              <input
+                type="text"
+                value={confirmInput}
+                onChange={(e) => setConfirmInput(e.target.value)}
+                placeholder='Type "DELETE" to confirm'
+                disabled={isDeleting}
+                className="w-full bg-background border border-border-main text-foreground px-3 py-2 text-xs font-mono focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 border border-border-main text-xs font-medium text-foreground/70 hover:text-foreground hover:bg-surface-soft transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteSchool}
+                disabled={isDeleting || (confirmInput.trim() !== "DELETE" && confirmInput.trim().toLowerCase() !== selectedSchool.name.trim().toLowerCase())}
+                className="flex items-center gap-2 px-5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Deleting &amp; Purging...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Permanently Delete School
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
